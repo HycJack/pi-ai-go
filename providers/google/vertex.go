@@ -1,18 +1,23 @@
 package google
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"time"
 
 	piai "pi-ai-go"
 )
 
 // VertexOptions holds Google Vertex AI-specific options.
 type VertexOptions struct {
-	ToolChoice any `json:"toolChoice,omitempty"`
+	ToolChoice any             `json:"toolChoice,omitempty"`
 	Thinking   *ThinkingConfig `json:"thinking,omitempty"`
-	Project    string `json:"project,omitempty"`
-	Location   string `json:"location,omitempty"`
+	Project    string          `json:"project,omitempty"`
+	Location   string          `json:"location,omitempty"`
 }
 
 // VertexProvider implements the Google Vertex AI API.
@@ -97,14 +102,44 @@ func streamVertex(model piai.Model, c piai.Context, opts piai.StreamOptions, ver
 }
 
 func doVertexStream(baseURL, apiKey, project, location string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
-	// Vertex AI uses a different URL pattern
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return piai.AssistantMessage{}, err
+	}
+
+	// Vertex AI uses a different URL pattern than Google AI
 	url := fmt.Sprintf("%s/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse",
 		baseURL, project, location, model.ID)
 
-	// Use API key if available, otherwise use ADC
 	if apiKey != "" {
 		url += "&key=" + apiKey
 	}
 
-	return doGoogleStream(baseURL, apiKey, model, body, stream, opts)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return piai.AssistantMessage{}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	for k, v := range model.Headers {
+		req.Header.Set(k, v)
+	}
+	for k, v := range opts.Headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return piai.AssistantMessage{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return piai.AssistantMessage{}, fmt.Errorf("google-vertex: API error %d: %s", resp.StatusCode, string(errBody))
+	}
+
+	return processGoogleSSE(resp.Body, stream, model, opts)
 }

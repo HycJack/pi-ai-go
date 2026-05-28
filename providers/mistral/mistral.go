@@ -149,11 +149,7 @@ func convertMessages(messages []piai.Message) ([]map[string]any, error) {
 			})
 
 		case piai.AssistantMessage:
-			content := convertAssistantContent(m.Content)
-			result = append(result, map[string]any{
-				"role":    "assistant",
-				"content": content,
-			})
+			result = append(result, convertAssistantMessage(m.Content))
 
 		case piai.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
@@ -196,7 +192,7 @@ func convertUserContent(content any) (any, error) {
 	}
 }
 
-func convertAssistantContent(content []piai.ContentBlock) any {
+func convertAssistantMessage(content []piai.ContentBlock) map[string]any {
 	var textParts []string
 	var toolCalls []any
 
@@ -206,8 +202,8 @@ func convertAssistantContent(content []piai.ContentBlock) any {
 			textParts = append(textParts, b.Text)
 		case piai.ToolCall:
 			toolCalls = append(toolCalls, map[string]any{
-				"id":        normalizeToolCallID(b.ID),
-				"type":      "function",
+				"id":   normalizeToolCallID(b.ID),
+				"type": "function",
 				"function": map[string]any{
 					"name":      b.Name,
 					"arguments": string(b.Arguments),
@@ -216,18 +212,19 @@ func convertAssistantContent(content []piai.ContentBlock) any {
 		}
 	}
 
-	if len(toolCalls) > 0 {
-		msg := map[string]any{
-			"role":       "assistant",
-			"tool_calls": toolCalls,
-		}
-		if len(textParts) > 0 {
-			msg["content"] = strings.Join(textParts, "\n")
-		}
-		return msg
+	msg := map[string]any{
+		"role": "assistant",
 	}
 
-	return strings.Join(textParts, "\n")
+	if len(toolCalls) > 0 {
+		msg["tool_calls"] = toolCalls
+	}
+
+	if len(textParts) > 0 {
+		msg["content"] = strings.Join(textParts, "\n")
+	}
+
+	return msg
 }
 
 func convertToolResultContent(content []piai.ContentBlock) string {
@@ -252,8 +249,9 @@ func convertTools(tools []piai.Tool) []map[string]any {
 		}
 		if len(tool.Parameters) > 0 {
 			var params map[string]any
-			json.Unmarshal(tool.Parameters, &params)
-			t["function"].(map[string]any)["parameters"] = params
+			if err := json.Unmarshal(tool.Parameters, &params); err == nil {
+				t["function"].(map[string]any)["parameters"] = params
+			}
 		}
 		result[i] = t
 	}

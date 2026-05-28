@@ -216,15 +216,23 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 	for _, block := range content {
 		switch b := block.(type) {
 		case piai.TextContent:
-			blocks = append(blocks, map[string]any{
+			block := map[string]any{
 				"type": "text",
 				"text": b.Text,
-			})
+			}
+			if b.TextSignature != "" {
+				block["signature"] = b.TextSignature
+			}
+			blocks = append(blocks, block)
 		case piai.ThinkingContent:
-			blocks = append(blocks, map[string]any{
-				"type":      "thinking",
-				"thinking":  b.Thinking,
-			})
+			block := map[string]any{
+				"type":     "thinking",
+				"thinking": b.Thinking,
+			}
+			if b.ThinkingSignature != "" {
+				block["signature"] = b.ThinkingSignature
+			}
+			blocks = append(blocks, block)
 		case piai.ToolCall:
 			blocks = append(blocks, map[string]any{
 				"type":  "tool_use",
@@ -276,8 +284,9 @@ func convertTools(tools []piai.Tool, eagerStreaming bool) []map[string]any {
 		}
 		if len(tool.Parameters) > 0 {
 			var params map[string]any
-			json.Unmarshal(tool.Parameters, &params)
-			t["input_schema"] = params
+			if err := json.Unmarshal(tool.Parameters, &params); err == nil {
+				t["input_schema"] = params
+			}
 		}
 		if eagerStreaming {
 			t["eager_input_streaming"] = true
@@ -333,10 +342,12 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg         piai.AssistantMessage
-		textBuf     strings.Builder
-		thinkingBuf strings.Builder
-		toolCalls   map[int]*piai.ToolCall
+		msg              piai.AssistantMessage
+		textBuf          strings.Builder
+		thinkingBuf      strings.Builder
+		textSignature    string
+		thinkingSignature string
+		toolCalls        map[int]*piai.ToolCall
 	)
 
 	msg.API = model.API
@@ -385,8 +396,14 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 
 			switch blockType {
 			case "text":
+				if sig, ok := block["signature"].(string); ok {
+					textSignature = sig
+				}
 				stream.Push(piai.EventTextStart{Type: "text_start"})
 			case "thinking":
+				if sig, ok := block["signature"].(string); ok {
+					thinkingSignature = sig
+				}
 				stream.Push(piai.EventThinkingStart{Type: "thinking_start"})
 			case "tool_use":
 				id, _ := block["id"].(string)
@@ -447,6 +464,15 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 				})
 				msg.Content = append(msg.Content, *tc)
 			}
+			// Capture signature from content_block_stop if present
+			if sig, ok := event["signature"].(string); ok {
+				// Determine which block this signature belongs to based on current state
+				if thinkingBuf.Len() > 0 && thinkingSignature == "" {
+					thinkingSignature = sig
+				} else if textBuf.Len() > 0 && textSignature == "" {
+					textSignature = sig
+				}
+			}
 
 		case "message_start":
 			message, _ := event["message"].(map[string]any)
@@ -472,14 +498,24 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 			// Finalize message
 			if textBuf.Len() > 0 {
 				msg.Content = append(msg.Content, piai.TextContent{
-					Type: "text",
-					Text: textBuf.String(),
+					Type:          "text",
+					Text:          textBuf.String(),
+					TextSignature: textSignature,
+				})
+				stream.Push(piai.EventTextEnd{
+					Type:          "text_end",
+					TextSignature: textSignature,
 				})
 			}
 			if thinkingBuf.Len() > 0 {
 				msg.Content = append(msg.Content, piai.ThinkingContent{
-					Type:     "thinking",
-					Thinking: thinkingBuf.String(),
+					Type:              "thinking",
+					Thinking:          thinkingBuf.String(),
+					ThinkingSignature: thinkingSignature,
+				})
+				stream.Push(piai.EventThinkingEnd{
+					Type:              "thinking_end",
+					ThinkingSignature: thinkingSignature,
 				})
 			}
 

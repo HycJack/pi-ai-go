@@ -274,9 +274,10 @@ func convertTools(tools []piai.Tool) []any {
 		}
 		if len(tool.Parameters) > 0 {
 			var params map[string]any
-			json.Unmarshal(tool.Parameters, &params)
-			t["toolSpec"].(map[string]any)["inputSchema"] = map[string]any{
-				"json": params,
+			if err := json.Unmarshal(tool.Parameters, &params); err == nil {
+				t["toolSpec"].(map[string]any)["inputSchema"] = map[string]any{
+					"json": params,
+				}
 			}
 		}
 		result[i] = t

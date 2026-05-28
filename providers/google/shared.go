@@ -131,8 +131,9 @@ func ConvertTools(tools []piai.Tool) []map[string]any {
 		}
 		if len(tool.Parameters) > 0 {
 			var params map[string]any
-			json.Unmarshal(tool.Parameters, &params)
-			d["parameters"] = params
+			if err := json.Unmarshal(tool.Parameters, &params); err == nil {
+				d["parameters"] = params
+			}
 		}
 		declarations[i] = d
 	}

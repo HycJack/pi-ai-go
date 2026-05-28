@@ -197,8 +197,9 @@ func convertResponsesTools(tools []piai.Tool) []map[string]any {
 		}
 		if len(tool.Parameters) > 0 {
 			var params map[string]any
-			json.Unmarshal(tool.Parameters, &params)
-			t["parameters"] = params
+			if err := json.Unmarshal(tool.Parameters, &params); err == nil {
+				t["parameters"] = params
+			}
 		}
 		result[i] = t
 	}
