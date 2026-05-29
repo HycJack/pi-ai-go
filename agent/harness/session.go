@@ -52,6 +52,11 @@ func (s *Session) Append(entries ...SessionTreeEntry) error {
 			return &HarnessError{Code: ErrStorage, Message: "failed to append entries", Err: err}
 		}
 	}
+	for _, e := range entries {
+		if e.Type == EntrySessionInfo && e.SessionID != "" {
+			s.id = e.SessionID
+		}
+	}
 	s.entries = append(s.entries, entries...)
 	return nil
 }
