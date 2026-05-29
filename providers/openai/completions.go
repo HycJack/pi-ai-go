@@ -3,6 +3,7 @@ package openai
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // CompletionsOptions holds OpenAI Completions-specific options.
@@ -27,25 +28,25 @@ func NewCompletions() *CompletionsProvider {
 	return &CompletionsProvider{}
 }
 
-func (p *CompletionsProvider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamCompletions(model, ctx, opts, CompletionsOptions{})
+func (p *CompletionsProvider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamCompletions(ctx, model, llmCtx, opts, CompletionsOptions{})
 }
 
-func (p *CompletionsProvider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *CompletionsProvider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	completionsOpts := CompletionsOptions{}
 	if opts.Reasoning != "" {
-		completionsOpts.ReasoningEffort = string(clampReasoning(opts.Reasoning))
+		completionsOpts.ReasoningEffort = string(clampEffort(opts.Reasoning))
 	}
-	return streamCompletions(model, ctx, opts.StreamOptions, completionsOpts)
+	return streamCompletions(ctx, model, llmCtx, opts.StreamOptions, completionsOpts)
 }
 
-func streamCompletions(model piai.Model, c piai.Context, opts piai.StreamOptions, completionsOpts CompletionsOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamCompletions(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, completionsOpts CompletionsOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("openai: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, defaultCompletionsURL)
+	baseURL := core.ResolveBaseURL(model, defaultCompletionsURL)
 
 	body, err := buildCompletionsBody(model, c, opts, completionsOpts)
 	if err != nil {
@@ -56,7 +57,7 @@ func streamCompletions(model piai.Model, c piai.Context, opts piai.StreamOptions
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -65,7 +66,7 @@ func streamCompletions(model piai.Model, c piai.Context, opts piai.StreamOptions
 			}
 		}()
 
-		msg, err := doCompletionsStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doCompletionsStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -76,7 +77,7 @@ func streamCompletions(model piai.Model, c piai.Context, opts piai.StreamOptions
 	return stream, nil
 }
 
-func buildCompletionsBody(model piai.Model, c piai.Context, opts piai.StreamOptions, completionsOpts CompletionsOptions) (map[string]any, error) {
+func buildCompletionsBody(model core.Model, c core.Context, opts core.StreamOptions, completionsOpts CompletionsOptions) (map[string]any, error) {
 	body := map[string]any{
 		"model":  model.ID,
 		"stream": true,
@@ -127,17 +128,17 @@ func buildCompletionsBody(model piai.Model, c piai.Context, opts piai.StreamOpti
 	return body, nil
 }
 
-func doCompletionsStream(baseURL, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doCompletionsStream(ctx context.Context, baseURL, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := baseURL + "/chat/completions"
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -153,26 +154,26 @@ func doCompletionsStream(baseURL, apiKey string, model piai.Model, body map[stri
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("openai: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("openai: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processCompletionsSSE(resp.Body, stream, model, opts)
 }
 
-func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processCompletionsSSE(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg         piai.AssistantMessage
+		msg         core.AssistantMessage
 		textBuf     strings.Builder
-		toolCalls   map[int]*piai.ToolCall
+		toolCalls   map[int]*core.ToolCall
 		toolIndices []int
 	)
 
@@ -181,9 +182,9 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 	msg.Model = model.ID
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
-	toolCalls = make(map[int]*piai.ToolCall)
+	toolCalls = make(map[int]*core.ToolCall)
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -243,7 +244,7 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 		// Text content
 		if content, ok := delta["content"].(string); ok && content != "" {
 			textBuf.WriteString(content)
-			stream.Push(piai.EventTextDelta{
+			stream.Push(core.EventTextDelta{
 				Type:  "text_delta",
 				Delta: content,
 			})
@@ -251,7 +252,7 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 
 		// Reasoning content
 		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
-			stream.Push(piai.EventThinkingDelta{
+			stream.Push(core.EventThinkingDelta{
 				Type:  "thinking_delta",
 				Delta: reasoning,
 			})
@@ -272,13 +273,13 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 
 				if id != "" {
 					// New tool call
-					toolCalls[index] = &piai.ToolCall{
+					toolCalls[index] = &core.ToolCall{
 						Type: "toolCall",
 						ID:   id,
 						Name: name,
 					}
 					toolIndices = append(toolIndices, index)
-					stream.Push(piai.EventToolCallStart{
+					stream.Push(core.EventToolCallStart{
 						Type: "toolcall_start",
 						ID:   id,
 						Name: name,
@@ -287,7 +288,7 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 
 				if tc, ok := toolCalls[index]; ok && args != "" {
 					tc.Arguments = append(tc.Arguments, []byte(args)...)
-					stream.Push(piai.EventToolCallDelta{
+					stream.Push(core.EventToolCallDelta{
 						Type:           "toolcall_delta",
 						ID:             tc.ID,
 						ArgumentsDelta: args,
@@ -299,16 +300,16 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 
 	// Finalize
 	if textBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.TextContent{
+		msg.Content = append(msg.Content, core.TextContent{
 			Type: "text",
 			Text: textBuf.String(),
 		})
-		stream.Push(piai.EventTextEnd{Type: "text_end"})
+		stream.Push(core.EventTextEnd{Type: "text_end"})
 	}
 
 	for _, index := range toolIndices {
 		if tc, ok := toolCalls[index]; ok {
-			stream.Push(piai.EventToolCallEnd{
+			stream.Push(core.EventToolCallEnd{
 				Type:      "toolcall_end",
 				ID:        tc.ID,
 				Arguments: tc.Arguments,
@@ -318,9 +319,9 @@ func processCompletionsSSE(body io.Reader, stream *piai.EventStream[piai.Assista
 	}
 
 	msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output
-	msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
 
-	stream.Push(piai.EventDone{
+	stream.Push(core.EventDone{
 		Type:    "done",
 		Message: msg,
 	})
@@ -350,9 +351,10 @@ func getFloat(m map[string]any, key string) float64 {
 	return 0
 }
 
-func clampReasoning(effort piai.ThinkingLevel) piai.ThinkingLevel {
-	if effort == piai.ThinkingXHigh {
-		return piai.ThinkingHigh
+// clampEffort clamps "xhigh" to "high" for providers that don't support it.
+func clampEffort(effort core.ThinkingLevel) core.ThinkingLevel {
+	if effort == core.ThinkingXHigh {
+		return core.ThinkingHigh
 	}
 	return effort
 }

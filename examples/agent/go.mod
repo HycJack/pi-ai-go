@@ -1,4 +1,4 @@
-module test/agent
+module examples/agent
 
 go 1.23.0
 

@@ -3,10 +3,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"pi-ai-go/utils/oauth"
@@ -115,7 +115,6 @@ func handleLogin(ctx context.Context) {
 	}
 
 	fmt.Printf("\nLogin successful!\n")
-	fmt.Printf("Access token: %s...%s\n", creds.Access[:8], creds.Access[len(creds.Access)-4:])
 
 	// Save credentials
 	if err := saveCredentials(providerID, creds); err != nil {
@@ -126,7 +125,6 @@ func handleLogin(ctx context.Context) {
 }
 
 func saveCredentials(providerID string, creds oauth.Credentials) error {
-	// In a real implementation, save to a secure file
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -137,16 +135,20 @@ func saveCredentials(providerID string, creds oauth.Credentials) error {
 		return err
 	}
 
-	data := fmt.Sprintf("%s\n%s\n%d\n%s\n",
-		creds.Access,
-		creds.Refresh,
-		creds.Expires,
-		providerID,
-	)
+	type savedCredentials struct {
+		Provider string `json:"provider"`
+		oauth.Credentials
+	}
+
+	data, err := json.MarshalIndent(savedCredentials{
+		Provider:    providerID,
+		Credentials: creds,
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
 
 	path := dir + "/auth.json"
-	return os.WriteFile(path, []byte(data), 0600)
+	return os.WriteFile(path, data, 0600)
 }
 
-// Import to ensure providers are registered
-var _ = strings.Join

@@ -1,4 +1,4 @@
-package piai
+package core
 
 import (
 	"os"
@@ -28,7 +28,6 @@ func FindEnvKeys(provider KnownProvider) []string {
 	return found
 }
 
-// providerEnvVars maps providers to their environment variable names.
 var providerEnvVars = map[KnownProvider][]string{
 	ProviderAnthropic:     {"ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"},
 	ProviderOpenAI:        {"OPENAI_API_KEY"},
@@ -45,6 +44,13 @@ var providerEnvVars = map[KnownProvider][]string{
 	ProviderXAI:           {"XAI_API_KEY"},
 	ProviderDeepSeek:      {"DEEPSEEK_API_KEY"},
 	ProviderCerebras:      {"CEREBRAS_API_KEY"},
+	ProviderCloudflare:    {"CLOUDFLARE_API_KEY", "CLOUDFLARE_AI_TOKEN"},
+	ProviderHuggingFace:   {"HUGGINGFACE_API_KEY", "HF_API_TOKEN"},
+	ProviderMoonshot:      {"MOONSHOT_API_KEY"},
+	ProviderMoonshotCN:    {"MOONSHOT_API_KEY"},
+	ProviderMinimax:       {"MINIMAX_API_KEY"},
+	ProviderMinimaxCN:     {"MINIMAX_API_KEY"},
+	ProviderXiaomi:        {"XIAOMI_API_KEY", "MI_API_KEY"},
 }
 
 // ResolveAPIKey resolves an API key from options or environment.

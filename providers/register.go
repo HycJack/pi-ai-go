@@ -1,7 +1,7 @@
 package providers
 
 import (
-	piai "pi-ai-go"
+	"pi-ai-go/core"
 	"pi-ai-go/providers/anthropic"
 	"pi-ai-go/providers/bedrock"
 	"pi-ai-go/providers/google"
@@ -12,41 +12,22 @@ import (
 
 // RegisterBuiltInProviders registers all built-in API providers.
 func RegisterBuiltInProviders() {
-	// Anthropic
-	piai.RegisterProvider(piai.APIAnthropicMessages, anthropic.New(), "builtin")
-
-	// OpenAI Completions
-	piai.RegisterProvider(piai.APIOpenAICompletions, openai.NewCompletions(), "builtin")
-
-	// OpenAI Responses
-	piai.RegisterProvider(piai.APIOpenAIResponses, openai.NewResponses(), "builtin")
-
-	// Azure OpenAI
-	piai.RegisterProvider(piai.APIAzureOpenAIResponses, openai.NewAzure(), "builtin")
-
-	// OpenAI Codex
-	piai.RegisterProvider(piai.APIOpenAICodexResponses, openai.NewCodex(), "builtin")
-
-	// Google Gemini
-	piai.RegisterProvider(piai.APIGoogleGenerative, google.New(), "builtin")
-
-	// Google Vertex
-	piai.RegisterProvider(piai.APIGoogleVertex, google.NewVertex(), "builtin")
-
-	// Amazon Bedrock
-	piai.RegisterProvider(piai.APIBedrockConverse, bedrock.New(), "builtin")
-
-	// Mistral
-	piai.RegisterProvider(piai.APIMistralConversations, mistral.New(), "builtin")
-
-	// Image providers
-	piai.RegisterImagesProvider("openrouter-images", images.NewOpenRouter(), "builtin")
+	core.RegisterProvider(core.APIAnthropicMessages, anthropic.New(), "builtin")
+	core.RegisterProvider(core.APIOpenAICompletions, openai.NewCompletions(), "builtin")
+	core.RegisterProvider(core.APIOpenAIResponses, openai.NewResponses(), "builtin")
+	core.RegisterProvider(core.APIAzureOpenAIResponses, openai.NewAzure(), "builtin")
+	core.RegisterProvider(core.APIOpenAICodexResponses, openai.NewCodex(), "builtin")
+	core.RegisterProvider(core.APIGoogleGenerative, google.New(), "builtin")
+	core.RegisterProvider(core.APIGoogleVertex, google.NewVertex(), "builtin")
+	core.RegisterProvider(core.APIBedrockConverse, bedrock.New(), "builtin")
+	core.RegisterProvider(core.APIMistralConversations, mistral.New(), "builtin")
+	core.RegisterImagesProvider("openrouter-images", images.NewOpenRouter(), "builtin")
 }
 
 // UnregisterBuiltInProviders removes all built-in providers.
 func UnregisterBuiltInProviders() {
-	piai.UnregisterProviders("builtin")
-	piai.UnregisterImagesProviders("builtin")
+	core.UnregisterProviders("builtin")
+	core.UnregisterImagesProviders("builtin")
 }
 
 func init() {

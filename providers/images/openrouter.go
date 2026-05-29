@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
@@ -23,13 +23,13 @@ func NewOpenRouter() *OpenRouterProvider {
 	return &OpenRouterProvider{}
 }
 
-func (p *OpenRouterProvider) GenerateImages(model piai.ImagesModel, c piai.Context, opts piai.ImageOptions) (*piai.AssistantImages, error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func (p *OpenRouterProvider) GenerateImages(model core.ImagesModel, c core.Context, opts core.ImageOptions) (*core.AssistantImages, error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("openrouter-images: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(piai.Model{
+	baseURL := core.ResolveBaseURL(core.Model{
 		BaseURL: model.BaseURL,
 	}, defaultOpenRouterBaseURL)
 
@@ -43,7 +43,7 @@ func (p *OpenRouterProvider) GenerateImages(model piai.ImagesModel, c piai.Conte
 	}
 
 	for _, msg := range c.Messages {
-		if userMsg, ok := msg.(piai.UserMessage); ok {
+		if userMsg, ok := msg.(core.UserMessage); ok {
 			content := fmt.Sprintf("%v", userMsg.Content)
 			messages = append(messages, map[string]any{
 				"role":    "user",
@@ -111,11 +111,11 @@ func (p *OpenRouterProvider) GenerateImages(model piai.ImagesModel, c piai.Conte
 		return nil, err
 	}
 
-	images := piai.AssistantImages{
+	images := core.AssistantImages{
 		API:        "openrouter-images",
 		Provider:   model.Provider,
 		Model:      model.ID,
-		StopReason: piai.StopStop,
+		StopReason: core.StopStop,
 		Timestamp:  time.Now(),
 	}
 
@@ -136,7 +136,7 @@ func (p *OpenRouterProvider) GenerateImages(model piai.ImagesModel, c piai.Conte
 				}
 			}
 
-			images.Output = append(images.Output, piai.ImageData{
+			images.Output = append(images.Output, core.ImageData{
 				Data:     data,
 				MimeType: mimeType,
 			})
@@ -144,7 +144,7 @@ func (p *OpenRouterProvider) GenerateImages(model piai.ImagesModel, c piai.Conte
 	}
 
 	if result.Usage != nil {
-		images.Usage = &piai.Usage{
+		images.Usage = &core.Usage{
 			Input:       result.Usage.PromptTokens,
 			Output:      result.Usage.CompletionTokens,
 			TotalTokens: result.Usage.TotalTokens,

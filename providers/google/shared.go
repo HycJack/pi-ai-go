@@ -5,18 +5,18 @@ import (
 	"encoding/json"
 	"strings"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultBaseURL = "https://generativelanguage.googleapis.com"
 
 // ConvertMessages converts internal messages to Google Gemini format.
-func ConvertMessages(messages []piai.Message) ([]map[string]any, error) {
+func ConvertMessages(messages []core.Message) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			parts, err := convertUserParts(m.Content)
 			if err != nil {
 				return nil, err
@@ -26,14 +26,14 @@ func ConvertMessages(messages []piai.Message) ([]map[string]any, error) {
 				"parts": parts,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			parts := convertAssistantParts(m.Content)
 			result = append(result, map[string]any{
 				"role":  "model",
 				"parts": parts,
 			})
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			parts := convertToolResultParts(m.Content)
 			result = append(result, map[string]any{
 				"role":  "user",
@@ -58,13 +58,13 @@ func convertUserParts(content any) ([]any, error) {
 		return []any{
 			map[string]any{"text": c},
 		}, nil
-	case []piai.ContentBlock:
+	case []core.ContentBlock:
 		var parts []any
 		for _, block := range c {
 			switch b := block.(type) {
-			case piai.TextContent:
+			case core.TextContent:
 				parts = append(parts, map[string]any{"text": b.Text})
-			case piai.ImageContent:
+			case core.ImageContent:
 				parts = append(parts, map[string]any{
 					"inlineData": map[string]any{
 						"mimeType": b.MimeType,
@@ -81,18 +81,18 @@ func convertUserParts(content any) ([]any, error) {
 	}
 }
 
-func convertAssistantParts(content []piai.ContentBlock) []any {
+func convertAssistantParts(content []core.ContentBlock) []any {
 	var parts []any
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			parts = append(parts, map[string]any{"text": b.Text})
-		case piai.ThinkingContent:
+		case core.ThinkingContent:
 			parts = append(parts, map[string]any{
 				"thought": true,
 				"text":    b.Thinking,
 			})
-		case piai.ToolCall:
+		case core.ToolCall:
 			parts = append(parts, map[string]any{
 				"functionCall": map[string]any{
 					"name": b.Name,
@@ -104,14 +104,16 @@ func convertAssistantParts(content []piai.ContentBlock) []any {
 	return parts
 }
 
-func convertToolResultParts(content []piai.ContentBlock) map[string]any {
+func convertToolResultParts(content []core.ContentBlock) map[string]any {
 	result := make(map[string]any)
 	for _, block := range content {
-		if text, ok := block.(piai.TextContent); ok {
-			// Try to parse as JSON
+		if text, ok := block.(core.TextContent); ok {
+			// Try to parse as JSON object
 			var v any
 			if err := json.Unmarshal([]byte(text.Text), &v); err == nil {
-				return v.(map[string]any)
+				if m, ok := v.(map[string]any); ok {
+					return m
+				}
 			}
 			result["text"] = text.Text
 		}
@@ -120,7 +122,7 @@ func convertToolResultParts(content []piai.ContentBlock) map[string]any {
 }
 
 // ConvertTools converts tools to Google Gemini format.
-func ConvertTools(tools []piai.Tool) []map[string]any {
+func ConvertTools(tools []core.Tool) []map[string]any {
 	declarations := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		d := map[string]any{
@@ -145,20 +147,20 @@ func ConvertTools(tools []piai.Tool) []map[string]any {
 }
 
 // MapStopReason maps Google finish reasons to StopReason.
-func MapStopReason(reason string) piai.StopReason {
+func MapStopReason(reason string) core.StopReason {
 	switch reason {
 	case "STOP":
-		return piai.StopStop
+		return core.StopStop
 	case "MAX_TOKENS":
-		return piai.StopLength
+		return core.StopLength
 	case "SAFETY":
-		return piai.StopError
+		return core.StopError
 	case "RECITATION":
-		return piai.StopError
+		return core.StopError
 	case "OTHER":
-		return piai.StopError
+		return core.StopError
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }
 

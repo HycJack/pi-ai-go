@@ -7,15 +7,15 @@ import (
 	"sync"
 	"testing"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // mockStreamFn creates a StreamFn that returns a pre-built assistant message.
-func mockStreamFn(msg piai.AssistantMessage) StreamFn {
-	return func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-		stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+func mockStreamFn(msg core.AssistantMessage) StreamFn {
+	return func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+		stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 		go func() {
-			stream.Push(piai.EventStart{
+			stream.Push(core.EventStart{
 				Type:     "start",
 				API:      msg.API,
 				Provider: msg.Provider,
@@ -23,19 +23,19 @@ func mockStreamFn(msg piai.AssistantMessage) StreamFn {
 			})
 			for _, block := range msg.Content {
 				switch b := block.(type) {
-				case piai.TextContent:
-					stream.Push(piai.EventTextDelta{Type: "text_delta", Delta: b.Text})
-					stream.Push(piai.EventTextEnd{Type: "text_end"})
-				case piai.ThinkingContent:
-					stream.Push(piai.EventThinkingDelta{Type: "thinking_delta", Delta: b.Thinking})
-					stream.Push(piai.EventThinkingEnd{Type: "thinking_end"})
-				case piai.ToolCall:
-					stream.Push(piai.EventToolCallStart{Type: "toolcall_start", ID: b.ID, Name: b.Name})
-					stream.Push(piai.EventToolCallDelta{Type: "toolcall_delta", ID: b.ID, ArgumentsDelta: string(b.Arguments)})
-					stream.Push(piai.EventToolCallEnd{Type: "toolcall_end", ID: b.ID, Arguments: b.Arguments})
+				case core.TextContent:
+					stream.Push(core.EventTextDelta{Type: "text_delta", Delta: b.Text})
+					stream.Push(core.EventTextEnd{Type: "text_end"})
+				case core.ThinkingContent:
+					stream.Push(core.EventThinkingDelta{Type: "thinking_delta", Delta: b.Thinking})
+					stream.Push(core.EventThinkingEnd{Type: "thinking_end"})
+				case core.ToolCall:
+					stream.Push(core.EventToolCallStart{Type: "toolcall_start", ID: b.ID, Name: b.Name})
+					stream.Push(core.EventToolCallDelta{Type: "toolcall_delta", ID: b.ID, ArgumentsDelta: string(b.Arguments)})
+					stream.Push(core.EventToolCallEnd{Type: "toolcall_end", ID: b.ID, Arguments: b.Arguments})
 				}
 			}
-			stream.Push(piai.EventDone{Type: "done", Message: msg})
+			stream.Push(core.EventDone{Type: "done", Message: msg})
 			stream.End(msg)
 		}()
 		return stream, nil
@@ -44,24 +44,24 @@ func mockStreamFn(msg piai.AssistantMessage) StreamFn {
 
 // mockStreamFnError creates a StreamFn that returns an error.
 func mockStreamFnError(err error) StreamFn {
-	return func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	return func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		return nil, err
 	}
 }
 
 func TestAgentLoopNoToolCalls(t *testing.T) {
-	msg := piai.AssistantMessage{
+	msg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Hello!"}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Hello!"}},
 	}
 
 	config := AgentLoopConfig{
 		StreamFn: mockStreamFn(msg),
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Hi"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Hi"},
 	}, config)
 
 	result, err := stream.Result()
@@ -75,22 +75,22 @@ func TestAgentLoopNoToolCalls(t *testing.T) {
 
 	// Last message should be the assistant response
 	last := result[len(result)-1]
-	am, ok := last.(piai.AssistantMessage)
+	am, ok := last.(core.AssistantMessage)
 	if !ok {
 		t.Fatalf("expected AssistantMessage, got %T", last)
 	}
-	if am.StopReason != piai.StopStop {
+	if am.StopReason != core.StopStop {
 		t.Errorf("expected stop reason 'stop', got '%s'", am.StopReason)
 	}
 }
 
 func TestAgentLoopWithToolCall(t *testing.T) {
 	// First response: tool call
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "calculator",
@@ -100,19 +100,19 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	}
 
 	// Second response: text after tool result
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "The answer is 4."}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "The answer is 4."}},
 	}
 
 	callCount := 0
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		callCount++
 		if callCount == 1 {
-			return mockStreamFn(toolCallMsg)(model, ctx, opts)
+			return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 		}
-		return mockStreamFn(textMsg)(model, ctx, opts)
+		return mockStreamFn(textMsg)(ctx, model, llmCtx, opts)
 	}
 
 	calculator := AgentTool{
@@ -121,7 +121,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"expression":{"type":"string"}}}`),
 		Execute: func(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (AgentToolResult, error) {
 			return AgentToolResult{
-				Content: []piai.ContentBlock{piai.TextContent{Type: "text", Text: "4"}},
+				Content: []core.ContentBlock{core.TextContent{Type: "text", Text: "4"}},
 			}, nil
 		},
 	}
@@ -131,8 +131,8 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 		Tools:    []AgentTool{calculator},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "What is 2+2?"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "What is 2+2?"},
 	}, config)
 
 	result, err := stream.Result()
@@ -146,7 +146,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	}
 
 	// Check tool result
-	tr, ok := result[2].(piai.ToolResultMessage)
+	tr, ok := result[2].(core.ToolResultMessage)
 	if !ok {
 		t.Fatalf("expected ToolResultMessage, got %T", result[2])
 	}
@@ -158,21 +158,21 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	}
 
 	// Check final message
-	am, ok := result[3].(piai.AssistantMessage)
+	am, ok := result[3].(core.AssistantMessage)
 	if !ok {
 		t.Fatalf("expected AssistantMessage, got %T", result[3])
 	}
-	if am.StopReason != piai.StopStop {
+	if am.StopReason != core.StopStop {
 		t.Errorf("expected stop reason 'stop', got '%s'", am.StopReason)
 	}
 }
 
 func TestAgentLoopToolError(t *testing.T) {
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "failing_tool",
@@ -181,19 +181,19 @@ func TestAgentLoopToolError(t *testing.T) {
 		},
 	}
 
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Done."}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Done."}},
 	}
 
 	callCount := 0
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		callCount++
 		if callCount == 1 {
-			return mockStreamFn(toolCallMsg)(model, ctx, opts)
+			return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 		}
-		return mockStreamFn(textMsg)(model, ctx, opts)
+		return mockStreamFn(textMsg)(ctx, model, llmCtx, opts)
 	}
 
 	tool := AgentTool{
@@ -209,8 +209,8 @@ func TestAgentLoopToolError(t *testing.T) {
 		Tools:    []AgentTool{tool},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Do something"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Do something"},
 	}, config)
 
 	result, err := stream.Result()
@@ -219,9 +219,9 @@ func TestAgentLoopToolError(t *testing.T) {
 	}
 
 	// Find tool result
-	var toolResult piai.ToolResultMessage
+	var toolResult core.ToolResultMessage
 	for _, m := range result {
-		if tr, ok := m.(piai.ToolResultMessage); ok {
+		if tr, ok := m.(core.ToolResultMessage); ok {
 			toolResult = tr
 			break
 		}
@@ -233,11 +233,11 @@ func TestAgentLoopToolError(t *testing.T) {
 }
 
 func TestAgentLoopBeforeToolCallBlock(t *testing.T) {
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "blocked_tool",
@@ -246,19 +246,19 @@ func TestAgentLoopBeforeToolCallBlock(t *testing.T) {
 		},
 	}
 
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Done."}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Done."}},
 	}
 
 	callCount := 0
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		callCount++
 		if callCount == 1 {
-			return mockStreamFn(toolCallMsg)(model, ctx, opts)
+			return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 		}
-		return mockStreamFn(textMsg)(model, ctx, opts)
+		return mockStreamFn(textMsg)(ctx, model, llmCtx, opts)
 	}
 
 	executed := false
@@ -279,8 +279,8 @@ func TestAgentLoopBeforeToolCallBlock(t *testing.T) {
 		},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Do something"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Do something"},
 	}, config)
 
 	_, err := stream.Result()
@@ -294,11 +294,11 @@ func TestAgentLoopBeforeToolCallBlock(t *testing.T) {
 }
 
 func TestAgentLoopAfterToolCallOverride(t *testing.T) {
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "my_tool",
@@ -307,19 +307,19 @@ func TestAgentLoopAfterToolCallOverride(t *testing.T) {
 		},
 	}
 
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Done."}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Done."}},
 	}
 
 	callCount := 0
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		callCount++
 		if callCount == 1 {
-			return mockStreamFn(toolCallMsg)(model, ctx, opts)
+			return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 		}
-		return mockStreamFn(textMsg)(model, ctx, opts)
+		return mockStreamFn(textMsg)(ctx, model, llmCtx, opts)
 	}
 
 	tool := AgentTool{
@@ -327,7 +327,7 @@ func TestAgentLoopAfterToolCallOverride(t *testing.T) {
 		Parameters: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (AgentToolResult, error) {
 			return AgentToolResult{
-				Content: []piai.ContentBlock{piai.TextContent{Type: "text", Text: "original"}},
+				Content: []core.ContentBlock{core.TextContent{Type: "text", Text: "original"}},
 			}, nil
 		},
 	}
@@ -338,14 +338,14 @@ func TestAgentLoopAfterToolCallOverride(t *testing.T) {
 		Tools:    []AgentTool{tool},
 		AfterToolCall: func(ctx AfterToolCallContext) *ToolCallOverride {
 			return &ToolCallOverride{
-				Content: []piai.ContentBlock{piai.TextContent{Type: "text", Text: "overridden"}},
+				Content: []core.ContentBlock{core.TextContent{Type: "text", Text: "overridden"}},
 				IsError: &isErr,
 			}
 		},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Do something"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Do something"},
 	}, config)
 
 	result, err := stream.Result()
@@ -355,12 +355,12 @@ func TestAgentLoopAfterToolCallOverride(t *testing.T) {
 
 	// Find tool result
 	for _, m := range result {
-		if tr, ok := m.(piai.ToolResultMessage); ok {
+		if tr, ok := m.(core.ToolResultMessage); ok {
 			if !tr.IsError {
 				t.Error("tool result should be marked as error after override")
 			}
 			if len(tr.Content) > 0 {
-				if tc, ok := tr.Content[0].(piai.TextContent); ok {
+				if tc, ok := tr.Content[0].(core.TextContent); ok {
 					if tc.Text != "overridden" {
 						t.Errorf("expected 'overridden', got '%s'", tc.Text)
 					}
@@ -373,21 +373,21 @@ func TestAgentLoopAfterToolCallOverride(t *testing.T) {
 }
 
 func TestAgentLoopShouldStopAfterTurn(t *testing.T) {
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Hello!"}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Hello!"}},
 	}
 
 	config := AgentLoopConfig{
 		StreamFn: mockStreamFn(textMsg),
-		ShouldStopAfterTurn: func(msg piai.AssistantMessage, results []piai.ToolResultMessage) bool {
+		ShouldStopAfterTurn: func(msg core.AssistantMessage, results []core.ToolResultMessage) bool {
 			return true
 		},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Hi"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Hi"},
 	}, config)
 
 	result, err := stream.Result()
@@ -405,8 +405,8 @@ func TestAgentLoopStreamFnError(t *testing.T) {
 		StreamFn: mockStreamFnError(errors.New("API error")),
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Hi"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Hi"},
 	}, config)
 
 	result, err := stream.Result()
@@ -420,20 +420,20 @@ func TestAgentLoopStreamFnError(t *testing.T) {
 	}
 
 	last := result[len(result)-1]
-	am, ok := last.(piai.AssistantMessage)
+	am, ok := last.(core.AssistantMessage)
 	if !ok {
 		t.Fatalf("expected AssistantMessage, got %T", last)
 	}
-	if am.StopReason != piai.StopError {
+	if am.StopReason != core.StopError {
 		t.Errorf("expected stop reason 'error', got '%s'", am.StopReason)
 	}
 }
 
 func TestAgentLoopContextCancel(t *testing.T) {
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Hello!"}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Hello!"}},
 	}
 
 	config := AgentLoopConfig{
@@ -443,8 +443,8 @@ func TestAgentLoopContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	stream := AgentLoop(ctx, []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Hi"},
+	stream := AgentLoop(ctx, []core.Message{
+		core.UserMessage{Role: "user", Content: "Hi"},
 	}, config)
 
 	result, err := stream.Result()
@@ -460,17 +460,17 @@ func TestAgentLoopContextCancel(t *testing.T) {
 
 func TestAgentLoopParallelToolExecution(t *testing.T) {
 	// Two tool calls in one response
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "tool_a",
 				Arguments: json.RawMessage(`{}`),
 			},
-			piai.ToolCall{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_2",
 				Name:      "tool_b",
@@ -479,19 +479,19 @@ func TestAgentLoopParallelToolExecution(t *testing.T) {
 		},
 	}
 
-	textMsg := piai.AssistantMessage{
+	textMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopStop,
-		Content:    []piai.ContentBlock{piai.TextContent{Type: "text", Text: "Done."}},
+		StopReason: core.StopStop,
+		Content:    []core.ContentBlock{core.TextContent{Type: "text", Text: "Done."}},
 	}
 
 	callCount := 0
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 		callCount++
 		if callCount == 1 {
-			return mockStreamFn(toolCallMsg)(model, ctx, opts)
+			return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 		}
-		return mockStreamFn(textMsg)(model, ctx, opts)
+		return mockStreamFn(textMsg)(ctx, model, llmCtx, opts)
 	}
 
 	var mu sync.Mutex
@@ -505,7 +505,7 @@ func TestAgentLoopParallelToolExecution(t *testing.T) {
 			executionOrder = append(executionOrder, "a")
 			mu.Unlock()
 			return AgentToolResult{
-				Content: []piai.ContentBlock{piai.TextContent{Type: "text", Text: "result_a"}},
+				Content: []core.ContentBlock{core.TextContent{Type: "text", Text: "result_a"}},
 			}, nil
 		},
 	}
@@ -518,7 +518,7 @@ func TestAgentLoopParallelToolExecution(t *testing.T) {
 			executionOrder = append(executionOrder, "b")
 			mu.Unlock()
 			return AgentToolResult{
-				Content: []piai.ContentBlock{piai.TextContent{Type: "text", Text: "result_b"}},
+				Content: []core.ContentBlock{core.TextContent{Type: "text", Text: "result_b"}},
 			}, nil
 		},
 	}
@@ -529,8 +529,8 @@ func TestAgentLoopParallelToolExecution(t *testing.T) {
 		ToolExecution:  ToolExecParallel,
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Do both"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Do both"},
 	}, config)
 
 	result, err := stream.Result()
@@ -550,11 +550,11 @@ func TestAgentLoopParallelToolExecution(t *testing.T) {
 }
 
 func TestAgentLoopTerminateEarly(t *testing.T) {
-	toolCallMsg := piai.AssistantMessage{
+	toolCallMsg := core.AssistantMessage{
 		Role:       "assistant",
-		StopReason: piai.StopToolUse,
-		Content: []piai.ContentBlock{
-			piai.ToolCall{
+		StopReason: core.StopToolUse,
+		Content: []core.ContentBlock{
+			core.ToolCall{
 				Type:      "toolCall",
 				ID:        "call_1",
 				Name:      "terminator",
@@ -563,8 +563,8 @@ func TestAgentLoopTerminateEarly(t *testing.T) {
 		},
 	}
 
-	streamFn := func(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-		return mockStreamFn(toolCallMsg)(model, ctx, opts)
+	streamFn := func(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+		return mockStreamFn(toolCallMsg)(ctx, model, llmCtx, opts)
 	}
 
 	tool := AgentTool{
@@ -572,7 +572,7 @@ func TestAgentLoopTerminateEarly(t *testing.T) {
 		Parameters: json.RawMessage(`{}`),
 		Execute: func(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (AgentToolResult, error) {
 			return AgentToolResult{
-				Content:   []piai.ContentBlock{piai.TextContent{Type: "text", Text: "terminating"}},
+				Content:   []core.ContentBlock{core.TextContent{Type: "text", Text: "terminating"}},
 				Terminate: true,
 			}, nil
 		},
@@ -583,8 +583,8 @@ func TestAgentLoopTerminateEarly(t *testing.T) {
 		Tools:    []AgentTool{tool},
 	}
 
-	stream := AgentLoop(context.Background(), []piai.Message{
-		piai.UserMessage{Role: "user", Content: "Terminate"},
+	stream := AgentLoop(context.Background(), []core.Message{
+		core.UserMessage{Role: "user", Content: "Terminate"},
 	}, config)
 
 	result, err := stream.Result()
@@ -600,11 +600,11 @@ func TestAgentLoopTerminateEarly(t *testing.T) {
 }
 
 func TestExtractToolCalls(t *testing.T) {
-	msg := piai.AssistantMessage{
-		Content: []piai.ContentBlock{
-			piai.TextContent{Type: "text", Text: "Let me help"},
-			piai.ToolCall{Type: "toolCall", ID: "c1", Name: "tool1"},
-			piai.ToolCall{Type: "toolCall", ID: "c2", Name: "tool2"},
+	msg := core.AssistantMessage{
+		Content: []core.ContentBlock{
+			core.TextContent{Type: "text", Text: "Let me help"},
+			core.ToolCall{Type: "toolCall", ID: "c1", Name: "tool1"},
+			core.ToolCall{Type: "toolCall", ID: "c2", Name: "tool2"},
 		},
 	}
 

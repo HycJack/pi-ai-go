@@ -4,27 +4,27 @@ import (
 	"context"
 	"sync"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // AgentState holds the agent's mutable state.
 type AgentState struct {
-	Model        piai.Model
+	Model        core.Model
 	SystemPrompt string
-	Messages     []piai.Message
+	Messages     []core.Message
 	Tools        []AgentTool
 	ToolExecution ToolExecutionMode
 
 	// Options forwarded to AgentLoopConfig
-	ConvertToLlm       func([]piai.Message) []piai.Message
-	TransformContext    func([]piai.Message) []piai.Message
+	ConvertToLlm       func([]core.Message) []core.Message
+	TransformContext    func([]core.Message) []core.Message
 	GetApiKey          func() string
-	ShouldStopAfterTurn func(piai.AssistantMessage, []piai.ToolResultMessage) bool
-	PrepareNextTurn     func(*AgentLoopConfig, piai.AssistantMessage, []piai.ToolResultMessage, []piai.Message)
+	ShouldStopAfterTurn func(core.AssistantMessage, []core.ToolResultMessage) bool
+	PrepareNextTurn     func(*AgentLoopConfig, core.AssistantMessage, []core.ToolResultMessage, []core.Message)
 	BeforeToolCall      func(BeforeToolCallContext) *ToolCallBlock
 	AfterToolCall       func(AfterToolCallContext) *ToolCallOverride
 	StreamFn            StreamFn
-	SimpleStreamOptions piai.SimpleStreamOptions
+	SimpleStreamOptions core.SimpleStreamOptions
 }
 
 // AgentOptions configures a new Agent.
@@ -37,8 +37,8 @@ type Agent struct {
 	mu          sync.RWMutex
 	state       AgentState
 	subscribers []func(AgentEvent)
-	steering    []piai.Message
-	followUp    []piai.Message
+	steering    []core.Message
+	followUp    []core.Message
 	cancel      context.CancelFunc
 	streamWg    sync.WaitGroup // tracks processStream goroutine completion
 }
@@ -50,7 +50,7 @@ func New(opts AgentOptions) *Agent {
 		a.state = *opts.InitialState
 	}
 	if a.state.Messages == nil {
-		a.state.Messages = make([]piai.Message, 0)
+		a.state.Messages = make([]core.Message, 0)
 	}
 	return a
 }
@@ -70,7 +70,7 @@ func (a *Agent) SetTools(tools []AgentTool) {
 }
 
 // SetModel updates the agent's model.
-func (a *Agent) SetModel(model piai.Model) {
+func (a *Agent) SetModel(model core.Model) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.state.Model = model
@@ -84,7 +84,7 @@ func (a *Agent) SetSystemPrompt(prompt string) {
 }
 
 // Messages returns the current message history.
-func (a *Agent) Messages() []piai.Message {
+func (a *Agent) Messages() []core.Message {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.state.Messages
@@ -98,14 +98,14 @@ func (a *Agent) Subscribe(fn func(AgentEvent)) {
 }
 
 // Steering injects messages that will be processed in the current turn.
-func (a *Agent) Steering(msgs ...piai.Message) {
+func (a *Agent) Steering(msgs ...core.Message) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.steering = append(a.steering, msgs...)
 }
 
 // FollowUp injects messages that will be processed after the current turn.
-func (a *Agent) FollowUp(msgs ...piai.Message) {
+func (a *Agent) FollowUp(msgs ...core.Message) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.followUp = append(a.followUp, msgs...)
@@ -122,7 +122,7 @@ func (a *Agent) Abort() {
 }
 
 // Run starts a new agent run with the given prompts.
-func (a *Agent) Run(ctx context.Context, prompts ...piai.Message) ([]piai.Message, error) {
+func (a *Agent) Run(ctx context.Context, prompts ...core.Message) ([]core.Message, error) {
 	a.mu.Lock()
 	// Append prompts to messages
 	a.state.Messages = append(a.state.Messages, prompts...)
@@ -142,14 +142,14 @@ func (a *Agent) Run(ctx context.Context, prompts ...piai.Message) ([]piai.Messag
 	a.mu.Unlock()
 
 	// Override getSteering/getFollowUp to use our captured queues
-	config.GetSteeringMessages = func() []piai.Message {
+	config.GetSteeringMessages = func() []core.Message {
 		a.mu.Lock()
 		msgs := steering
 		steering = nil
 		a.mu.Unlock()
 		return msgs
 	}
-	config.GetFollowUpMessages = func() []piai.Message {
+	config.GetFollowUpMessages = func() []core.Message {
 		a.mu.Lock()
 		msgs := followUp
 		followUp = nil
@@ -159,7 +159,7 @@ func (a *Agent) Run(ctx context.Context, prompts ...piai.Message) ([]piai.Messag
 
 	// Run
 	stream := AgentLoop(runCtx, prompts, config)
-	a.processStream(stream)
+	a.processStream(runCtx, stream)
 
 	result, err := stream.Result()
 	if err != nil {
@@ -179,7 +179,7 @@ func (a *Agent) Run(ctx context.Context, prompts ...piai.Message) ([]piai.Messag
 }
 
 // RunContinue resumes the agent from its current message history.
-func (a *Agent) RunContinue(ctx context.Context) ([]piai.Message, error) {
+func (a *Agent) RunContinue(ctx context.Context) ([]core.Message, error) {
 	a.mu.Lock()
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -192,18 +192,18 @@ func (a *Agent) RunContinue(ctx context.Context) ([]piai.Message, error) {
 	followUp := a.followUp
 	a.followUp = nil
 
-	messages := make([]piai.Message, len(a.state.Messages))
+	messages := make([]core.Message, len(a.state.Messages))
 	copy(messages, a.state.Messages)
 	a.mu.Unlock()
 
-	config.GetSteeringMessages = func() []piai.Message {
+	config.GetSteeringMessages = func() []core.Message {
 		a.mu.Lock()
 		msgs := steering
 		steering = nil
 		a.mu.Unlock()
 		return msgs
 	}
-	config.GetFollowUpMessages = func() []piai.Message {
+	config.GetFollowUpMessages = func() []core.Message {
 		a.mu.Lock()
 		msgs := followUp
 		followUp = nil
@@ -212,7 +212,7 @@ func (a *Agent) RunContinue(ctx context.Context) ([]piai.Message, error) {
 	}
 
 	stream := AgentLoopContinue(runCtx, config, messages)
-	a.processStream(stream)
+	a.processStream(runCtx, stream)
 
 	result, err := stream.Result()
 	if err != nil {
@@ -251,7 +251,7 @@ func (a *Agent) buildConfig() AgentLoopConfig {
 }
 
 // processStream subscribes to the event stream and forwards events to subscribers.
-func (a *Agent) processStream(stream *AgentEventStream) {
+func (a *Agent) processStream(ctx context.Context, stream *AgentEventStream) {
 	a.mu.RLock()
 	subs := make([]func(AgentEvent), len(a.subscribers))
 	copy(subs, a.subscribers)
@@ -262,7 +262,7 @@ func (a *Agent) processStream(stream *AgentEventStream) {
 	// Process events in a goroutine
 	go func() {
 		defer a.streamWg.Done()
-		stream.ForEach(context.Background(), func(evt AgentEvent) error {
+		stream.ForEach(ctx, func(evt AgentEvent) error {
 			// Update state based on events
 			a.mu.Lock()
 			switch e := evt.(type) {

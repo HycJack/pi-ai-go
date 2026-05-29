@@ -79,7 +79,10 @@ func PollDeviceCodeFlow(ctx context.Context, opts DeviceCodePollOptions) (Creden
 		}
 
 		var tokenResp DeviceCodeTokenResponse
-		json.NewDecoder(resp.Body).Decode(&tokenResp)
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil && resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return Credentials{}, fmt.Errorf("device code request failed with status %d", resp.StatusCode)
+		}
 		resp.Body.Close()
 
 		switch tokenResp.Error {

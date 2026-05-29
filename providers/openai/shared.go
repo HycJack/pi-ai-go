@@ -4,19 +4,19 @@ package openai
 import (
 	"encoding/json"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultCompletionsURL = "https://api.openai.com/v1"
 const defaultResponsesURL = "https://api.openai.com/v1"
 
 // ConvertMessages converts internal messages to OpenAI Chat Completions format.
-func ConvertMessages(messages []piai.Message, model piai.Model) ([]map[string]any, error) {
+func ConvertMessages(messages []core.Message, model core.Model) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			content, err := convertUserContent(m.Content)
 			if err != nil {
 				return nil, err
@@ -26,7 +26,7 @@ func ConvertMessages(messages []piai.Message, model piai.Model) ([]map[string]an
 				"content": content,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			openaiMsg := map[string]any{
 				"role": "assistant",
 			}
@@ -42,7 +42,7 @@ func ConvertMessages(messages []piai.Message, model piai.Model) ([]map[string]an
 			}
 			result = append(result, openaiMsg)
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			result = append(result, map[string]any{
 				"role":       "tool",
 				"tool_call_id": m.ToolCallID,
@@ -58,16 +58,16 @@ func convertUserContent(content any) (any, error) {
 	switch c := content.(type) {
 	case string:
 		return c, nil
-	case []piai.ContentBlock:
+	case []core.ContentBlock:
 		var blocks []any
 		for _, block := range c {
 			switch b := block.(type) {
-			case piai.TextContent:
+			case core.TextContent:
 				blocks = append(blocks, map[string]any{
 					"type": "text",
 					"text": b.Text,
 				})
-			case piai.ImageContent:
+			case core.ImageContent:
 				blocks = append(blocks, map[string]any{
 					"type": "image_url",
 					"image_url": map[string]any{
@@ -82,18 +82,18 @@ func convertUserContent(content any) (any, error) {
 	}
 }
 
-func convertAssistantContent(content []piai.ContentBlock) []any {
+func convertAssistantContent(content []core.ContentBlock) []any {
 	var blocks []any
 	var toolCalls []any
 
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			blocks = append(blocks, map[string]any{
 				"type": "text",
 				"text": b.Text,
 			})
-		case piai.ThinkingContent:
+		case core.ThinkingContent:
 			// OpenAI uses reasoning_content or similar
 			blocks = append(blocks, map[string]any{
 				"type": "reasoning_content",
@@ -101,7 +101,7 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 					"text": b.Thinking,
 				},
 			})
-		case piai.ToolCall:
+		case core.ToolCall:
 			toolCalls = append(toolCalls, map[string]any{
 				"id":   b.ID,
 				"type": "function",
@@ -120,10 +120,10 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 	return blocks
 }
 
-func convertToolResultContent(content []piai.ContentBlock) string {
+func convertToolResultContent(content []core.ContentBlock) string {
 	var parts []string
 	for _, block := range content {
-		if text, ok := block.(piai.TextContent); ok {
+		if text, ok := block.(core.TextContent); ok {
 			parts = append(parts, text.Text)
 		}
 	}
@@ -145,7 +145,7 @@ func joinStrings(parts []string, sep string) string {
 }
 
 // ConvertTools converts tools to OpenAI format.
-func ConvertTools(tools []piai.Tool) []map[string]any {
+func ConvertTools(tools []core.Tool) []map[string]any {
 	result := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
@@ -167,17 +167,17 @@ func ConvertTools(tools []piai.Tool) []map[string]any {
 }
 
 // MapStopReason maps OpenAI finish reasons to StopReason.
-func MapStopReason(reason string) piai.StopReason {
+func MapStopReason(reason string) core.StopReason {
 	switch reason {
 	case "stop":
-		return piai.StopStop
+		return core.StopStop
 	case "length":
-		return piai.StopLength
+		return core.StopLength
 	case "tool_calls":
-		return piai.StopToolUse
+		return core.StopToolUse
 	case "function_call":
-		return piai.StopToolUse
+		return core.StopToolUse
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }

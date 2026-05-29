@@ -3,6 +3,7 @@ package google
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // Options holds Google-specific options.
@@ -34,11 +35,11 @@ func New() *Provider {
 	return &Provider{}
 }
 
-func (p *Provider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamGoogle(model, ctx, opts, Options{})
+func (p *Provider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamGoogle(ctx, model, llmCtx, opts, Options{})
 }
 
-func (p *Provider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *Provider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	googleOpts := Options{}
 	if opts.Reasoning != "" {
 		googleOpts.Thinking = &ThinkingConfig{
@@ -51,31 +52,31 @@ func (p *Provider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.Si
 			}
 		}
 	}
-	return streamGoogle(model, ctx, opts.StreamOptions, googleOpts)
+	return streamGoogle(ctx, model, llmCtx, opts.StreamOptions, googleOpts)
 }
 
-func mapThinkingLevel(level piai.ThinkingLevel) string {
+func mapThinkingLevel(level core.ThinkingLevel) string {
 	switch level {
-	case piai.ThinkingMinimal:
+	case core.ThinkingMinimal:
 		return "MINIMAL"
-	case piai.ThinkingLow:
+	case core.ThinkingLow:
 		return "LOW"
-	case piai.ThinkingMedium:
+	case core.ThinkingMedium:
 		return "MEDIUM"
-	case piai.ThinkingHigh, piai.ThinkingXHigh:
+	case core.ThinkingHigh, core.ThinkingXHigh:
 		return "HIGH"
 	default:
 		return "MEDIUM"
 	}
 }
 
-func streamGoogle(model piai.Model, c piai.Context, opts piai.StreamOptions, googleOpts Options) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamGoogle(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, googleOpts Options) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("google: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, defaultBaseURL)
+	baseURL := core.ResolveBaseURL(model, defaultBaseURL)
 
 	body, err := buildGoogleBody(model, c, opts, googleOpts)
 	if err != nil {
@@ -86,7 +87,7 @@ func streamGoogle(model piai.Model, c piai.Context, opts piai.StreamOptions, goo
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -95,7 +96,7 @@ func streamGoogle(model piai.Model, c piai.Context, opts piai.StreamOptions, goo
 			}
 		}()
 
-		msg, err := doGoogleStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doGoogleStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -106,7 +107,7 @@ func streamGoogle(model piai.Model, c piai.Context, opts piai.StreamOptions, goo
 	return stream, nil
 }
 
-func buildGoogleBody(model piai.Model, c piai.Context, opts piai.StreamOptions, googleOpts Options) (map[string]any, error) {
+func buildGoogleBody(model core.Model, c core.Context, opts core.StreamOptions, googleOpts Options) (map[string]any, error) {
 	body := map[string]any{}
 
 	// Contents (messages)
@@ -167,17 +168,17 @@ func buildGoogleBody(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 	return body, nil
 }
 
-func doGoogleStream(baseURL, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doGoogleStream(ctx context.Context, baseURL, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s", baseURL, model.ID, apiKey)
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -192,27 +193,27 @@ func doGoogleStream(baseURL, apiKey string, model piai.Model, body map[string]an
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("google: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("google: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processGoogleSSE(resp.Body, stream, model, opts)
 }
 
-func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processGoogleSSE(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg       piai.AssistantMessage
+		msg       core.AssistantMessage
 		textBuf   strings.Builder
 		thinkBuf  strings.Builder
-		toolCalls []piai.ToolCall
+		toolCalls []core.ToolCall
 	)
 
 	msg.API = model.API
@@ -221,7 +222,7 @@ func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -282,14 +283,14 @@ func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 			if IsThinkingPart(p) {
 				if text, ok := p["text"].(string); ok {
 					thinkBuf.WriteString(text)
-					stream.Push(piai.EventThinkingDelta{
+					stream.Push(core.EventThinkingDelta{
 						Type:  "thinking_delta",
 						Delta: text,
 					})
 				}
 			} else if text, ok := p["text"].(string); ok {
 				textBuf.WriteString(text)
-				stream.Push(piai.EventTextDelta{
+				stream.Push(core.EventTextDelta{
 					Type:  "text_delta",
 					Delta: text,
 				})
@@ -298,19 +299,19 @@ func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 				args, _ := fc["args"].(map[string]any)
 				argsBytes, _ := json.Marshal(args)
 				id := fmt.Sprintf("call_%d", len(toolCalls))
-				tc := piai.ToolCall{
+				tc := core.ToolCall{
 					Type:      "toolCall",
 					ID:        id,
 					Name:      name,
 					Arguments: argsBytes,
 				}
 				toolCalls = append(toolCalls, tc)
-				stream.Push(piai.EventToolCallStart{
+				stream.Push(core.EventToolCallStart{
 					Type: "toolcall_start",
 					ID:   id,
 					Name: name,
 				})
-				stream.Push(piai.EventToolCallEnd{
+				stream.Push(core.EventToolCallEnd{
 					Type:      "toolcall_end",
 					ID:        id,
 					Arguments: argsBytes,
@@ -328,15 +329,15 @@ func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 
 	// Finalize
 	if textBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.TextContent{
+		msg.Content = append(msg.Content, core.TextContent{
 			Type: "text",
 			Text: textBuf.String(),
 		})
-		stream.Push(piai.EventTextEnd{Type: "text_end"})
+		stream.Push(core.EventTextEnd{Type: "text_end"})
 	}
 
 	if thinkBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.ThinkingContent{
+		msg.Content = append(msg.Content, core.ThinkingContent{
 			Type:     "thinking",
 			Thinking: thinkBuf.String(),
 		})
@@ -346,9 +347,9 @@ func processGoogleSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 		msg.Content = append(msg.Content, tc)
 	}
 
-	msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
 
-	stream.Push(piai.EventDone{
+	stream.Push(core.EventDone{
 		Type:    "done",
 		Message: msg,
 	})

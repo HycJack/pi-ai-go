@@ -3,6 +3,7 @@ package openai
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // ResponsesOptions holds OpenAI Responses-specific options.
@@ -28,25 +29,25 @@ func NewResponses() *ResponsesProvider {
 	return &ResponsesProvider{}
 }
 
-func (p *ResponsesProvider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamResponses(model, ctx, opts, ResponsesOptions{})
+func (p *ResponsesProvider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamResponses(ctx, model, llmCtx, opts, ResponsesOptions{})
 }
 
-func (p *ResponsesProvider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *ResponsesProvider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	responsesOpts := ResponsesOptions{}
 	if opts.Reasoning != "" {
-		responsesOpts.ReasoningEffort = string(clampReasoning(opts.Reasoning))
+		responsesOpts.ReasoningEffort = string(clampEffort(opts.Reasoning))
 	}
-	return streamResponses(model, ctx, opts.StreamOptions, responsesOpts)
+	return streamResponses(ctx, model, llmCtx, opts.StreamOptions, responsesOpts)
 }
 
-func streamResponses(model piai.Model, c piai.Context, opts piai.StreamOptions, responsesOpts ResponsesOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamResponses(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, responsesOpts ResponsesOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("openai-responses: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, defaultResponsesURL)
+	baseURL := core.ResolveBaseURL(model, defaultResponsesURL)
 
 	body, err := buildResponsesBody(model, c, opts, responsesOpts)
 	if err != nil {
@@ -57,7 +58,7 @@ func streamResponses(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -66,7 +67,7 @@ func streamResponses(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 			}
 		}()
 
-		msg, err := doResponsesStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doResponsesStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -77,7 +78,7 @@ func streamResponses(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 	return stream, nil
 }
 
-func buildResponsesBody(model piai.Model, c piai.Context, opts piai.StreamOptions, responsesOpts ResponsesOptions) (map[string]any, error) {
+func buildResponsesBody(model core.Model, c core.Context, opts core.StreamOptions, responsesOpts ResponsesOptions) (map[string]any, error) {
 	body := map[string]any{
 		"model":  model.ID,
 		"stream": true,
@@ -134,12 +135,12 @@ func buildResponsesBody(model piai.Model, c piai.Context, opts piai.StreamOption
 	return body, nil
 }
 
-func convertResponsesMessages(messages []piai.Message) ([]map[string]any, error) {
+func convertResponsesMessages(messages []core.Message) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			content, err := convertUserContent(m.Content)
 			if err != nil {
 				return nil, err
@@ -149,10 +150,10 @@ func convertResponsesMessages(messages []piai.Message) ([]map[string]any, error)
 				"content": content,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			for _, block := range m.Content {
 				switch b := block.(type) {
-				case piai.TextContent:
+				case core.TextContent:
 					result = append(result, map[string]any{
 						"type": "message",
 						"role": "assistant",
@@ -163,7 +164,7 @@ func convertResponsesMessages(messages []piai.Message) ([]map[string]any, error)
 							},
 						},
 					})
-				case piai.ToolCall:
+				case core.ToolCall:
 					result = append(result, map[string]any{
 						"type":      "function_call",
 						"id":        b.ID,
@@ -174,7 +175,7 @@ func convertResponsesMessages(messages []piai.Message) ([]map[string]any, error)
 				}
 			}
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
 			result = append(result, map[string]any{
 				"type":    "function_call_output",
@@ -187,7 +188,7 @@ func convertResponsesMessages(messages []piai.Message) ([]map[string]any, error)
 	return result, nil
 }
 
-func convertResponsesTools(tools []piai.Tool) []map[string]any {
+func convertResponsesTools(tools []core.Tool) []map[string]any {
 	result := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
@@ -206,17 +207,17 @@ func convertResponsesTools(tools []piai.Tool) []map[string]any {
 	return result
 }
 
-func doResponsesStream(baseURL, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doResponsesStream(ctx context.Context, baseURL, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := baseURL + "/responses"
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -232,26 +233,26 @@ func doResponsesStream(baseURL, apiKey string, model piai.Model, body map[string
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("openai-responses: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("openai-responses: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processResponsesSSE(resp.Body, stream, model, opts)
 }
 
-func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processResponsesSSE(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg       piai.AssistantMessage
+		msg       core.AssistantMessage
 		textBuf   strings.Builder
-		toolCalls map[string]*piai.ToolCall
+		toolCalls map[string]*core.ToolCall
 	)
 
 	msg.API = model.API
@@ -259,9 +260,9 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 	msg.Model = model.ID
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
-	toolCalls = make(map[string]*piai.ToolCall)
+	toolCalls = make(map[string]*core.ToolCall)
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -311,12 +312,12 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 					id, _ := item["id"].(string)
 					name, _ := item["name"].(string)
 					callID, _ := item["call_id"].(string)
-					toolCalls[callID] = &piai.ToolCall{
+					toolCalls[callID] = &core.ToolCall{
 						Type: "toolCall",
 						ID:   id,
 						Name: name,
 					}
-					stream.Push(piai.EventToolCallStart{
+					stream.Push(core.EventToolCallStart{
 						Type: "toolcall_start",
 						ID:   id,
 						Name: name,
@@ -328,7 +329,7 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 			delta, _ := event["delta"].(string)
 			if delta != "" {
 				textBuf.WriteString(delta)
-				stream.Push(piai.EventTextDelta{
+				stream.Push(core.EventTextDelta{
 					Type:  "text_delta",
 					Delta: delta,
 				})
@@ -339,7 +340,7 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 			delta, _ := event["delta"].(string)
 			if tc, ok := toolCalls[callID]; ok && delta != "" {
 				tc.Arguments = append(tc.Arguments, []byte(delta)...)
-				stream.Push(piai.EventToolCallDelta{
+				stream.Push(core.EventToolCallDelta{
 					Type:           "toolcall_delta",
 					ID:             tc.ID,
 					ArgumentsDelta: delta,
@@ -349,7 +350,7 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 		case "response.function_call_arguments.done":
 			callID, _ := event["call_id"].(string)
 			if tc, ok := toolCalls[callID]; ok {
-				stream.Push(piai.EventToolCallEnd{
+				stream.Push(core.EventToolCallEnd{
 					Type:      "toolcall_end",
 					ID:        tc.ID,
 					Arguments: tc.Arguments,
@@ -368,27 +369,25 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 					msg.StopReason = mapResponseStatus(status)
 				}
 			}
-
-			// Finalize
-			if textBuf.Len() > 0 {
-				msg.Content = append(msg.Content, piai.TextContent{
-					Type: "text",
-					Text: textBuf.String(),
-				})
-				stream.Push(piai.EventTextEnd{Type: "text_end"})
-			}
-
-			msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output
-			msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
-
-			stream.Push(piai.EventDone{
-				Type:    "done",
-				Message: msg,
-			})
-
-			return msg, nil
 		}
 	}
+
+	// Finalize (always runs, even if response.completed was not received)
+	if textBuf.Len() > 0 {
+		msg.Content = append(msg.Content, core.TextContent{
+			Type: "text",
+			Text: textBuf.String(),
+		})
+		stream.Push(core.EventTextEnd{Type: "text_end"})
+	}
+
+	msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
+
+	stream.Push(core.EventDone{
+		Type:    "done",
+		Message: msg,
+	})
 
 	if err := scanner.Err(); err != nil {
 		return msg, fmt.Errorf("openai-responses: SSE read error: %w", err)
@@ -397,17 +396,17 @@ func processResponsesSSE(body io.Reader, stream *piai.EventStream[piai.Assistant
 	return msg, nil
 }
 
-func mapResponseStatus(status string) piai.StopReason {
+func mapResponseStatus(status string) core.StopReason {
 	switch status {
 	case "completed":
-		return piai.StopStop
+		return core.StopStop
 	case "incomplete":
-		return piai.StopLength
+		return core.StopLength
 	case "failed":
-		return piai.StopError
+		return core.StopError
 	case "cancelled":
-		return piai.StopAborted
+		return core.StopAborted
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }

@@ -4,6 +4,7 @@ package mistral
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultBaseURL = "https://api.mistral.ai/v1"
@@ -31,28 +32,28 @@ func New() *Provider {
 	return &Provider{}
 }
 
-func (p *Provider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamMistral(model, ctx, opts, Options{})
+func (p *Provider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamMistral(ctx, model, llmCtx, opts, Options{})
 }
 
-func (p *Provider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *Provider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	mistralOpts := Options{}
 	if opts.Reasoning != "" {
 		mistralOpts.PromptMode = "reasoning"
-		if opts.Reasoning == piai.ThinkingHigh || opts.Reasoning == piai.ThinkingXHigh {
+		if opts.Reasoning == core.ThinkingHigh || opts.Reasoning == core.ThinkingXHigh {
 			mistralOpts.ReasoningEffort = "high"
 		}
 	}
-	return streamMistral(model, ctx, opts.StreamOptions, mistralOpts)
+	return streamMistral(ctx, model, llmCtx, opts.StreamOptions, mistralOpts)
 }
 
-func streamMistral(model piai.Model, c piai.Context, opts piai.StreamOptions, mistralOpts Options) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamMistral(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, mistralOpts Options) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("mistral: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, defaultBaseURL)
+	baseURL := core.ResolveBaseURL(model, defaultBaseURL)
 
 	body, err := buildMistralBody(model, c, opts, mistralOpts)
 	if err != nil {
@@ -63,7 +64,7 @@ func streamMistral(model piai.Model, c piai.Context, opts piai.StreamOptions, mi
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -72,7 +73,7 @@ func streamMistral(model piai.Model, c piai.Context, opts piai.StreamOptions, mi
 			}
 		}()
 
-		msg, err := doMistralStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doMistralStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -83,7 +84,7 @@ func streamMistral(model piai.Model, c piai.Context, opts piai.StreamOptions, mi
 	return stream, nil
 }
 
-func buildMistralBody(model piai.Model, c piai.Context, opts piai.StreamOptions, mistralOpts Options) (map[string]any, error) {
+func buildMistralBody(model core.Model, c core.Context, opts core.StreamOptions, mistralOpts Options) (map[string]any, error) {
 	body := map[string]any{
 		"model":  model.ID,
 		"stream": true,
@@ -133,12 +134,12 @@ func buildMistralBody(model piai.Model, c piai.Context, opts piai.StreamOptions,
 	return body, nil
 }
 
-func convertMessages(messages []piai.Message) ([]map[string]any, error) {
+func convertMessages(messages []core.Message) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			content, err := convertUserContent(m.Content)
 			if err != nil {
 				return nil, err
@@ -148,10 +149,10 @@ func convertMessages(messages []piai.Message) ([]map[string]any, error) {
 				"content": content,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			result = append(result, convertAssistantMessage(m.Content))
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
 			result = append(result, map[string]any{
 				"role":       "tool",
@@ -168,16 +169,16 @@ func convertUserContent(content any) (any, error) {
 	switch c := content.(type) {
 	case string:
 		return c, nil
-	case []piai.ContentBlock:
+	case []core.ContentBlock:
 		var blocks []any
 		for _, block := range c {
 			switch b := block.(type) {
-			case piai.TextContent:
+			case core.TextContent:
 				blocks = append(blocks, map[string]any{
 					"type": "text",
 					"text": b.Text,
 				})
-			case piai.ImageContent:
+			case core.ImageContent:
 				blocks = append(blocks, map[string]any{
 					"type": "image_url",
 					"image_url": map[string]any{
@@ -192,15 +193,15 @@ func convertUserContent(content any) (any, error) {
 	}
 }
 
-func convertAssistantMessage(content []piai.ContentBlock) map[string]any {
+func convertAssistantMessage(content []core.ContentBlock) map[string]any {
 	var textParts []string
 	var toolCalls []any
 
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			textParts = append(textParts, b.Text)
-		case piai.ToolCall:
+		case core.ToolCall:
 			toolCalls = append(toolCalls, map[string]any{
 				"id":   normalizeToolCallID(b.ID),
 				"type": "function",
@@ -227,17 +228,17 @@ func convertAssistantMessage(content []piai.ContentBlock) map[string]any {
 	return msg
 }
 
-func convertToolResultContent(content []piai.ContentBlock) string {
+func convertToolResultContent(content []core.ContentBlock) string {
 	var parts []string
 	for _, block := range content {
-		if text, ok := block.(piai.TextContent); ok {
+		if text, ok := block.(core.TextContent); ok {
 			parts = append(parts, text.Text)
 		}
 	}
 	return strings.Join(parts, "\n")
 }
 
-func convertTools(tools []piai.Tool) []map[string]any {
+func convertTools(tools []core.Tool) []map[string]any {
 	result := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
@@ -278,17 +279,17 @@ func normalizeToolCallID(id string) string {
 	return string(buf[:])
 }
 
-func doMistralStream(baseURL, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doMistralStream(ctx context.Context, baseURL, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := baseURL + "/chat/completions"
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -301,26 +302,26 @@ func doMistralStream(baseURL, apiKey string, model piai.Model, body map[string]a
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("mistral: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("mistral: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processMistralSSE(resp.Body, stream, model, opts)
 }
 
-func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processMistralSSE(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg       piai.AssistantMessage
+		msg       core.AssistantMessage
 		textBuf   strings.Builder
-		toolCalls map[int]*piai.ToolCall
+		toolCalls map[int]*core.ToolCall
 	)
 
 	msg.API = model.API
@@ -328,9 +329,9 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 	msg.Model = model.ID
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
-	toolCalls = make(map[int]*piai.ToolCall)
+	toolCalls = make(map[int]*core.ToolCall)
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -386,7 +387,7 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 
 		if content, ok := delta["content"].(string); ok && content != "" {
 			textBuf.WriteString(content)
-			stream.Push(piai.EventTextDelta{
+			stream.Push(core.EventTextDelta{
 				Type:  "text_delta",
 				Delta: content,
 			})
@@ -405,12 +406,12 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 				args, _ := function["arguments"].(string)
 
 				if id != "" {
-					toolCalls[index] = &piai.ToolCall{
+					toolCalls[index] = &core.ToolCall{
 						Type: "toolCall",
 						ID:   id,
 						Name: name,
 					}
-					stream.Push(piai.EventToolCallStart{
+					stream.Push(core.EventToolCallStart{
 						Type: "toolcall_start",
 						ID:   id,
 						Name: name,
@@ -419,7 +420,7 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 
 				if tc, ok := toolCalls[index]; ok && args != "" {
 					tc.Arguments = append(tc.Arguments, []byte(args)...)
-					stream.Push(piai.EventToolCallDelta{
+					stream.Push(core.EventToolCallDelta{
 						Type:           "toolcall_delta",
 						ID:             tc.ID,
 						ArgumentsDelta: args,
@@ -431,15 +432,15 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 
 	// Finalize
 	if textBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.TextContent{
+		msg.Content = append(msg.Content, core.TextContent{
 			Type: "text",
 			Text: textBuf.String(),
 		})
-		stream.Push(piai.EventTextEnd{Type: "text_end"})
+		stream.Push(core.EventTextEnd{Type: "text_end"})
 	}
 
 	for _, tc := range toolCalls {
-		stream.Push(piai.EventToolCallEnd{
+		stream.Push(core.EventToolCallEnd{
 			Type:      "toolcall_end",
 			ID:        tc.ID,
 			Arguments: tc.Arguments,
@@ -447,9 +448,9 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 		msg.Content = append(msg.Content, *tc)
 	}
 
-	msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
 
-	stream.Push(piai.EventDone{
+	stream.Push(core.EventDone{
 		Type:    "done",
 		Message: msg,
 	})
@@ -457,16 +458,16 @@ func processMistralSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 	return msg, nil
 }
 
-func mapStopReason(reason string) piai.StopReason {
+func mapStopReason(reason string) core.StopReason {
 	switch reason {
 	case "stop":
-		return piai.StopStop
+		return core.StopStop
 	case "length":
-		return piai.StopLength
+		return core.StopLength
 	case "tool_calls":
-		return piai.StopToolUse
+		return core.StopToolUse
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }
 

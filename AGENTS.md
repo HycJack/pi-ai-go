@@ -1,79 +1,56 @@
 # AGENTS.md
 
-This file provides guidance for AI coding agents working in this repository.
+AI coding agent 指南。
 
-## Quick Reference
+## 构建和测试
 
 ```bash
-go build ./...                    # Build all
-go test ./...                     # Test all
-go test -v -run TestName .        # Single test
-go test ./providers/openai/...    # Package tests
+go build ./...
+go test ./...
+go test -race ./...
+go vet ./...
 ```
 
-Go 1.23+. Single external dep (`jsonschema/v6`). No Makefile or linter.
+Go 1.23+。唯一外部依赖 `jsonschema/v6`。
 
-## How to Add a New Provider
+## 架构
 
-1. Create `providers/<name>/<name>.go`
-2. Implement `APIProvider` interface (two methods: `Stream`, `StreamSimple`)
-3. Register in `providers/register.go` `RegisterBuiltInProviders()` with `piai.RegisterProvider()`
-4. Add provider constant to `KnownProvider` in `types.go` if it's a new logical provider
-5. Add API key env var mapping in `env-api-keys.go` `providerEnvVars`
-6. Add `Model` entries to the model registry (generated data or manual)
-
-### Provider Implementation Checklist
-
-Each provider must:
-- Build JSON body from `piai.Context` + `piai.StreamOptions`
-- Spawn a goroutine for HTTP POST + SSE parsing
-- Push events in order: `EventStart` → `EventTextDelta`/`EventThinkingDelta`/`EventToolCallStart`+`Delta`+`End` → `EventDone`
-- Call `stream.End(msg)` on success, `stream.Error(err)` on failure
-- Handle `opts.OnPayload` (request body callback) and `opts.OnResponse` (raw response callback)
-- Set `msg.Usage` (input/output/cache tokens) and `msg.StopReason`
-- Call `piai.CalculateCost(model, msg.Usage)` for cost tracking
-
-### Provider File Structure
+四层分层，依赖方向单一：
 
 ```
-providers/<name>/
-  <name>.go       # Main implementation (Stream, StreamSimple, SSE processing)
-  <name>_test.go  # Unit tests for message conversion and request building
+core/ ← 零依赖 (类型 + EventStream + 注册表)
+  ↑
+ai/   ← 仅依赖 core (公开 API + Model 注册表)
+  ↑
+providers/ ← 仅依赖 core (LLM 实现)
+  ↑
+agent/ ← 依赖 core + ai (多轮循环 + 工具执行)
+  ↑
+piai.go ← facade re-export
 ```
 
-Shared OpenAI-family code lives in `providers/openai/shared.go`. Shared Google-family code in `providers/google/shared.go`.
+## 如何添加新 Provider
 
-## How to Add a New Event Type
+1. 创建 `providers/<name>/<name>.go`
+2. 实现 `core.APIProvider` 接口（`Stream` + `StreamSimple`，均接收 `context.Context`）
+3. 在 `providers/register.go` 的 `RegisterBuiltInProviders()` 中注册：`core.RegisterProvider(...)`
+4. 如需新 provider 常量，添加到 `core/types.go` 的 `KnownProvider`
+5. 添加环境变量映射到 `core/env.go` 的 `providerEnvVars`
+6. 添加 `Model` 数据到模型注册表
 
-1. Define struct in `types.go` with `eventTag()` method
-2. Add to `AssistantMessageEvent` interface (already satisfied by the method)
-3. Push from relevant providers in their SSE processing loops
-4. Handle in consumers via type switch on `AssistantMessageEvent`
+### Provider 实现清单
 
-## How to Add a New ContentBlock Type
+- 从 `core.Context` + `core.StreamOptions` 构建 JSON body
+- 启动 goroutine 执行 HTTP POST + SSE 解析
+- 事件顺序：`EventStart` → `EventTextDelta*` → `EventTextEnd` → `EventDone`
+- 成功调用 `stream.End(msg)`，失败调用 `stream.Error(err)`
+- 处理 `opts.OnPayload` 和 `opts.OnResponse` 回调
+- 设置 `msg.Usage` 和 `msg.StopReason`
+- 调用 `core.CalculateCost(model, msg.Usage)` 计算费用
+- 使用 `http.NewRequestWithContext(ctx, ...)` 支持 context 取消
+- **SSE 解析后必须执行 finalization**（刷新 text/thinking buffer + EventDone），放在 scanner 循环外
 
-1. Define struct in `types.go` with `contentTag()` method
-2. Handle in each provider's `convertAssistantContent` / message conversion functions
-3. Handle in each provider's SSE parsing (if the API returns this type)
-
-## Common Patterns
-
-### Message Conversion
-
-Every provider has a `convertMessages()` function that transforms `[]piai.Message` into provider-specific `[]map[string]any`. Pattern:
-
-```go
-case piai.UserMessage:
-    // Convert Content (string or []ContentBlock) to provider format
-case piai.AssistantMessage:
-    // Convert Content blocks (TextContent, ThinkingContent, ToolCall) to provider format
-case piai.ToolResultMessage:
-    // Convert tool results to provider format
-```
-
-### SSE Processing
-
-All providers use the same pattern:
+### SSE 处理模式
 
 ```go
 scanner := bufio.NewScanner(body)
@@ -81,45 +58,38 @@ scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 for scanner.Scan() {
     line := scanner.Text()
-    if !strings.HasPrefix(line, "data: ") {
-        continue
-    }
+    if !strings.HasPrefix(line, "data: ") { continue }
     data := strings.TrimPrefix(line, "data: ")
-    // Parse JSON, dispatch on event type
+    // Parse JSON, dispatch on event type, push to stream
 }
+
+// Finalization — 必须在循环外，确保连接中断时也能执行
+if textBuf.Len() > 0 { /* flush text */ }
+if thinkingBuf.Len() > 0 { /* flush thinking */ }
+msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
+stream.Push(core.EventDone{Message: msg})
+return msg, nil
 ```
 
-### Stop Reason Mapping
+## EventStream 契约
 
-Each provider has a `mapStopReason()` function mapping provider-specific strings to `piai.StopReason` constants. Add new mappings as needed.
+- `Push()` 返回 `bool` — buffer 满时返回 false，生产者应停止
+- `End()`/`Error()` 在锁内完成所有 channel 操作，避免与 Push 竞态
+- `Stop()` 关闭 stop channel 通知生产者
+- Channel buffer 为 64
+- `ForEach()` 在 context 取消或回调错误时自动调用 `Stop()`
 
-### Tool Call ID Normalization
+## 测试
 
-Some providers have strict ID requirements (e.g., Mistral requires 9-char alphanumeric). Use `normalizeToolCallID()` or `generateShortID()` from `providers/transform.go`.
+- 每个 `.go` 文件对应 `_test.go`
+- 注册表测试使用 `ClearProviders()` + `defer ClearProviders()`
+- EventStream 测试用 goroutine 模拟并发
+- 集成测试在 `examples/` 中（非 `_test.go`）
 
-## EventStream Contract
+## 注意事项
 
-- `Push()` returns `bool` — producer should stop if false
-- `End()`/`Error()` must be called exactly once to close the stream
-- `Stop()` is called by consumer on early exit (context cancel, callback error)
-- Channel buffer is 64 — producers should handle backpressure via `Push()` return value
-- `ForEach()` calls `Stop()` automatically on context cancel or callback error
-
-## Testing
-
-- Unit tests for message conversion and request body building (most common)
-- Table-driven tests for mapping functions
-- Registry tests use `ClearProviders()` + `defer ClearProviders()`
-- EventStream tests use goroutines to simulate concurrent producer/consumer
-- No mocking framework — tests exercise internal functions directly
-- Integration tests are standalone programs in `test/` (not `_test.go` files)
-
-## Things to Watch For
-
-- `json.Unmarshal` for tool parameters must check errors (silent failure = nil params)
-- Anthropic requires `signature` fields on thinking/text blocks in multi-turn conversations
-- Mistral assistant messages with tool calls must have `tool_calls` at top level, not nested in `content`
-- Vertex AI uses a different URL pattern (`/v1/projects/{project}/locations/{location}/publishers/google/models/...`) than Google AI (`/v1beta/models/...`)
-- `http.NewRequest` should use `context.Context` for cancellation (currently not propagated — known issue)
-- Each provider creates a new `http.Client` per request (no connection reuse)
-- `opts.Signal` channel is defined but never checked by providers
+- `json.Unmarshal` 解析工具参数必须检查错误
+- Anthropic 多轮对话需要 thinking/text block 的 `signature` 字段
+- Mistral 工具调用 ID 必须是 9 字符字母数字
+- Vertex AI URL 格式不同于 Google AI
+- Provider finalization 必须在 SSE 循环外（防止连接中断丢失内容）

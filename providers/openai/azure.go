@@ -1,11 +1,12 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // AzureOptions holds Azure-specific options.
@@ -26,20 +27,20 @@ func NewAzure() *AzureProvider {
 	return &AzureProvider{}
 }
 
-func (p *AzureProvider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamAzure(model, ctx, opts, AzureOptions{})
+func (p *AzureProvider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamAzure(ctx, model, llmCtx, opts, AzureOptions{})
 }
 
-func (p *AzureProvider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *AzureProvider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	azureOpts := AzureOptions{}
 	if opts.Reasoning != "" {
 		azureOpts.ReasoningEffort = string(opts.Reasoning)
 	}
-	return streamAzure(model, ctx, opts.StreamOptions, azureOpts)
+	return streamAzure(ctx, model, llmCtx, opts.StreamOptions, azureOpts)
 }
 
-func streamAzure(model piai.Model, c piai.Context, opts piai.StreamOptions, azureOpts AzureOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamAzure(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, azureOpts AzureOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("azure: no API key provided")
 	}
@@ -59,13 +60,13 @@ func streamAzure(model piai.Model, c piai.Context, opts piai.StreamOptions, azur
 		"api-key": apiKey,
 	})
 
-	return streamResponses(azureModel, c, opts, ResponsesOptions{
+	return streamResponses(ctx, azureModel, c, opts, ResponsesOptions{
 		ReasoningEffort:  azureOpts.ReasoningEffort,
 		ReasoningSummary: azureOpts.ReasoningSummary,
 	})
 }
 
-func resolveAzureBaseURL(model piai.Model, opts AzureOptions) string {
+func resolveAzureBaseURL(model core.Model, opts AzureOptions) string {
 	if opts.AzureBaseURL != "" {
 		return opts.AzureBaseURL
 	}
@@ -81,7 +82,7 @@ func resolveAzureBaseURL(model piai.Model, opts AzureOptions) string {
 	return ""
 }
 
-func resolveAzureDeploymentName(model piai.Model, opts AzureOptions) string {
+func resolveAzureDeploymentName(model core.Model, opts AzureOptions) string {
 	if opts.AzureDeploymentName != "" {
 		return opts.AzureDeploymentName
 	}

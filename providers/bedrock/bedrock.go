@@ -4,6 +4,7 @@ package bedrock
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultRegion = "us-east-1"
@@ -38,22 +39,23 @@ func New() *Provider {
 	return &Provider{}
 }
 
-func (p *Provider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamBedrock(model, ctx, opts, Options{})
+func (p *Provider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamBedrock(ctx, model, llmCtx, opts, Options{})
 }
 
-func (p *Provider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	bedrockOpts := Options{
-		Reasoning: true,
+func (p *Provider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	bedrockOpts := Options{}
+	if opts.Reasoning != "" {
+		bedrockOpts.Reasoning = true
+		if opts.ThinkingBudgets != nil {
+			bedrockOpts.ThinkingBudgets = opts.ThinkingBudgets
+		}
 	}
-	if opts.ThinkingBudgets != nil {
-		bedrockOpts.ThinkingBudgets = opts.ThinkingBudgets
-	}
-	return streamBedrock(model, ctx, opts.StreamOptions, bedrockOpts)
+	return streamBedrock(ctx, model, llmCtx, opts.StreamOptions, bedrockOpts)
 }
 
-func streamBedrock(model piai.Model, c piai.Context, opts piai.StreamOptions, bedrockOpts Options) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamBedrock(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, bedrockOpts Options) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	region := bedrockOpts.Region
 	if region == "" {
 		region = os.Getenv("AWS_REGION")
@@ -71,7 +73,7 @@ func streamBedrock(model piai.Model, c piai.Context, opts piai.StreamOptions, be
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -80,7 +82,7 @@ func streamBedrock(model piai.Model, c piai.Context, opts piai.StreamOptions, be
 			}
 		}()
 
-		msg, err := doBedrockStream(region, apiKey, model, body, stream, opts, bedrockOpts)
+		msg, err := doBedrockStream(ctx, region, apiKey, model, body, stream, opts, bedrockOpts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -91,7 +93,7 @@ func streamBedrock(model piai.Model, c piai.Context, opts piai.StreamOptions, be
 	return stream, nil
 }
 
-func buildBedrockBody(model piai.Model, c piai.Context, opts piai.StreamOptions, bedrockOpts Options) (map[string]any, error) {
+func buildBedrockBody(model core.Model, c core.Context, opts core.StreamOptions, bedrockOpts Options) (map[string]any, error) {
 	// Convert messages to Bedrock format
 	messages, err := convertMessages(c.Messages)
 	if err != nil {
@@ -155,12 +157,12 @@ func buildBedrockBody(model piai.Model, c piai.Context, opts piai.StreamOptions,
 	return body, nil
 }
 
-func convertMessages(messages []piai.Message) ([]map[string]any, error) {
+func convertMessages(messages []core.Message) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			content, err := convertUserContent(m.Content)
 			if err != nil {
 				return nil, err
@@ -170,14 +172,14 @@ func convertMessages(messages []piai.Message) ([]map[string]any, error) {
 				"content": content,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			content := convertAssistantContent(m.Content)
 			result = append(result, map[string]any{
 				"role":    "assistant",
 				"content": content,
 			})
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
 			result = append(result, map[string]any{
 				"role": "user",
@@ -203,13 +205,13 @@ func convertUserContent(content any) ([]any, error) {
 		return []any{
 			map[string]any{"text": c},
 		}, nil
-	case []piai.ContentBlock:
+	case []core.ContentBlock:
 		var blocks []any
 		for _, block := range c {
 			switch b := block.(type) {
-			case piai.TextContent:
+			case core.TextContent:
 				blocks = append(blocks, map[string]any{"text": b.Text})
-			case piai.ImageContent:
+			case core.ImageContent:
 				blocks = append(blocks, map[string]any{
 					"image": map[string]any{
 						"format": mimeToFormat(b.MimeType),
@@ -228,19 +230,19 @@ func convertUserContent(content any) ([]any, error) {
 	}
 }
 
-func convertAssistantContent(content []piai.ContentBlock) []any {
+func convertAssistantContent(content []core.ContentBlock) []any {
 	var blocks []any
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			blocks = append(blocks, map[string]any{"text": b.Text})
-		case piai.ThinkingContent:
+		case core.ThinkingContent:
 			blocks = append(blocks, map[string]any{
 				"thinking": map[string]any{
 					"thinking": b.Thinking,
 				},
 			})
-		case piai.ToolCall:
+		case core.ToolCall:
 			blocks = append(blocks, map[string]any{
 				"toolUse": map[string]any{
 					"toolUseId": b.ID,
@@ -253,17 +255,17 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 	return blocks
 }
 
-func convertToolResultContent(content []piai.ContentBlock) []any {
+func convertToolResultContent(content []core.ContentBlock) []any {
 	var blocks []any
 	for _, block := range content {
-		if text, ok := block.(piai.TextContent); ok {
+		if text, ok := block.(core.TextContent); ok {
 			blocks = append(blocks, map[string]any{"text": text.Text})
 		}
 	}
 	return blocks
 }
 
-func convertTools(tools []piai.Tool) []any {
+func convertTools(tools []core.Tool) []any {
 	result := make([]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
@@ -300,17 +302,17 @@ func mimeToFormat(mimeType string) string {
 	return mimeType
 }
 
-func doBedrockStream(region, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions, bedrockOpts Options) (piai.AssistantMessage, error) {
+func doBedrockStream(ctx context.Context, region, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions, bedrockOpts Options) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/converse-stream", region, model.ID)
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -325,27 +327,27 @@ func doBedrockStream(region, apiKey string, model piai.Model, body map[string]an
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("bedrock: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("bedrock: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processBedrockSSE(resp.Body, stream, model, opts)
 }
 
-func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processBedrockSSE(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg       piai.AssistantMessage
+		msg       core.AssistantMessage
 		textBuf   strings.Builder
 		thinkBuf  strings.Builder
-		toolCalls []piai.ToolCall
+		toolCalls []core.ToolCall
 	)
 
 	msg.API = model.API
@@ -354,7 +356,7 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -386,7 +388,7 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 
 			if text, ok := delta["text"].(string); ok {
 				textBuf.WriteString(text)
-				stream.Push(piai.EventTextDelta{
+				stream.Push(core.EventTextDelta{
 					Type:  "text_delta",
 					Delta: text,
 				})
@@ -395,7 +397,7 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 			if thinking, ok := delta["thinking"].(map[string]any); ok {
 				if t, ok := thinking["thinking"].(string); ok {
 					thinkBuf.WriteString(t)
-					stream.Push(piai.EventThinkingDelta{
+					stream.Push(core.EventThinkingDelta{
 						Type:  "thinking_delta",
 						Delta: t,
 					})
@@ -407,7 +409,7 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 					if len(toolCalls) > 0 {
 						last := &toolCalls[len(toolCalls)-1]
 						last.Arguments = append(last.Arguments, []byte(input)...)
-						stream.Push(piai.EventToolCallDelta{
+						stream.Push(core.EventToolCallDelta{
 							Type:           "toolcall_delta",
 							ID:             last.ID,
 							ArgumentsDelta: input,
@@ -422,12 +424,12 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 			if toolUse, ok := start["toolUse"].(map[string]any); ok {
 				id, _ := toolUse["toolUseId"].(string)
 				name, _ := toolUse["name"].(string)
-				toolCalls = append(toolCalls, piai.ToolCall{
+				toolCalls = append(toolCalls, core.ToolCall{
 					Type: "toolCall",
 					ID:   id,
 					Name: name,
 				})
-				stream.Push(piai.EventToolCallStart{
+				stream.Push(core.EventToolCallStart{
 					Type: "toolcall_start",
 					ID:   id,
 					Name: name,
@@ -453,22 +455,22 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 
 	// Finalize
 	if textBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.TextContent{
+		msg.Content = append(msg.Content, core.TextContent{
 			Type: "text",
 			Text: textBuf.String(),
 		})
-		stream.Push(piai.EventTextEnd{Type: "text_end"})
+		stream.Push(core.EventTextEnd{Type: "text_end"})
 	}
 
 	if thinkBuf.Len() > 0 {
-		msg.Content = append(msg.Content, piai.ThinkingContent{
+		msg.Content = append(msg.Content, core.ThinkingContent{
 			Type:     "thinking",
 			Thinking: thinkBuf.String(),
 		})
 	}
 
 	for _, tc := range toolCalls {
-		stream.Push(piai.EventToolCallEnd{
+		stream.Push(core.EventToolCallEnd{
 			Type:      "toolcall_end",
 			ID:        tc.ID,
 			Arguments: tc.Arguments,
@@ -477,9 +479,9 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 	}
 
 	msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output + msg.Usage.CacheRead + msg.Usage.CacheWrite
-	msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
 
-	stream.Push(piai.EventDone{
+	stream.Push(core.EventDone{
 		Type:    "done",
 		Message: msg,
 	})
@@ -487,18 +489,18 @@ func processBedrockSSE(body io.Reader, stream *piai.EventStream[piai.AssistantMe
 	return msg, nil
 }
 
-func mapBedrockStopReason(reason string) piai.StopReason {
+func mapBedrockStopReason(reason string) core.StopReason {
 	switch reason {
 	case "end_turn":
-		return piai.StopStop
+		return core.StopStop
 	case "tool_use":
-		return piai.StopToolUse
+		return core.StopToolUse
 	case "max_tokens":
-		return piai.StopLength
+		return core.StopLength
 	case "stop_sequence":
-		return piai.StopStop
+		return core.StopStop
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }
 

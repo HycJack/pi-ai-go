@@ -4,6 +4,7 @@ package anthropic
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 const defaultBaseURL = "https://api.anthropic.com"
@@ -34,27 +35,27 @@ func New() *Provider {
 	return &Provider{}
 }
 
-func (p *Provider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamAnthropic(model, ctx, opts, Options{})
+func (p *Provider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamAnthropic(ctx, model, llmCtx, opts, Options{})
 }
 
-func (p *Provider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *Provider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	// Map reasoning level to Anthropic options
 	anthropicOpts := Options{}
 	if opts.Reasoning != "" {
 		anthropicOpts.ThinkingEnabled = true
 		anthropicOpts.Effort = string(opts.Reasoning)
 	}
-	return streamAnthropic(model, ctx, opts.StreamOptions, anthropicOpts)
+	return streamAnthropic(ctx, model, llmCtx, opts.StreamOptions, anthropicOpts)
 }
 
-func streamAnthropic(model piai.Model, c piai.Context, opts piai.StreamOptions, anthropicOpts Options) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamAnthropic(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, anthropicOpts Options) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("anthropic: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, defaultBaseURL)
+	baseURL := core.ResolveBaseURL(model, defaultBaseURL)
 
 	// Build request body
 	body, err := buildRequestBody(model, c, opts, anthropicOpts)
@@ -66,7 +67,7 @@ func streamAnthropic(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -75,7 +76,7 @@ func streamAnthropic(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 			}
 		}()
 
-		msg, err := doStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -86,7 +87,7 @@ func streamAnthropic(model piai.Model, c piai.Context, opts piai.StreamOptions, 
 	return stream, nil
 }
 
-func buildRequestBody(model piai.Model, c piai.Context, opts piai.StreamOptions, anthropicOpts Options) (map[string]any, error) {
+func buildRequestBody(model core.Model, c core.Context, opts core.StreamOptions, anthropicOpts Options) (map[string]any, error) {
 	body := map[string]any{
 		"model":      model.ID,
 		"stream":     true,
@@ -139,12 +140,12 @@ func buildRequestBody(model piai.Model, c piai.Context, opts piai.StreamOptions,
 	return body, nil
 }
 
-func convertMessages(messages []piai.Message) ([]map[string]any, error) {
+func convertMessages(messages []core.Message) ([]map[string]any, error) {
 	var result []map[string]any
 
 	for _, msg := range messages {
 		switch m := msg.(type) {
-		case piai.UserMessage:
+		case core.UserMessage:
 			content, err := convertUserContent(m.Content)
 			if err != nil {
 				return nil, err
@@ -154,14 +155,14 @@ func convertMessages(messages []piai.Message) ([]map[string]any, error) {
 				"content": content,
 			})
 
-		case piai.AssistantMessage:
+		case core.AssistantMessage:
 			content := convertAssistantContent(m.Content)
 			result = append(result, map[string]any{
 				"role":    "assistant",
 				"content": content,
 			})
 
-		case piai.ToolResultMessage:
+		case core.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
 			block := map[string]any{
 				"type":        "tool_result",
@@ -185,16 +186,16 @@ func convertUserContent(content any) (any, error) {
 	switch c := content.(type) {
 	case string:
 		return c, nil
-	case []piai.ContentBlock:
+	case []core.ContentBlock:
 		var blocks []any
 		for _, block := range c {
 			switch b := block.(type) {
-			case piai.TextContent:
+			case core.TextContent:
 				blocks = append(blocks, map[string]any{
 					"type": "text",
 					"text": b.Text,
 				})
-			case piai.ImageContent:
+			case core.ImageContent:
 				blocks = append(blocks, map[string]any{
 					"type": "image",
 					"source": map[string]any{
@@ -211,11 +212,11 @@ func convertUserContent(content any) (any, error) {
 	}
 }
 
-func convertAssistantContent(content []piai.ContentBlock) []any {
+func convertAssistantContent(content []core.ContentBlock) []any {
 	var blocks []any
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			block := map[string]any{
 				"type": "text",
 				"text": b.Text,
@@ -224,7 +225,7 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 				block["signature"] = b.TextSignature
 			}
 			blocks = append(blocks, block)
-		case piai.ThinkingContent:
+		case core.ThinkingContent:
 			block := map[string]any{
 				"type":     "thinking",
 				"thinking": b.Thinking,
@@ -233,7 +234,7 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 				block["signature"] = b.ThinkingSignature
 			}
 			blocks = append(blocks, block)
-		case piai.ToolCall:
+		case core.ToolCall:
 			blocks = append(blocks, map[string]any{
 				"type":  "tool_use",
 				"id":    b.ID,
@@ -245,16 +246,16 @@ func convertAssistantContent(content []piai.ContentBlock) []any {
 	return blocks
 }
 
-func convertToolResultContent(content []piai.ContentBlock) any {
+func convertToolResultContent(content []core.ContentBlock) any {
 	var blocks []any
 	for _, block := range content {
 		switch b := block.(type) {
-		case piai.TextContent:
+		case core.TextContent:
 			blocks = append(blocks, map[string]any{
 				"type": "text",
 				"text": b.Text,
 			})
-		case piai.ImageContent:
+		case core.ImageContent:
 			blocks = append(blocks, map[string]any{
 				"type": "image",
 				"source": map[string]any{
@@ -275,7 +276,7 @@ func convertToolResultContent(content []piai.ContentBlock) any {
 	return blocks
 }
 
-func convertTools(tools []piai.Tool, eagerStreaming bool) []map[string]any {
+func convertTools(tools []core.Tool, eagerStreaming bool) []map[string]any {
 	result := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
@@ -296,23 +297,27 @@ func convertTools(tools []piai.Tool, eagerStreaming bool) []map[string]any {
 	return result
 }
 
-func doStream(baseURL, apiKey string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doStream(ctx context.Context, baseURL, apiKey string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	url := baseURL + "/v1/messages"
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	if anthropicOpts, ok := body["thinking"]; ok {
+		if thinkingMap, ok := anthropicOpts.(map[string]any); ok && thinkingMap["type"] == "enabled" {
+			req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+		}
+	}
 
 	// Add custom headers
 	for k, v := range model.Headers {
@@ -325,29 +330,29 @@ func doStream(baseURL, apiKey string, model piai.Model, body map[string]any, str
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(bodyBytes))
+		return core.AssistantMessage{}, fmt.Errorf("anthropic: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return processSSEStream(resp.Body, stream, model, opts)
 }
 
-func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], model piai.Model, opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func processSSEStream(body io.Reader, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], model core.Model, opts core.StreamOptions) (core.AssistantMessage, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg              piai.AssistantMessage
+		msg              core.AssistantMessage
 		textBuf          strings.Builder
 		thinkingBuf      strings.Builder
 		textSignature    string
 		thinkingSignature string
-		toolCalls        map[int]*piai.ToolCall
+		toolCalls        map[int]*core.ToolCall
 	)
 
 	msg.API = model.API
@@ -355,9 +360,9 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 	msg.Model = model.ID
 	msg.Role = "assistant"
 	msg.Timestamp = time.Now()
-	toolCalls = make(map[int]*piai.ToolCall)
+	toolCalls = make(map[int]*core.ToolCall)
 
-	stream.Push(piai.EventStart{
+	stream.Push(core.EventStart{
 		Type:      "start",
 		API:       model.API,
 		Provider:  model.Provider,
@@ -399,21 +404,21 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 				if sig, ok := block["signature"].(string); ok {
 					textSignature = sig
 				}
-				stream.Push(piai.EventTextStart{Type: "text_start"})
+				stream.Push(core.EventTextStart{Type: "text_start"})
 			case "thinking":
 				if sig, ok := block["signature"].(string); ok {
 					thinkingSignature = sig
 				}
-				stream.Push(piai.EventThinkingStart{Type: "thinking_start"})
+				stream.Push(core.EventThinkingStart{Type: "thinking_start"})
 			case "tool_use":
 				id, _ := block["id"].(string)
 				name, _ := block["name"].(string)
-				toolCalls[int(index)] = &piai.ToolCall{
+				toolCalls[int(index)] = &core.ToolCall{
 					Type: "toolCall",
 					ID:   id,
 					Name: name,
 				}
-				stream.Push(piai.EventToolCallStart{
+				stream.Push(core.EventToolCallStart{
 					Type: "toolcall_start",
 					ID:   id,
 					Name: name,
@@ -429,7 +434,7 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 			case "text_delta":
 				text, _ := delta["text"].(string)
 				textBuf.WriteString(text)
-				stream.Push(piai.EventTextDelta{
+				stream.Push(core.EventTextDelta{
 					Type:  "text_delta",
 					Delta: text,
 				})
@@ -437,7 +442,7 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 			case "thinking_delta":
 				thinking, _ := delta["thinking"].(string)
 				thinkingBuf.WriteString(thinking)
-				stream.Push(piai.EventThinkingDelta{
+				stream.Push(core.EventThinkingDelta{
 					Type:  "thinking_delta",
 					Delta: thinking,
 				})
@@ -446,7 +451,7 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 				partial, _ := delta["partial_json"].(string)
 				if tc, ok := toolCalls[int(index)]; ok {
 					tc.Arguments = append(tc.Arguments, []byte(partial)...)
-					stream.Push(piai.EventToolCallDelta{
+					stream.Push(core.EventToolCallDelta{
 						Type:           "toolcall_delta",
 						ID:             tc.ID,
 						ArgumentsDelta: partial,
@@ -457,7 +462,7 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 		case "content_block_stop":
 			index, _ := event["index"].(float64)
 			if tc, ok := toolCalls[int(index)]; ok {
-				stream.Push(piai.EventToolCallEnd{
+				stream.Push(core.EventToolCallEnd{
 					Type:      "toolcall_end",
 					ID:        tc.ID,
 					Arguments: tc.Arguments,
@@ -495,41 +500,41 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 			}
 
 		case "message_stop":
-			// Finalize message
-			if textBuf.Len() > 0 {
-				msg.Content = append(msg.Content, piai.TextContent{
-					Type:          "text",
-					Text:          textBuf.String(),
-					TextSignature: textSignature,
-				})
-				stream.Push(piai.EventTextEnd{
-					Type:          "text_end",
-					TextSignature: textSignature,
-				})
-			}
-			if thinkingBuf.Len() > 0 {
-				msg.Content = append(msg.Content, piai.ThinkingContent{
-					Type:              "thinking",
-					Thinking:          thinkingBuf.String(),
-					ThinkingSignature: thinkingSignature,
-				})
-				stream.Push(piai.EventThinkingEnd{
-					Type:              "thinking_end",
-					ThinkingSignature: thinkingSignature,
-				})
-			}
-
-			msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output + msg.Usage.CacheRead + msg.Usage.CacheWrite
-			msg.Usage.Cost = piai.CalculateCost(model, msg.Usage)
-
-			stream.Push(piai.EventDone{
-				Type:    "done",
-				Message: msg,
-			})
-
-			return msg, nil
+			// message_stop signals the end; finalization happens below.
 		}
 	}
+
+	// Finalize (always runs, even if message_stop was not received)
+	if textBuf.Len() > 0 {
+		msg.Content = append(msg.Content, core.TextContent{
+			Type:          "text",
+			Text:          textBuf.String(),
+			TextSignature: textSignature,
+		})
+		stream.Push(core.EventTextEnd{
+			Type:          "text_end",
+			TextSignature: textSignature,
+		})
+	}
+	if thinkingBuf.Len() > 0 {
+		msg.Content = append(msg.Content, core.ThinkingContent{
+			Type:              "thinking",
+			Thinking:          thinkingBuf.String(),
+			ThinkingSignature: thinkingSignature,
+		})
+		stream.Push(core.EventThinkingEnd{
+			Type:              "thinking_end",
+			ThinkingSignature: thinkingSignature,
+		})
+	}
+
+	msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output + msg.Usage.CacheRead + msg.Usage.CacheWrite
+	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
+
+	stream.Push(core.EventDone{
+		Type:    "done",
+		Message: msg,
+	})
 
 	if err := scanner.Err(); err != nil {
 		return msg, fmt.Errorf("anthropic: SSE read error: %w", err)
@@ -538,18 +543,18 @@ func processSSEStream(body io.Reader, stream *piai.EventStream[piai.AssistantMes
 	return msg, nil
 }
 
-func mapStopReason(reason string) piai.StopReason {
+func mapStopReason(reason string) core.StopReason {
 	switch reason {
 	case "end_turn":
-		return piai.StopStop
+		return core.StopStop
 	case "stop_sequence":
-		return piai.StopStop
+		return core.StopStop
 	case "max_tokens":
-		return piai.StopLength
+		return core.StopLength
 	case "tool_use":
-		return piai.StopToolUse
+		return core.StopToolUse
 	default:
-		return piai.StopStop
+		return core.StopStop
 	}
 }
 

@@ -1,343 +1,50 @@
 # API 参考文档
 
-## 目录
-
-- [核心函数](#核心函数)
-- [模型注册表](#模型注册表)
-- [服务商注册表](#服务商注册表)
-- [图像生成](#图像生成)
-- [OAuth 认证](#oauth-认证)
-- [工具包](#工具包)
-- [类型定义](#类型定义)
-- [常量定义](#常量定义)
+所有函数通过 `import piai "pi-ai-go"` 访问。也可按层导入：`core/`、`ai/`、`agent/`。
 
 ---
 
-## 核心函数
+## 公开 API
 
 ### Stream
 
 创建流式请求，返回事件流。
 
 ```go
-func Stream(ctx context.Context, model Model, msgs []Message, opts ...StreamOptions) (*EventStream[AssistantMessageEvent, AssistantMessage], error)
+func Stream(ctx context.Context, model Model, msgs []Message, opts ...StreamOptions) (*core.EventStream[AssistantMessageEvent, AssistantMessage], error)
 ```
-
-**参数：**
-- `ctx` - 上下文，支持取消和超时
-- `model` - 模型配置
-- `msgs` - 消息列表
-- `opts` - 可选的流式选项
-
-**返回：**
-- `*EventStream` - 异步事件流
-- `error` - 错误信息
-
-**示例：**
-```go
-stream, err := piai.Stream(ctx, model, []piai.Message{
-    piai.UserMessage{Content: "你好"},
-}, piai.StreamOptions{
-    APIKey: "your-api-key",
-})
-
-for event := range stream.Events() {
-    switch e := event.(type) {
-    case piai.EventTextDelta:
-        fmt.Print(e.Delta)
-    case piai.EventDone:
-        fmt.Println("完成")
-    }
-}
-```
-
----
 
 ### Complete
 
-发送请求并等待完整响应。
+发送请求并等待完整响应（内部调用 Stream + Result）。
 
 ```go
 func Complete(ctx context.Context, model Model, msgs []Message, opts ...StreamOptions) (AssistantMessage, error)
 ```
 
-**参数：**
-- `ctx` - 上下文
-- `model` - 模型配置
-- `msgs` - 消息列表
-- `opts` - 可选的流式选项
-
-**返回：**
-- `AssistantMessage` - 完整的助手消息
-- `error` - 错误信息
-
-**示例：**
-```go
-msg, err := piai.Complete(ctx, model, []piai.Message{
-    piai.UserMessage{Content: "你好"},
-})
-if err != nil {
-    log.Fatal(err)
-}
-
-for _, block := range msg.Content {
-    if text, ok := block.(piai.TextContent); ok {
-        fmt.Println(text.Text)
-    }
-}
-```
-
----
-
 ### StreamSimple
 
-使用简化选项创建流式请求。
+使用简化选项（含推理深度）创建流式请求。
 
 ```go
-func StreamSimple(ctx context.Context, model Model, msgs []Message, opts ...SimpleStreamOptions) (*EventStream[AssistantMessageEvent, AssistantMessage], error)
+func StreamSimple(ctx context.Context, model Model, msgs []Message, opts ...SimpleStreamOptions) (*core.EventStream[AssistantMessageEvent, AssistantMessage], error)
 ```
 
-**参数：**
-- `ctx` - 上下文
-- `model` - 模型配置
-- `msgs` - 消息列表
-- `opts` - 简化选项（包含推理深度等）
+### StreamSimpleWithContext
 
-**示例：**
+使用完整 Context（含 system prompt 和 tools）创建流式请求。
+
 ```go
-stream, err := piai.StreamSimple(ctx, model, messages, piai.SimpleStreamOptions{
-    Reasoning: piai.ThinkingMedium,
-    StreamOptions: piai.StreamOptions{
-        APIKey: "your-api-key",
-    },
-})
+func StreamSimpleWithContext(ctx context.Context, model Model, llmCtx Context, opts ...SimpleStreamOptions) (*core.EventStream[AssistantMessageEvent, AssistantMessage], error)
 ```
-
----
 
 ### CompleteSimple
 
-使用简化选项发送请求并等待完整响应。
+简化选项 + 等待完整响应。
 
 ```go
 func CompleteSimple(ctx context.Context, model Model, msgs []Message, opts ...SimpleStreamOptions) (AssistantMessage, error)
 ```
-
-**示例：**
-```go
-msg, err := piai.CompleteSimple(ctx, model, []piai.Message{
-    piai.UserMessage{Content: "解释量子计算"},
-}, piai.SimpleStreamOptions{
-    Reasoning: piai.ThinkingHigh,
-})
-```
-
----
-
-## 模型注册表
-
-### GetModel
-
-根据服务商和模型 ID 获取模型配置。
-
-```go
-func GetModel(provider KnownProvider, modelID string) (Model, error)
-```
-
-**参数：**
-- `provider` - 服务商名称
-- `modelID` - 模型 ID
-
-**返回：**
-- `Model` - 模型配置
-- `error` - 如果模型不存在则返回错误
-
-**示例：**
-```go
-model, err := piai.GetModel(piai.ProviderOpenAI, "gpt-4o")
-if err != nil {
-    log.Fatal(err)
-}
-```
-
----
-
-### GetProviders
-
-获取所有已注册的服务商列表。
-
-```go
-func GetProviders() []KnownProvider
-```
-
-**返回：**
-- `[]KnownProvider` - 服务商列表
-
-**示例：**
-```go
-providers := piai.GetProviders()
-for _, p := range providers {
-    fmt.Println(p)
-}
-```
-
----
-
-### GetModels
-
-获取指定服务商的所有模型。
-
-```go
-func GetModels(provider KnownProvider) []Model
-```
-
-**参数：**
-- `provider` - 服务商名称
-
-**返回：**
-- `[]Model` - 模型列表
-
-**示例：**
-```go
-models := piai.GetModels(piai.ProviderAnthropic)
-for _, m := range models {
-    fmt.Printf("%s: %s\n", m.ID, m.Name)
-}
-```
-
----
-
-### CalculateCost
-
-计算请求费用。
-
-```go
-func CalculateCost(model Model, usage Usage) CostBreakdown
-```
-
-**参数：**
-- `model` - 模型配置（包含定价信息）
-- `usage` - Token 用量
-
-**返回：**
-- `CostBreakdown` - 费用明细
-
-**示例：**
-```go
-cost := piai.CalculateCost(model, msg.Usage)
-fmt.Printf("输入费用: $%.4f\n", cost.Input)
-fmt.Printf("输出费用: $%.4f\n", cost.Output)
-fmt.Printf("总费用: $%.4f\n", cost.Total)
-```
-
----
-
-### GetSupportedThinkingLevels
-
-获取模型支持的思考级别。
-
-```go
-func GetSupportedThinkingLevels(model Model) []ThinkingLevel
-```
-
-**参数：**
-- `model` - 模型配置
-
-**返回：**
-- `[]ThinkingLevel` - 支持的思考级别列表，如果不支持则返回 nil
-
----
-
-### ClampThinkingLevel
-
-将思考级别限制为模型支持的最接近级别。
-
-```go
-func ClampThinkingLevel(model Model, level ThinkingLevel) ThinkingLevel
-```
-
-**参数：**
-- `model` - 模型配置
-- `level` - 请求的思考级别
-
-**返回：**
-- `ThinkingLevel` - 调整后的思考级别
-
----
-
-## 服务商注册表
-
-### RegisterProvider
-
-注册 API 服务商。
-
-```go
-func RegisterProvider(api KnownAPI, provider Provider, sourceID ...string)
-```
-
-**参数：**
-- `api` - API 类型标识
-- `provider` - Provider 实现
-- `sourceID` - 可选的来源 ID，用于批量注销
-
-**示例：**
-```go
-piai.RegisterProvider(piai.APIOpenAICompletions, myProvider, "my-plugin")
-```
-
----
-
-### GetProvider
-
-获取 API 服务商。
-
-```go
-func GetProvider(api KnownAPI) (Provider, error)
-```
-
-**参数：**
-- `api` - API 类型标识
-
-**返回：**
-- `Provider` - Provider 实现
-- `error` - 如果未注册则返回错误
-
----
-
-### GetRegisteredProviders
-
-获取所有已注册的 API 类型。
-
-```go
-func GetRegisteredProviders() []KnownAPI
-```
-
----
-
-### UnregisterProviders
-
-注销指定来源的所有服务商。
-
-```go
-func UnregisterProviders(sourceID string)
-```
-
-**参数：**
-- `sourceID` - 来源 ID
-
----
-
-### ClearProviders
-
-清空所有已注册的服务商。
-
-```go
-func ClearProviders()
-```
-
----
-
-## 图像生成
 
 ### GenerateImages
 
@@ -347,415 +54,296 @@ func ClearProviders()
 func GenerateImages(ctx context.Context, model ImagesModel, msgs []Message, opts ...ImageOptions) (AssistantImages, error)
 ```
 
-**参数：**
-- `ctx` - 上下文
-- `model` - 图像模型配置
-- `msgs` - 消息列表（通常包含提示词）
-- `opts` - 图像选项
-
-**返回：**
-- `AssistantImages` - 生成的图像结果
-- `error` - 错误信息
-
-**示例：**
-```go
-imgModel, _ := piai.GetImageModel(piai.ProviderOpenRouter, "flux-pro")
-
-result, err := piai.GenerateImages(ctx, imgModel, []piai.Message{
-    piai.UserMessage{Content: "一只可爱的橘猫"},
-})
-if err != nil {
-    log.Fatal(err)
-}
-
-for i, img := range result.Output {
-    data, _ := base64.StdEncoding.DecodeString(img.Data)
-    os.WriteFile(fmt.Sprintf("image_%d.png", i), data, 0644)
-}
-```
-
 ---
 
-## OAuth 认证
+## EventStream
 
-### Login
-
-启动 OAuth 登录流程。
+泛型异步事件流。
 
 ```go
-func Login(ctx context.Context, providerID string, callbacks LoginCallbacks) (Credentials, error)
+type EventStream[T any, R any] struct { ... }
+
+func NewEventStream[T any, R any]() *EventStream[T, R]
+func (s *EventStream[T, R]) Push(event T) bool       // 推送事件，buffer 满返回 false
+func (s *EventStream[T, R]) End(result R)             // 正常结束
+func (s *EventStream[T, R]) Error(err error)          // 错误结束
+func (s *EventStream[T, R]) Stop()                    // 消费者停止
+func (s *EventStream[T, R]) Result() (R, error)       // 等待最终结果
+func (s *EventStream[T, R]) ForEach(ctx context.Context, fn func(T) error) (R, error) // 迭代事件
 ```
 
-**参数：**
-- `ctx` - 上下文
-- `providerID` - 服务商 ID（"anthropic", "github-copilot", "openai-codex"）
-- `callbacks` - 登录回调函数
-
-**返回：**
-- `Credentials` - OAuth 凭证
-- `error` - 错误信息
-
-**示例：**
+**用法**：
 ```go
-creds, err := oauth.Login(ctx, "anthropic", oauth.LoginCallbacks{
-    OnAuth: func(url string) {
-        fmt.Printf("请在浏览器中打开: %s\n", url)
-    },
-    OnProgress: func(msg string) {
-        fmt.Print(".")
-    },
-})
-```
+stream, _ := piai.StreamSimple(ctx, model, msgs)
 
----
-
-### GetAPIKey
-
-获取有效的 API Key，自动刷新过期的 token。
-
-```go
-func GetAPIKey(ctx context.Context, providerID string, credentials Credentials) (string, error)
-```
-
-**参数：**
-- `ctx` - 上下文
-- `providerID` - 服务商 ID
-- `credentials` - OAuth 凭证
-
-**返回：**
-- `string` - 有效的 API Key
-- `error` - 错误信息
-
----
-
-### List
-
-列出所有已注册的 OAuth 服务商。
-
-```go
-func List() []string
-```
-
-**返回：**
-- `[]string` - 服务商 ID 列表
-
----
-
-## 工具包
-
-### EventStream
-
-异步事件流，基于 Go channel 实现。
-
-```go
-type Stream[T any, R any] struct {
-    // ...
-}
-
-// 推送事件
-func (s *Stream[T, R]) Push(event T)
-
-// 正常结束
-func (s *Stream[T, R]) End(result R)
-
-// 错误结束
-func (s *Stream[T, R]) Error(err error)
-
-// 等待结果
-func (s *Stream[T, R]) Result() (R, error)
-
-// 迭代事件
-func (s *Stream[T, R]) ForEach(ctx context.Context, fn func(T) error) (R, error)
-```
-
-**示例：**
-```go
-stream := piai.NewEventStream[string, int]()
-
-go func() {
-    stream.Push("hello")
-    stream.Push("world")
-    stream.End(42)
-}()
-
-result, err := stream.ForEach(ctx, func(s string) error {
-    fmt.Println(s)
+// 方式一：ForEach（推荐）
+result, err := stream.ForEach(ctx, func(evt piai.AssistantMessageEvent) error {
+    if e, ok := evt.(piai.EventTextDelta); ok {
+        fmt.Print(e.Delta)
+    }
     return nil
 })
-// result = 42
+
+// 方式二：手动迭代
+for evt := range stream.Events() {
+    // 处理事件
+}
+result, err := stream.Result()
 ```
 
 ---
 
-### ParseJson
+## 流式事件类型
 
-JSON 修复解析，处理不完整的 JSON。
+| 事件 | 说明 | 关键字段 |
+|------|------|---------|
+| `EventStart` | 流开始 | API, Provider, Model |
+| `EventTextStart` | 文本块开始 | — |
+| `EventTextDelta` | 文本增量 | Delta |
+| `EventTextEnd` | 文本块结束 | TextSignature |
+| `EventThinkingStart` | 思考块开始 | — |
+| `EventThinkingDelta` | 思考增量 | Delta |
+| `EventThinkingEnd` | 思考块结束 | ThinkingSignature |
+| `EventToolCallStart` | 工具调用开始 | ID, Name |
+| `EventToolCallDelta` | 工具参数增量 | ID, ArgumentsDelta |
+| `EventToolCallEnd` | 工具调用结束 | ID, Arguments |
+| `EventDone` | 流完成 | Message |
+| `EventError` | 流错误 | Error |
+
+---
+
+## Model 注册表
 
 ```go
-func Parse[T any](data string) (T, error)
-func Streaming[T any](partial string) (T, bool)
-```
-
-**示例：**
-```go
-// 解析不完整的 JSON
-result, ok := jsonparse.Streaming[map[string]string](`{"name":"test","value":`)
-// ok = true, result = {"name": "test"}
+func LoadModels(models map[KnownProvider]map[string]Model)
+func GetModel(provider KnownProvider, modelID string) (Model, error)
+func GetProviders() []KnownProvider
+func GetModels(provider KnownProvider) []Model
+func ModelsAreEqual(a, b Model) bool
 ```
 
 ---
 
-### ValidateToolCall
-
-验证工具调用参数。
+## Provider 注册表
 
 ```go
-func ValidateToolCall(tools []ToolDef, call ToolCall) (*ToolDef, ValidationResult)
-```
-
-**参数：**
-- `tools` - 工具定义列表
-- `call` - 工具调用
-
-**返回：**
-- `*ToolDef` - 匹配的工具定义
-- `ValidationResult` - 验证结果
-
----
-
-### IsOverflow
-
-检测上下文溢出。
-
-```go
-func IsOverflow(errMsg string, contextWindow int, usage int) bool
-```
-
-**参数：**
-- `errMsg` - 错误消息
-- `contextWindow` - 上下文窗口大小
-- `usage` - 当前 usage
-
-**返回：**
-- `bool` - 是否溢出
-
----
-
-## 类型定义
-
-### KnownAPI
-
-```go
-type KnownAPI string
-
-const (
-    APIOpenAICompletions    KnownAPI = "openai-completions"
-    APIAnthropicMessages    KnownAPI = "anthropic-messages"
-    APIBedrockConverse      KnownAPI = "bedrock-converse-stream"
-    APIOpenAIResponses      KnownAPI = "openai-responses"
-    APIAzureOpenAIResponses KnownAPI = "azure-openai-responses"
-    APIOpenAICodexResponses KnownAPI = "openai-codex-responses"
-    APIGoogleGenerative     KnownAPI = "google-generative"
-    APIGoogleVertex         KnownAPI = "google-vertex"
-    APIMistralConversations KnownAPI = "mistral-conversations"
-)
+func RegisterProvider(api KnownAPI, provider APIProvider, sourceID ...string)
+func GetProvider(api KnownAPI) (APIProvider, error)
+func GetRegisteredProviders() []KnownAPI
+func UnregisterProviders(sourceID string)
+func ClearProviders()
 ```
 
 ---
 
-### KnownProvider
+## 工具函数
 
 ```go
-type KnownProvider string
-
-const (
-    ProviderAnthropic     KnownProvider = "anthropic"
-    ProviderOpenAI        KnownProvider = "openai"
-    ProviderAmazonBedrock KnownProvider = "amazon-bedrock"
-    ProviderGoogle        KnownProvider = "google"
-    ProviderGoogleVertex  KnownProvider = "google-vertex"
-    ProviderMistral       KnownProvider = "mistral"
-    ProviderAzureOpenAI   KnownProvider = "azure-openai"
-    ProviderOpenAICodex   KnownProvider = "openai-codex"
-    ProviderGitHubCopilot KnownProvider = "github-copilot"
-    ProviderOpenRouter    KnownProvider = "openrouter"
-    ProviderDeepSeek      KnownProvider = "deepseek"
-    // ... 更多服务商
-)
+func CalculateCost(model Model, usage Usage) CostBreakdown
+func ResolveAPIKey(provider KnownProvider, optsKey string) string
+func ResolveBaseURL(model Model, defaultURL string) string
+func GetEnvAPIKey(provider KnownProvider) string
+func ClampThinkingLevel(model Model, level ThinkingLevel) ThinkingLevel
+func GetSupportedThinkingLevels(model Model) []ThinkingLevel
 ```
 
 ---
 
-### ThinkingLevel
+## 核心类型
+
+### Model
 
 ```go
-type ThinkingLevel string
-
-const (
-    ThinkingMinimal ThinkingLevel = "minimal"
-    ThinkingLow     ThinkingLevel = "low"
-    ThinkingMedium  ThinkingLevel = "medium"
-    ThinkingHigh    ThinkingLevel = "high"
-    ThinkingXHigh   ThinkingLevel = "xhigh"
-)
+type Model struct {
+    ID               string            // 模型 ID
+    API              KnownAPI          // API 协议
+    Provider         KnownProvider     // 服务商
+    BaseURL          string            // 自定义 Base URL
+    Reasoning        bool              // 是否支持推理
+    ThinkingLevelMap map[string]string  // 思考级别映射
+    Input            []Modality        // 输入模态
+    Cost             Cost              // 定价（每百万 token）
+    ContextWindow    int               // 上下文窗口
+    MaxTokens        int               // 最大输出 token
+    Headers          map[string]string // 自定义请求头
+    Compat           *Compat           // 兼容性配置
+}
 ```
 
----
-
-### StopReason
+### Message 类型
 
 ```go
-type StopReason string
+// 用户消息
+type UserMessage struct {
+    Role      string    // "user"
+    Content   any       // string 或 []ContentBlock
+    Timestamp time.Time
+}
 
-const (
-    StopStop    StopReason = "stop"     // 正常停止
-    StopLength  StopReason = "length"   // 达到最大长度
-    StopToolUse StopReason = "toolUse"  // 工具调用
-    StopError   StopReason = "error"    // 错误
-    StopAborted StopReason = "aborted"  // 中止
-)
+// 助手消息
+type AssistantMessage struct {
+    Role       string
+    Content    []ContentBlock
+    API        KnownAPI
+    Provider   KnownProvider
+    Model      string
+    Usage      Usage
+    StopReason StopReason
+    Timestamp  time.Time
+}
+
+// 工具结果消息
+type ToolResultMessage struct {
+    Role       string
+    ToolCallID string
+    ToolName   string
+    Content    []ContentBlock
+    IsError    bool
+    Timestamp  time.Time
+}
 ```
 
----
-
-### Modality
+### ContentBlock 类型
 
 ```go
-type Modality string
-
-const (
-    ModalityText  Modality = "text"   // 文本
-    ModalityImage Modality = "image"  // 图像
-    ModalityAudio Modality = "audio"  // 音频
-)
+type TextContent struct { Type, Text, TextSignature string }
+type ThinkingContent struct { Type, Thinking, ThinkingSignature string }
+type ImageContent struct { Type, Data, MimeType string }
+type ToolCall struct { Type, ID, Name string; Arguments json.RawMessage }
 ```
-
----
-
-### CacheRetention
-
-```go
-type CacheRetention string
-
-const (
-    CacheNone  CacheRetention = "none"   // 不缓存
-    CacheShort CacheRetention = "short"  // 短期缓存
-    CacheLong  CacheRetention = "long"   // 长期缓存
-)
-```
-
----
-
-### Transport
-
-```go
-type Transport string
-
-const (
-    TransportSSE       Transport = "sse"        // Server-Sent Events
-    TransportWebSocket Transport = "websocket"   // WebSocket
-    TransportAuto      Transport = "auto"        // 自动选择
-)
-```
-
----
 
 ### StreamOptions
 
 ```go
 type StreamOptions struct {
-    Temperature     *float64          // 温度参数
-    MaxTokens       *int              // 最大输出 token
-    Signal          <-chan struct{}    // 取消信号
-    APIKey          string            // API Key
-    Transport       Transport         // 传输方式
-    CacheRetention  CacheRetention    // 缓存策略
-    SessionID       string            // 会话 ID
-    OnPayload       func(any)         // 请求体回调
-    OnResponse      func(any)         // 响应回调
-    Headers         map[string]string // 自定义请求头
-    TimeoutMs       int               // 超时时间（毫秒）
-    MaxRetries      int               // 最大重试次数
-    MaxRetryDelayMs int               // 最大重试延迟（毫秒）
-    Metadata        map[string]any    // 元数据
+    Temperature *float64
+    MaxTokens   *int
+    APIKey      string
+    Headers     map[string]string
+    OnPayload   func(any)    // 请求体回调
+    OnResponse  func(any)    // 响应回调
+    // ...
 }
-```
 
----
-
-### SimpleStreamOptions
-
-```go
 type SimpleStreamOptions struct {
-    StreamOptions                   // 嵌入基础选项
+    StreamOptions
     Reasoning       ThinkingLevel   // 推理深度
-    ThinkingBudgets map[string]int  // 自定义思考预算
+    ThinkingBudgets map[string]int  // 自定义预算
 }
 ```
 
----
-
-### Usage
+### 常量
 
 ```go
-type Usage struct {
-    Input       int           // 输入 token 数
-    Output      int           // 输出 token 数
-    CacheRead   int           // 缓存读取 token 数
-    CacheWrite  int           // 缓存写入 token 数
-    TotalTokens int           // 总 token 数
-    Cost        CostBreakdown // 费用明细
-}
+// 推理深度
+ThinkingMinimal / ThinkingLow / ThinkingMedium / ThinkingHigh / ThinkingXHigh
+
+// 停止原因
+StopStop / StopLength / StopToolUse / StopError / StopAborted
+
+// 输入模态
+ModalityText / ModalityImage / ModalityAudio
 ```
 
 ---
 
-### CostBreakdown
+## Agent API
 
 ```go
-type CostBreakdown struct {
-    Input      float64 // 输入费用
-    Output     float64 // 输出费用
-    CacheRead  float64 // 缓存读取费用
-    CacheWrite float64 // 缓存写入费用
-    Total      float64 // 总费用
+// 创建 Agent
+agent.New(opts AgentOptions) *Agent
+
+// 运行
+agent.Run(ctx context.Context, prompts ...Message) ([]Message, error)
+agent.RunContinue(ctx context.Context) ([]Message, error)
+
+// 控制
+agent.Abort()
+agent.SetTools(tools []AgentTool)
+agent.SetModel(model Model)
+agent.SetSystemPrompt(prompt string)
+agent.Subscribe(fn func(AgentEvent))
+agent.Steering(msgs ...Message)   // 注入当前轮
+agent.FollowUp(msgs ...Message)   // 注入下一轮
+```
+
+### AgentTool
+
+```go
+type AgentTool struct {
+    Name         string
+    Description  string
+    Parameters   json.RawMessage
+    Execute      ToolExecuteFunc
+    ExecutionMode ToolExecutionMode  // "parallel" 或 "sequential"
 }
+```
+
+### Agent 事件
+
+| 事件 | 说明 |
+|------|------|
+| `EventAgentStart` | Agent 开始 |
+| `EventTurnStart` / `EventTurnEnd` | 轮次开始/结束 |
+| `EventMessageStart` / `EventMessageUpdate` / `EventMessageEnd` | 消息流式更新 |
+| `EventToolExecStart` / `EventToolExecUpdate` / `EventToolExecEnd` | 工具执行生命周期 |
+
+---
+
+## OAuth
+
+```go
+import "pi-ai-go/utils/oauth"
+
+// 登录
+provider, _ := oauth.Get("anthropic")
+creds, err := provider.Login(ctx, oauth.LoginCallbacks{
+    OnAuth: func(url string) { ... },
+    OnDeviceCode: func(code, uri string) { ... },
+})
+
+// 刷新
+apiKey, err := oauth.GetAPIKey(ctx, "anthropic", creds)
+
+// 列出
+providers := oauth.List()
 ```
 
 ---
 
-## 常量定义
+## 工具包
 
-### API 类型
+### jsonparse — JSON 修复解析
 
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `APIOpenAICompletions` | `"openai-completions"` | OpenAI Chat Completions API |
-| `APIAnthropicMessages` | `"anthropic-messages"` | Anthropic Messages API |
-| `APIBedrockConverse` | `"bedrock-converse-stream"` | Amazon Bedrock Converse Stream API |
-| `APIOpenAIResponses` | `"openai-responses"` | OpenAI Responses API |
-| `APIAzureOpenAIResponses` | `"azure-openai-responses"` | Azure OpenAI Responses API |
-| `APIOpenAICodexResponses` | `"openai-codex-responses"` | OpenAI Codex Responses API |
-| `APIGoogleGenerative` | `"google-generative"` | Google Generative AI API |
-| `APIGoogleVertex` | `"google-vertex"` | Google Vertex AI API |
-| `APIMistralConversations` | `"mistral-conversations"` | Mistral Conversations API |
+```go
+import "pi-ai-go/utils/jsonparse"
 
-### 服务商
+result, err := jsonparse.Parse[map[string]any](data)       // 修复 + 解析
+result, ok := jsonparse.Streaming[map[string]any](partial)  // 流式部分解析
+```
 
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `ProviderAnthropic` | `"anthropic"` | Anthropic |
-| `ProviderOpenAI` | `"openai"` | OpenAI |
-| `ProviderAmazonBedrock` | `"amazon-bedrock"` | Amazon Bedrock |
-| `ProviderGoogle` | `"google"` | Google |
-| `ProviderGoogleVertex` | `"google-vertex"` | Google Vertex AI |
-| `ProviderMistral` | `"mistral"` | Mistral AI |
-| `ProviderAzureOpenAI` | `"azure-openai"` | Azure OpenAI |
-| `ProviderOpenAICodex` | `"openai-codex"` | OpenAI Codex |
-| `ProviderGitHubCopilot` | `"github-copilot"` | GitHub Copilot |
-| `ProviderOpenRouter` | `"openrouter"` | OpenRouter |
-| `ProviderDeepSeek` | `"deepseek"` | DeepSeek |
-| `ProviderFireworks` | `"fireworks"` | Fireworks |
-| `ProviderTogether` | `"together"` | Together AI |
-| `ProviderGroq` | `"groq"` | Groq |
-| `ProviderXAI` | `"xai"` | xAI |
+### validation — 工具调用校验
+
+```go
+import "pi-ai-go/utils/validation"
+
+tool, result := validation.ValidateToolCall(tools, call)
+```
+
+### overflow — Context 溢出检测
+
+```go
+import "pi-ai-go/utils/overflow"
+
+if overflow.IsOverflow(errMsg, contextWindow, usage) {
+    // 上下文溢出，需要裁剪消息
+}
+```
+
+### sanitize — Unicode 清理
+
+```go
+import "pi-ai-go/utils/sanitize"
+
+clean := sanitize.Surrogates(text) // 移除无效 UTF-8
+```

@@ -1,9 +1,10 @@
 package openai
 
 import (
+	"context"
 	"fmt"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // CodexOptions holds OpenAI Codex-specific options.
@@ -22,25 +23,25 @@ func NewCodex() *CodexProvider {
 	return &CodexProvider{}
 }
 
-func (p *CodexProvider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamCodex(model, ctx, opts, CodexOptions{})
+func (p *CodexProvider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamCodex(ctx, model, llmCtx, opts, CodexOptions{})
 }
 
-func (p *CodexProvider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *CodexProvider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	codexOpts := CodexOptions{}
 	if opts.Reasoning != "" {
-		codexOpts.ReasoningEffort = string(clampReasoning(opts.Reasoning))
+		codexOpts.ReasoningEffort = string(clampEffort(opts.Reasoning))
 	}
-	return streamCodex(model, ctx, opts.StreamOptions, codexOpts)
+	return streamCodex(ctx, model, llmCtx, opts.StreamOptions, codexOpts)
 }
 
-func streamCodex(model piai.Model, c piai.Context, opts piai.StreamOptions, codexOpts CodexOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamCodex(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, codexOpts CodexOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 	if apiKey == "" {
 		return nil, fmt.Errorf("openai-codex: no API key provided")
 	}
 
-	baseURL := piai.ResolveBaseURL(model, "https://api.openai.com/v1")
+	baseURL := core.ResolveBaseURL(model, "https://api.openai.com/v1")
 
 	// Build body with Codex-specific options
 	body, err := buildResponsesBody(model, c, opts, ResponsesOptions{
@@ -62,7 +63,7 @@ func streamCodex(model piai.Model, c piai.Context, opts piai.StreamOptions, code
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -71,7 +72,7 @@ func streamCodex(model piai.Model, c piai.Context, opts piai.StreamOptions, code
 			}
 		}()
 
-		msg, err := doResponsesStream(baseURL, apiKey, model, body, stream, opts)
+		msg, err := doResponsesStream(ctx, baseURL, apiKey, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return

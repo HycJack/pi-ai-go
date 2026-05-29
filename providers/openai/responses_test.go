@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestResponsesStreamNoAPIKey(t *testing.T) {
 		Provider: piai.ProviderOpenAI,
 	}
 
-	_, err := p.Stream(model, piai.Context{}, piai.StreamOptions{})
+	_, err := p.Stream(context.Background(), model, piai.Context{}, piai.StreamOptions{})
 	if err == nil {
 		t.Error("expected error for missing API key")
 	}

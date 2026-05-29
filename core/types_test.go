@@ -1,4 +1,4 @@
-package piai
+package core
 
 import (
 	"encoding/json"

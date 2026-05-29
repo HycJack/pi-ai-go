@@ -2,6 +2,7 @@ package google
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // VertexOptions holds Google Vertex AI-specific options.
@@ -28,11 +29,11 @@ func NewVertex() *VertexProvider {
 	return &VertexProvider{}
 }
 
-func (p *VertexProvider) Stream(model piai.Model, ctx piai.Context, opts piai.StreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	return streamVertex(model, ctx, opts, VertexOptions{})
+func (p *VertexProvider) Stream(ctx context.Context, model core.Model, llmCtx core.Context, opts core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	return streamVertex(ctx, model, llmCtx, opts, VertexOptions{})
 }
 
-func (p *VertexProvider) StreamSimple(model piai.Model, ctx piai.Context, opts piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
+func (p *VertexProvider) StreamSimple(ctx context.Context, model core.Model, llmCtx core.Context, opts core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	vertexOpts := VertexOptions{}
 	if opts.Reasoning != "" {
 		vertexOpts.Thinking = &ThinkingConfig{
@@ -45,11 +46,11 @@ func (p *VertexProvider) StreamSimple(model piai.Model, ctx piai.Context, opts p
 			}
 		}
 	}
-	return streamVertex(model, ctx, opts.StreamOptions, vertexOpts)
+	return streamVertex(ctx, model, llmCtx, opts.StreamOptions, vertexOpts)
 }
 
-func streamVertex(model piai.Model, c piai.Context, opts piai.StreamOptions, vertexOpts VertexOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-	apiKey := piai.ResolveAPIKey(model.Provider, opts.APIKey)
+func streamVertex(ctx context.Context, model core.Model, c core.Context, opts core.StreamOptions, vertexOpts VertexOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+	apiKey := core.ResolveAPIKey(model.Provider, opts.APIKey)
 
 	project := vertexOpts.Project
 	if project == "" {
@@ -80,7 +81,7 @@ func streamVertex(model piai.Model, c piai.Context, opts piai.StreamOptions, ver
 		opts.OnPayload(body)
 	}
 
-	stream := piai.NewEventStream[piai.AssistantMessageEvent, piai.AssistantMessage]()
+	stream := core.NewEventStream[core.AssistantMessageEvent, core.AssistantMessage]()
 
 	go func() {
 		defer func() {
@@ -90,7 +91,7 @@ func streamVertex(model piai.Model, c piai.Context, opts piai.StreamOptions, ver
 		}()
 
 		baseURL := fmt.Sprintf("https://%s-aiplatform.googleapis.com", location)
-		msg, err := doVertexStream(baseURL, apiKey, project, location, model, body, stream, opts)
+		msg, err := doVertexStream(ctx, baseURL, apiKey, project, location, model, body, stream, opts)
 		if err != nil {
 			stream.Error(err)
 			return
@@ -101,10 +102,10 @@ func streamVertex(model piai.Model, c piai.Context, opts piai.StreamOptions, ver
 	return stream, nil
 }
 
-func doVertexStream(baseURL, apiKey, project, location string, model piai.Model, body map[string]any, stream *piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], opts piai.StreamOptions) (piai.AssistantMessage, error) {
+func doVertexStream(ctx context.Context, baseURL, apiKey, project, location string, model core.Model, body map[string]any, stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], opts core.StreamOptions) (core.AssistantMessage, error) {
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	// Vertex AI uses a different URL pattern than Google AI
@@ -115,9 +116,9 @@ func doVertexStream(baseURL, apiKey, project, location string, model piai.Model,
 		url += "&key=" + apiKey
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -132,13 +133,13 @@ func doVertexStream(baseURL, apiKey, project, location string, model piai.Model,
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		return piai.AssistantMessage{}, fmt.Errorf("google-vertex: API error %d: %s", resp.StatusCode, string(errBody))
+		return core.AssistantMessage{}, fmt.Errorf("google-vertex: API error %d: %s", resp.StatusCode, string(errBody))
 	}
 
 	return processGoogleSSE(resp.Body, stream, model, opts)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
 )
 
 // ToolExecutionMode controls how tools are executed.
@@ -27,7 +27,7 @@ func (EventAgentStart) agentEventTag() {}
 
 // EventAgentEnd signals the end of an agent run with final messages.
 type EventAgentEnd struct {
-	Messages []piai.Message
+	Messages []core.Message
 }
 
 func (EventAgentEnd) agentEventTag() {}
@@ -39,30 +39,30 @@ func (EventTurnStart) agentEventTag() {}
 
 // EventTurnEnd signals the end of a turn.
 type EventTurnEnd struct {
-	Message     piai.AssistantMessage
-	ToolResults []piai.ToolResultMessage
+	Message     core.AssistantMessage
+	ToolResults []core.ToolResultMessage
 }
 
 func (EventTurnEnd) agentEventTag() {}
 
 // EventMessageStart signals the start of an assistant message stream.
 type EventMessageStart struct {
-	Message piai.AssistantMessage
+	Message core.AssistantMessage
 }
 
 func (EventMessageStart) agentEventTag() {}
 
 // EventMessageUpdate signals a delta in the assistant message stream.
 type EventMessageUpdate struct {
-	Message        piai.AssistantMessage
-	AssistantEvent piai.AssistantMessageEvent
+	Message        core.AssistantMessage
+	AssistantEvent core.AssistantMessageEvent
 }
 
 func (EventMessageUpdate) agentEventTag() {}
 
 // EventMessageEnd signals the end of an assistant message stream.
 type EventMessageEnd struct {
-	Message piai.AssistantMessage
+	Message core.AssistantMessage
 }
 
 func (EventMessageEnd) agentEventTag() {}
@@ -111,7 +111,7 @@ type ToolExecuteFunc func(ctx context.Context, toolCallID string, params json.Ra
 
 // AgentToolResult is the result of a tool execution.
 type AgentToolResult struct {
-	Content   []piai.ContentBlock
+	Content   []core.ContentBlock
 	Details   json.RawMessage
 	IsError   bool
 	Terminate bool
@@ -119,10 +119,10 @@ type AgentToolResult struct {
 
 // BeforeToolCallContext is passed to the beforeToolCall hook.
 type BeforeToolCallContext struct {
-	AssistantMessage piai.AssistantMessage
-	ToolCall         piai.ToolCall
+	AssistantMessage core.AssistantMessage
+	ToolCall         core.ToolCall
 	Args             json.RawMessage
-	Messages         []piai.Message
+	Messages         []core.Message
 }
 
 // ToolCallBlock is returned by beforeToolCall to block execution.
@@ -133,55 +133,55 @@ type ToolCallBlock struct {
 
 // AfterToolCallContext is passed to the afterToolCall hook.
 type AfterToolCallContext struct {
-	AssistantMessage piai.AssistantMessage
-	ToolCall         piai.ToolCall
+	AssistantMessage core.AssistantMessage
+	ToolCall         core.ToolCall
 	Args             json.RawMessage
 	Result           AgentToolResult
 	IsError          bool
-	Messages         []piai.Message
+	Messages         []core.Message
 }
 
 // ToolCallOverride is returned by afterToolCall to override the result.
 type ToolCallOverride struct {
-	Content   []piai.ContentBlock
+	Content   []core.ContentBlock
 	Details   json.RawMessage
 	IsError   *bool
 	Terminate *bool
 }
 
 // StreamFn is the type for custom streaming functions.
-type StreamFn func(piai.Model, piai.Context, piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error)
+type StreamFn func(context.Context, core.Model, core.Context, core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error)
 
 // AgentLoopConfig configures the agent loop.
 type AgentLoopConfig struct {
-	piai.SimpleStreamOptions
+	core.SimpleStreamOptions
 
-	Model        piai.Model
+	Model        core.Model
 	SystemPrompt string
 	Tools        []AgentTool
 	ToolExecution ToolExecutionMode
 
 	// ConvertToLlm transforms messages before each LLM call.
 	// If nil, default conversion (filter to user/assistant/toolResult) is used.
-	ConvertToLlm func([]piai.Message) []piai.Message
+	ConvertToLlm func([]core.Message) []core.Message
 
 	// TransformContext transforms messages for context window management.
-	TransformContext func([]piai.Message) []piai.Message
+	TransformContext func([]core.Message) []core.Message
 
 	// GetApiKey resolves the API key dynamically (e.g., for expiring OAuth tokens).
 	GetApiKey func() string
 
 	// ShouldStopAfterTurn is called after each turn. Return true to stop the loop.
-	ShouldStopAfterTurn func(piai.AssistantMessage, []piai.ToolResultMessage) bool
+	ShouldStopAfterTurn func(core.AssistantMessage, []core.ToolResultMessage) bool
 
 	// PrepareNextTurn is called after each turn. Can modify config for the next turn.
-	PrepareNextTurn func(config *AgentLoopConfig, assistantMsg piai.AssistantMessage, toolResults []piai.ToolResultMessage, messages []piai.Message)
+	PrepareNextTurn func(config *AgentLoopConfig, assistantMsg core.AssistantMessage, toolResults []core.ToolResultMessage, messages []core.Message)
 
 	// GetSteeringMessages returns messages injected mid-run while tools are executing.
-	GetSteeringMessages func() []piai.Message
+	GetSteeringMessages func() []core.Message
 
 	// GetFollowUpMessages returns messages injected after the agent would otherwise stop.
-	GetFollowUpMessages func() []piai.Message
+	GetFollowUpMessages func() []core.Message
 
 	// BeforeToolCall is called before tool execution. Can block execution.
 	BeforeToolCall func(BeforeToolCallContext) *ToolCallBlock
@@ -189,7 +189,7 @@ type AgentLoopConfig struct {
 	// AfterToolCall is called after tool execution. Can override result.
 	AfterToolCall func(AfterToolCallContext) *ToolCallOverride
 
-	// StreamFn is a custom streaming function. If nil, piai.StreamSimple is used.
+	// StreamFn is a custom streaming function. If nil, core.StreamSimple is used.
 	StreamFn StreamFn
 }
 
@@ -204,11 +204,11 @@ func findTool(tools []AgentTool, name string) *AgentTool {
 }
 
 // defaultConvertToLlm filters messages to LLM-compatible types.
-func defaultConvertToLlm(msgs []piai.Message) []piai.Message {
-	result := make([]piai.Message, 0, len(msgs))
+func defaultConvertToLlm(msgs []core.Message) []core.Message {
+	result := make([]core.Message, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.(type) {
-		case piai.UserMessage, piai.AssistantMessage, piai.ToolResultMessage:
+		case core.UserMessage, core.AssistantMessage, core.ToolResultMessage:
 			result = append(result, m)
 		}
 	}
@@ -216,10 +216,10 @@ func defaultConvertToLlm(msgs []piai.Message) []piai.Message {
 }
 
 // extractToolCalls extracts tool calls from an assistant message.
-func extractToolCalls(msg piai.AssistantMessage) []piai.ToolCall {
-	var calls []piai.ToolCall
+func extractToolCalls(msg core.AssistantMessage) []core.ToolCall {
+	var calls []core.ToolCall
 	for _, block := range msg.Content {
-		if tc, ok := block.(piai.ToolCall); ok {
+		if tc, ok := block.(core.ToolCall); ok {
 			calls = append(calls, tc)
 		}
 	}
@@ -227,16 +227,16 @@ func extractToolCalls(msg piai.AssistantMessage) []piai.ToolCall {
 }
 
 // toContextMessages converts a slice of Messages to a context for LLM calls.
-func toContextMessages(msgs []piai.Message, systemPrompt string, tools []AgentTool) piai.Context {
-	llmTools := make([]piai.Tool, len(tools))
+func toContextMessages(msgs []core.Message, systemPrompt string, tools []AgentTool) core.Context {
+	llmTools := make([]core.Tool, len(tools))
 	for i, t := range tools {
-		llmTools[i] = piai.Tool{
+		llmTools[i] = core.Tool{
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  t.Parameters,
 		}
 	}
-	return piai.Context{
+	return core.Context{
 		SystemPrompt: systemPrompt,
 		Messages:     msgs,
 		Tools:        llmTools,

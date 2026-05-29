@@ -7,15 +7,16 @@ import (
 	"sync"
 	"time"
 
-	piai "pi-ai-go"
+	core "pi-ai-go/core"
+	"pi-ai-go/ai"
 )
 
 // AgentEventStream is the type alias for the agent event stream.
-type AgentEventStream = piai.EventStream[AgentEvent, []piai.Message]
+type AgentEventStream = core.EventStream[AgentEvent, []core.Message]
 
 // AgentLoop starts a new agent run with the given prompt messages.
-func AgentLoop(ctx context.Context, msgs []piai.Message, config AgentLoopConfig) *AgentEventStream {
-	stream := piai.NewEventStream[AgentEvent, []piai.Message]()
+func AgentLoop(ctx context.Context, msgs []core.Message, config AgentLoopConfig) *AgentEventStream {
+	stream := core.NewEventStream[AgentEvent, []core.Message]()
 
 	go func() {
 		defer func() {
@@ -28,13 +29,13 @@ func AgentLoop(ctx context.Context, msgs []piai.Message, config AgentLoopConfig)
 
 		// Emit message_start/message_end for prompt messages
 		for _, m := range msgs {
-			if am, ok := m.(piai.AssistantMessage); ok {
+			if am, ok := m.(core.AssistantMessage); ok {
 				stream.Push(EventMessageStart{Message: am})
 				stream.Push(EventMessageEnd{Message: am})
 			}
 		}
 
-		messages := make([]piai.Message, len(msgs))
+		messages := make([]core.Message, len(msgs))
 		copy(messages, msgs)
 
 		runLoop(ctx, config, messages, stream)
@@ -45,8 +46,8 @@ func AgentLoop(ctx context.Context, msgs []piai.Message, config AgentLoopConfig)
 
 // AgentLoopContinue resumes an agent run from existing context.
 // The last message must be a user or toolResult message.
-func AgentLoopContinue(ctx context.Context, config AgentLoopConfig, messages []piai.Message) *AgentEventStream {
-	stream := piai.NewEventStream[AgentEvent, []piai.Message]()
+func AgentLoopContinue(ctx context.Context, config AgentLoopConfig, messages []core.Message) *AgentEventStream {
+	stream := core.NewEventStream[AgentEvent, []core.Message]()
 
 	go func() {
 		defer func() {
@@ -63,7 +64,7 @@ func AgentLoopContinue(ctx context.Context, config AgentLoopConfig, messages []p
 }
 
 // runLoop implements the core two-level agent loop.
-func runLoop(ctx context.Context, config AgentLoopConfig, messages []piai.Message, stream *AgentEventStream) {
+func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Message, stream *AgentEventStream) {
 	for {
 		// Inner loop: process tool calls and steering messages
 		for {
@@ -87,9 +88,9 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []piai.Messag
 			// Stream assistant response
 			assistantMsg, err := streamAssistantResponse(ctx, config, messages, stream)
 			if err != nil {
-				errMsg := piai.AssistantMessage{
+				errMsg := core.AssistantMessage{
 					Role:         "assistant",
-					StopReason:   piai.StopError,
+					StopReason:   core.StopError,
 					ErrorMessage: err.Error(),
 				}
 				messages = append(messages, errMsg)
@@ -101,7 +102,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []piai.Messag
 			messages = append(messages, assistantMsg)
 
 			// Check for error/aborted stop reasons
-			if assistantMsg.StopReason == piai.StopError || assistantMsg.StopReason == piai.StopAborted {
+			if assistantMsg.StopReason == core.StopError || assistantMsg.StopReason == core.StopAborted {
 				stream.Push(EventTurnEnd{Message: assistantMsg})
 				stream.End(messages)
 				return
@@ -111,7 +112,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []piai.Messag
 			toolCalls := extractToolCalls(assistantMsg)
 
 			// Execute tool calls if any
-			var toolResults []piai.ToolResultMessage
+			var toolResults []core.ToolResultMessage
 			shouldTerminate := false
 			if len(toolCalls) > 0 {
 				toolResults, shouldTerminate = executeToolCalls(ctx, config, assistantMsg, toolCalls, messages, stream)
@@ -166,7 +167,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []piai.Messag
 }
 
 // streamAssistantResponse streams an LLM response and returns the final message.
-func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messages []piai.Message, stream *AgentEventStream) (piai.AssistantMessage, error) {
+func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messages []core.Message, stream *AgentEventStream) (core.AssistantMessage, error) {
 	// Transform context
 	if config.TransformContext != nil {
 		messages = config.TransformContext(messages)
@@ -197,59 +198,59 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 	// Stream response
 	streamFn := config.StreamFn
 	if streamFn == nil {
-		streamFn = func(m piai.Model, c piai.Context, o piai.SimpleStreamOptions) (*piai.EventStream[piai.AssistantMessageEvent, piai.AssistantMessage], error) {
-			return piai.StreamSimpleWithContext(ctx, m, c, o)
+		streamFn = func(ctx context.Context, m core.Model, c core.Context, o core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+			return ai.StreamSimpleWithContext(ctx, m, c, o)
 		}
 	}
 
-	llmStream, err := streamFn(config.Model, llmCtx, opts)
+	llmStream, err := streamFn(ctx, config.Model, llmCtx, opts)
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 	if llmStream == nil {
-		return piai.AssistantMessage{}, fmt.Errorf("agent: stream function returned nil stream")
+		return core.AssistantMessage{}, fmt.Errorf("agent: stream function returned nil stream")
 	}
 
 	// Partial message for streaming updates
-	var partialMsg piai.AssistantMessage
+	var partialMsg core.AssistantMessage
 	partialMsg.Role = "assistant"
 	partialMsg.Timestamp = time.Now()
 
 	stream.Push(EventMessageStart{Message: partialMsg})
 
 	// Iterate over LLM events
-	finalMsg, err := llmStream.ForEach(ctx, func(evt piai.AssistantMessageEvent) error {
+	finalMsg, err := llmStream.ForEach(ctx, func(evt core.AssistantMessageEvent) error {
 		// Update partial message based on event type
 		switch e := evt.(type) {
-		case piai.EventStart:
+		case core.EventStart:
 			partialMsg.API = e.API
 			partialMsg.Provider = e.Provider
 			partialMsg.Model = e.Model
-		case piai.EventTextDelta:
+		case core.EventTextDelta:
 			partialMsg.Content = appendOrUpdateText(partialMsg.Content, e.Delta)
-		case piai.EventThinkingDelta:
+		case core.EventThinkingDelta:
 			partialMsg.Content = appendOrUpdateThinking(partialMsg.Content, e.Delta)
-		case piai.EventToolCallStart:
-			partialMsg.Content = append(partialMsg.Content, piai.ToolCall{
+		case core.EventToolCallStart:
+			partialMsg.Content = append(partialMsg.Content, core.ToolCall{
 				Type: "toolCall",
 				ID:   e.ID,
 				Name: e.Name,
 			})
-		case piai.EventToolCallDelta:
+		case core.EventToolCallDelta:
 			partialMsg.Content = updateToolCallArgs(partialMsg.Content, e.ID, e.ArgumentsDelta)
-		case piai.EventToolCallEnd:
+		case core.EventToolCallEnd:
 			partialMsg.Content = finalizeToolCallArgs(partialMsg.Content, e.ID, e.Arguments)
-		case piai.EventTextEnd:
+		case core.EventTextEnd:
 			if e.TextSignature != "" {
 				partialMsg.Content = setTextSignature(partialMsg.Content, e.TextSignature)
 			}
-		case piai.EventThinkingEnd:
+		case core.EventThinkingEnd:
 			if e.ThinkingSignature != "" {
 				partialMsg.Content = setThinkingSignature(partialMsg.Content, e.ThinkingSignature)
 			}
-		case piai.EventDone:
+		case core.EventDone:
 			partialMsg = e.Message
-		case piai.EventError:
+		case core.EventError:
 			return e.Error
 		}
 
@@ -260,7 +261,7 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 		return nil
 	})
 	if err != nil {
-		return piai.AssistantMessage{}, err
+		return core.AssistantMessage{}, err
 	}
 
 	stream.Push(EventMessageEnd{Message: finalMsg})
@@ -269,7 +270,7 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 
 // executeToolCalls executes tool calls and returns the results.
 // The second return value indicates if any tool requested termination.
-func executeToolCalls(ctx context.Context, config AgentLoopConfig, assistantMsg piai.AssistantMessage, toolCalls []piai.ToolCall, messages []piai.Message, stream *AgentEventStream) ([]piai.ToolResultMessage, bool) {
+func executeToolCalls(ctx context.Context, config AgentLoopConfig, assistantMsg core.AssistantMessage, toolCalls []core.ToolCall, messages []core.Message, stream *AgentEventStream) ([]core.ToolResultMessage, bool) {
 	// Determine execution mode
 	mode := config.ToolExecution
 	if mode == "" {
@@ -290,8 +291,8 @@ func executeToolCalls(ctx context.Context, config AgentLoopConfig, assistantMsg 
 }
 
 // executeToolCallsSequential executes tool calls one by one.
-func executeToolCallsSequential(ctx context.Context, config AgentLoopConfig, assistantMsg piai.AssistantMessage, toolCalls []piai.ToolCall, messages []piai.Message, stream *AgentEventStream) ([]piai.ToolResultMessage, bool) {
-	var results []piai.ToolResultMessage
+func executeToolCallsSequential(ctx context.Context, config AgentLoopConfig, assistantMsg core.AssistantMessage, toolCalls []core.ToolCall, messages []core.Message, stream *AgentEventStream) ([]core.ToolResultMessage, bool) {
+	var results []core.ToolResultMessage
 	shouldTerminate := false
 
 	for _, tc := range toolCalls {
@@ -311,20 +312,20 @@ func executeToolCallsSequential(ctx context.Context, config AgentLoopConfig, ass
 }
 
 // executeToolCallsParallel executes tool calls concurrently.
-func executeToolCallsParallel(ctx context.Context, config AgentLoopConfig, assistantMsg piai.AssistantMessage, toolCalls []piai.ToolCall, messages []piai.Message, stream *AgentEventStream) ([]piai.ToolResultMessage, bool) {
+func executeToolCallsParallel(ctx context.Context, config AgentLoopConfig, assistantMsg core.AssistantMessage, toolCalls []core.ToolCall, messages []core.Message, stream *AgentEventStream) ([]core.ToolResultMessage, bool) {
 	type indexedResult struct {
 		index     int
-		result    piai.ToolResultMessage
+		result    core.ToolResultMessage
 		terminate bool
 	}
 
-	results := make([]piai.ToolResultMessage, len(toolCalls))
+	results := make([]core.ToolResultMessage, len(toolCalls))
 	var wg sync.WaitGroup
 	ch := make(chan indexedResult, len(toolCalls))
 
 	for i, tc := range toolCalls {
 		wg.Add(1)
-		go func(idx int, toolCall piai.ToolCall) {
+		go func(idx int, toolCall core.ToolCall) {
 			defer wg.Done()
 			if ctx.Err() != nil {
 				return
@@ -351,7 +352,7 @@ func executeToolCallsParallel(ctx context.Context, config AgentLoopConfig, assis
 }
 
 // executeSingleToolCall executes a single tool call through the full lifecycle.
-func executeSingleToolCall(ctx context.Context, config AgentLoopConfig, assistantMsg piai.AssistantMessage, tc piai.ToolCall, messages []piai.Message, stream *AgentEventStream) (AgentToolResult, piai.ToolResultMessage) {
+func executeSingleToolCall(ctx context.Context, config AgentLoopConfig, assistantMsg core.AssistantMessage, tc core.ToolCall, messages []core.Message, stream *AgentEventStream) (AgentToolResult, core.ToolResultMessage) {
 	stream.Push(EventToolExecStart{
 		ToolCallID: tc.ID,
 		ToolName:   tc.Name,
@@ -374,7 +375,7 @@ func executeSingleToolCall(ctx context.Context, config AgentLoopConfig, assistan
 	})
 
 	// Build tool result message
-	resultMsg := piai.ToolResultMessage{
+	resultMsg := core.ToolResultMessage{
 		Role:       "tool",
 		ToolCallID: tc.ID,
 		ToolName:   tc.Name,
@@ -386,11 +387,11 @@ func executeSingleToolCall(ctx context.Context, config AgentLoopConfig, assistan
 }
 
 // prepareAndExecuteToolCall validates args and executes the tool.
-func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assistantMsg piai.AssistantMessage, tc piai.ToolCall, messages []piai.Message, stream *AgentEventStream) (AgentToolResult, error) {
+func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assistantMsg core.AssistantMessage, tc core.ToolCall, messages []core.Message, stream *AgentEventStream) (AgentToolResult, error) {
 	tool := findTool(config.Tools, tc.Name)
 	if tool == nil {
 		return AgentToolResult{
-			Content: []piai.ContentBlock{piai.TextContent{
+			Content: []core.ContentBlock{core.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Tool not found: %s", tc.Name),
 			}},
@@ -412,7 +413,7 @@ func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assi
 				reason = "Tool execution blocked"
 			}
 			return AgentToolResult{
-				Content: []piai.ContentBlock{piai.TextContent{
+				Content: []core.ContentBlock{core.TextContent{
 					Type: "text",
 					Text: reason,
 				}},
@@ -434,7 +435,7 @@ func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assi
 	result, err := tool.Execute(ctx, tc.ID, tc.Arguments, onUpdate)
 	if err != nil {
 		return AgentToolResult{
-			Content: []piai.ContentBlock{piai.TextContent{
+			Content: []core.ContentBlock{core.TextContent{
 				Type: "text",
 				Text: fmt.Sprintf("Tool execution error: %v", err),
 			}},
@@ -446,7 +447,7 @@ func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assi
 }
 
 // finalizeToolCall applies the afterToolCall hook.
-func finalizeToolCall(config AgentLoopConfig, assistantMsg piai.AssistantMessage, tc piai.ToolCall, messages []piai.Message, result AgentToolResult) AgentToolResult {
+func finalizeToolCall(config AgentLoopConfig, assistantMsg core.AssistantMessage, tc core.ToolCall, messages []core.Message, result AgentToolResult) AgentToolResult {
 	if config.AfterToolCall == nil {
 		return result
 	}
@@ -481,11 +482,11 @@ func finalizeToolCall(config AgentLoopConfig, assistantMsg piai.AssistantMessage
 
 // --- Helper functions for content manipulation ---
 
-func appendOrUpdateText(blocks []piai.ContentBlock, delta string) []piai.ContentBlock {
+func appendOrUpdateText(blocks []core.ContentBlock, delta string) []core.ContentBlock {
 	// Find last TextContent block
 	for i := len(blocks) - 1; i >= 0; i-- {
-		if tc, ok := blocks[i].(piai.TextContent); ok {
-			blocks[i] = piai.TextContent{
+		if tc, ok := blocks[i].(core.TextContent); ok {
+			blocks[i] = core.TextContent{
 				Type:          "text",
 				Text:          tc.Text + delta,
 				TextSignature: tc.TextSignature,
@@ -493,13 +494,13 @@ func appendOrUpdateText(blocks []piai.ContentBlock, delta string) []piai.Content
 			return blocks
 		}
 	}
-	return append(blocks, piai.TextContent{Type: "text", Text: delta})
+	return append(blocks, core.TextContent{Type: "text", Text: delta})
 }
 
-func appendOrUpdateThinking(blocks []piai.ContentBlock, delta string) []piai.ContentBlock {
+func appendOrUpdateThinking(blocks []core.ContentBlock, delta string) []core.ContentBlock {
 	for i := len(blocks) - 1; i >= 0; i-- {
-		if tc, ok := blocks[i].(piai.ThinkingContent); ok {
-			blocks[i] = piai.ThinkingContent{
+		if tc, ok := blocks[i].(core.ThinkingContent); ok {
+			blocks[i] = core.ThinkingContent{
 				Type:              "thinking",
 				Thinking:          tc.Thinking + delta,
 				ThinkingSignature: tc.ThinkingSignature,
@@ -507,13 +508,13 @@ func appendOrUpdateThinking(blocks []piai.ContentBlock, delta string) []piai.Con
 			return blocks
 		}
 	}
-	return append(blocks, piai.ThinkingContent{Type: "thinking", Thinking: delta})
+	return append(blocks, core.ThinkingContent{Type: "thinking", Thinking: delta})
 }
 
-func updateToolCallArgs(blocks []piai.ContentBlock, id string, delta string) []piai.ContentBlock {
+func updateToolCallArgs(blocks []core.ContentBlock, id string, delta string) []core.ContentBlock {
 	for i, block := range blocks {
-		if tc, ok := block.(piai.ToolCall); ok && tc.ID == id {
-			blocks[i] = piai.ToolCall{
+		if tc, ok := block.(core.ToolCall); ok && tc.ID == id {
+			blocks[i] = core.ToolCall{
 				Type:      "toolCall",
 				ID:        tc.ID,
 				Name:      tc.Name,
@@ -525,10 +526,10 @@ func updateToolCallArgs(blocks []piai.ContentBlock, id string, delta string) []p
 	return blocks
 }
 
-func finalizeToolCallArgs(blocks []piai.ContentBlock, id string, args json.RawMessage) []piai.ContentBlock {
+func finalizeToolCallArgs(blocks []core.ContentBlock, id string, args json.RawMessage) []core.ContentBlock {
 	for i, block := range blocks {
-		if tc, ok := block.(piai.ToolCall); ok && tc.ID == id {
-			blocks[i] = piai.ToolCall{
+		if tc, ok := block.(core.ToolCall); ok && tc.ID == id {
+			blocks[i] = core.ToolCall{
 				Type:      "toolCall",
 				ID:        tc.ID,
 				Name:      tc.Name,
@@ -540,10 +541,10 @@ func finalizeToolCallArgs(blocks []piai.ContentBlock, id string, args json.RawMe
 	return blocks
 }
 
-func setTextSignature(blocks []piai.ContentBlock, sig string) []piai.ContentBlock {
+func setTextSignature(blocks []core.ContentBlock, sig string) []core.ContentBlock {
 	for i := len(blocks) - 1; i >= 0; i-- {
-		if tc, ok := blocks[i].(piai.TextContent); ok {
-			blocks[i] = piai.TextContent{
+		if tc, ok := blocks[i].(core.TextContent); ok {
+			blocks[i] = core.TextContent{
 				Type:          "text",
 				Text:          tc.Text,
 				TextSignature: sig,
@@ -554,10 +555,10 @@ func setTextSignature(blocks []piai.ContentBlock, sig string) []piai.ContentBloc
 	return blocks
 }
 
-func setThinkingSignature(blocks []piai.ContentBlock, sig string) []piai.ContentBlock {
+func setThinkingSignature(blocks []core.ContentBlock, sig string) []core.ContentBlock {
 	for i := len(blocks) - 1; i >= 0; i-- {
-		if tc, ok := blocks[i].(piai.ThinkingContent); ok {
-			blocks[i] = piai.ThinkingContent{
+		if tc, ok := blocks[i].(core.ThinkingContent); ok {
+			blocks[i] = core.ThinkingContent{
 				Type:              "thinking",
 				Thinking:          tc.Thinking,
 				ThinkingSignature: sig,
@@ -568,8 +569,8 @@ func setThinkingSignature(blocks []piai.ContentBlock, sig string) []piai.Content
 	return blocks
 }
 
-func msgSlice(msgs []piai.ToolResultMessage) []piai.Message {
-	result := make([]piai.Message, len(msgs))
+func msgSlice(msgs []core.ToolResultMessage) []core.Message {
+	result := make([]core.Message, len(msgs))
 	for i, m := range msgs {
 		result[i] = m
 	}

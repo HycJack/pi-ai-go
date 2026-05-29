@@ -194,9 +194,6 @@ func refreshAnthropic(ctx context.Context, credentials Credentials) (Credentials
 
 func generateState() (string, error) {
 	b := make([]byte, 16)
-	if _, err := time.Now().MarshalBinary(); err == nil {
-		// Use time as seed isn't great, but we also use crypto/rand
-	}
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

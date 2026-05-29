@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"context"
 	"testing"
 
 	piai "pi-ai-go"
@@ -24,7 +25,7 @@ func TestAzureStreamNoAPIKey(t *testing.T) {
 		Provider: piai.ProviderAzureOpenAI,
 	}
 
-	_, err := p.Stream(model, piai.Context{}, piai.StreamOptions{})
+	_, err := p.Stream(context.Background(), model, piai.Context{}, piai.StreamOptions{})
 	if err == nil {
 		t.Error("expected error for missing API key")
 	}

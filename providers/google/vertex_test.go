@@ -1,6 +1,7 @@
 package google
 
 import (
+	"context"
 	"testing"
 
 	piai "pi-ai-go"
@@ -25,7 +26,7 @@ func TestVertexStreamNoProject(t *testing.T) {
 	}
 
 	// Should fail without project
-	_, err := p.Stream(model, piai.Context{}, piai.StreamOptions{
+	_, err := p.Stream(context.Background(), model, piai.Context{}, piai.StreamOptions{
 		APIKey: "test-key",
 	})
 	if err == nil {
