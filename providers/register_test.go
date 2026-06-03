@@ -18,8 +18,8 @@ func TestRegisterBuiltInProviders(t *testing.T) {
 		piai.APIOpenAICodexResponses,
 		piai.APIGoogleGenerative,
 		piai.APIGoogleVertex,
-		piai.APIBedrockConverse,
-		piai.APIMistralConversations,
+		// Bedrock and Mistral are not currently built in; they remain
+		// declared as KnownAPI for forward compatibility.
 	}
 
 	for _, expected := range expectedAPIs {

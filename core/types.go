@@ -20,6 +20,7 @@ const (
 	APIGoogleGenerative     KnownAPI = "google-generative"
 	APIGoogleVertex         KnownAPI = "google-vertex"
 	APIMistralConversations KnownAPI = "mistral-conversations"
+	OpenRouter              KnownAPI = "openrouter"
 )
 
 // KnownProvider identifies a specific AI provider.
@@ -51,6 +52,9 @@ const (
 	ProviderXiaomi        KnownProvider = "xiaomi"
 	ProviderVercelGateway KnownProvider = "vercel-ai-gateway"
 	ProviderCloudflareGW  KnownProvider = "cloudflare-ai-gateway"
+	ProviderKimi          KnownProvider = "kimi"
+	ProviderGLM           KnownProvider = "glm"
+	ProviderZAI           KnownProvider = "zai"
 )
 
 // Modality represents an input/output modality.
@@ -118,7 +122,7 @@ type Model struct {
 	Provider         KnownProvider     `json:"provider"`
 	BaseURL          string            `json:"baseUrl,omitempty"`
 	Reasoning        bool              `json:"reasoning,omitempty"`
-	ThinkingLevelMap map[string]string  `json:"thinkingLevelMap,omitempty"`
+	ThinkingLevelMap map[string]string `json:"thinkingLevelMap,omitempty"`
 	Input            []Modality        `json:"input"`
 	Cost             Cost              `json:"cost"`
 	ContextWindow    int               `json:"contextWindow"`
@@ -196,8 +200,8 @@ type UserMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func (UserMessage) messageTag()                {}
-func (m UserMessage) GetTimestamp() time.Time  { return m.Timestamp }
+func (UserMessage) messageTag()               {}
+func (m UserMessage) GetTimestamp() time.Time { return m.Timestamp }
 
 // AssistantMessage represents a model response.
 type AssistantMessage struct {
@@ -215,8 +219,8 @@ type AssistantMessage struct {
 	Timestamp     time.Time      `json:"timestamp"`
 }
 
-func (AssistantMessage) messageTag()                {}
-func (m AssistantMessage) GetTimestamp() time.Time  { return m.Timestamp }
+func (AssistantMessage) messageTag()               {}
+func (m AssistantMessage) GetTimestamp() time.Time { return m.Timestamp }
 
 // ToolResultMessage represents a tool execution result.
 type ToolResultMessage struct {
@@ -229,16 +233,16 @@ type ToolResultMessage struct {
 	Timestamp  time.Time      `json:"timestamp"`
 }
 
-func (ToolResultMessage) messageTag()                {}
-func (m ToolResultMessage) GetTimestamp() time.Time  { return m.Timestamp }
+func (ToolResultMessage) messageTag()               {}
+func (m ToolResultMessage) GetTimestamp() time.Time { return m.Timestamp }
 
 // Usage represents token usage statistics.
 type Usage struct {
-	Input       int          `json:"input"`
-	Output      int          `json:"output"`
-	CacheRead   int          `json:"cacheRead,omitempty"`
-	CacheWrite  int          `json:"cacheWrite,omitempty"`
-	TotalTokens int          `json:"totalTokens"`
+	Input       int           `json:"input"`
+	Output      int           `json:"output"`
+	CacheRead   int           `json:"cacheRead,omitempty"`
+	CacheWrite  int           `json:"cacheWrite,omitempty"`
+	TotalTokens int           `json:"totalTokens"`
 	Cost        CostBreakdown `json:"cost"`
 }
 
@@ -275,20 +279,20 @@ type Tool struct {
 
 // StreamOptions are options for streaming completions.
 type StreamOptions struct {
-	Temperature     *float64       `json:"temperature,omitempty"`
-	MaxTokens       *int           `json:"maxTokens,omitempty"`
-	Signal          <-chan struct{} `json:"-"`
-	APIKey          string         `json:"-"`
-	Transport       Transport      `json:"transport,omitempty"`
-	CacheRetention  CacheRetention `json:"cacheRetention,omitempty"`
-	SessionID       string         `json:"sessionId,omitempty"`
-	OnPayload       func(any)      `json:"-"`
-	OnResponse      func(any)      `json:"-"`
+	Temperature     *float64          `json:"temperature,omitempty"`
+	MaxTokens       *int              `json:"maxTokens,omitempty"`
+	Signal          <-chan struct{}   `json:"-"`
+	APIKey          string            `json:"-"`
+	Transport       Transport         `json:"transport,omitempty"`
+	CacheRetention  CacheRetention    `json:"cacheRetention,omitempty"`
+	SessionID       string            `json:"sessionId,omitempty"`
+	OnPayload       func(any)         `json:"-"`
+	OnResponse      func(any)         `json:"-"`
 	Headers         map[string]string `json:"-"`
-	TimeoutMs       int            `json:"timeoutMs,omitempty"`
-	MaxRetries      int            `json:"maxRetries,omitempty"`
-	MaxRetryDelayMs int            `json:"maxRetryDelayMs,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
+	TimeoutMs       int               `json:"timeoutMs,omitempty"`
+	MaxRetries      int               `json:"maxRetries,omitempty"`
+	MaxRetryDelayMs int               `json:"maxRetryDelayMs,omitempty"`
+	Metadata        map[string]any    `json:"metadata,omitempty"`
 }
 
 // SimpleStreamOptions extends StreamOptions with unified reasoning controls.
@@ -336,5 +340,5 @@ type ImageData struct {
 type ImageOptions struct {
 	APIKey  string            `json:"-"`
 	Headers map[string]string `json:"-"`
-	Signal  <-chan struct{}    `json:"-"`
+	Signal  <-chan struct{}   `json:"-"`
 }
