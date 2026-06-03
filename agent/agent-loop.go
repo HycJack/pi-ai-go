@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	core "pi-ai-go/core"
 	"pi-ai-go/ai"
+	core "pi-ai-go/core"
 )
 
 // AgentEventStream is the type alias for the agent event stream.
@@ -65,17 +65,56 @@ func AgentLoopContinue(ctx context.Context, config AgentLoopConfig, messages []c
 
 // runLoop implements the core two-level agent loop.
 func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Message, stream *AgentEventStream) {
+	// --- oh-my-pi parity wiring ---
+	yielder := config.Yielder
+	if yielder == nil {
+		yielder = NewYielder(YieldConfig{})
+	}
+	yielder.Reset()
+
+	collector := config.Collector
+	if collector == nil {
+		collector = NewRunCollector()
+	}
+
+	// Helper that finalizes a run (attach summary to the event and end
+	// the stream). Using a closure keeps the call sites uniform.
+	finalize := func() {
+		collector.MarkRunEnded()
+		summary, coverage := collector.Snapshot()
+		stream.Push(EventAgentEnd{
+			Messages: messages,
+			Summary:  &summary,
+			Coverage: &coverage,
+		})
+		stream.End(messages)
+	}
+
 	for {
 		// Inner loop: process tool calls and steering messages
 		for {
 			if ctx.Err() != nil {
-				stream.End(messages)
+				finalize()
 				return
 			}
 
-			// Inject steering messages before emitting turn_start
+			// Cooperative yield between turns.
+			if err := yielder.YieldIfDue(ctx); err != nil {
+				finalize()
+				return
+			}
+
+			// Inject steering messages before emitting turn_start.
+			// Two sources: a MessageQueue (preferred, new) or the
+			// legacy GetSteeringMessages callback.
 			hasSteering := false
-			if config.GetSteeringMessages != nil {
+			if config.Queue != nil {
+				steering := config.Queue.DrainSteering()
+				if len(steering) > 0 {
+					messages = append(messages, steering...)
+					hasSteering = true
+				}
+			} else if config.GetSteeringMessages != nil {
 				steering := config.GetSteeringMessages()
 				if len(steering) > 0 {
 					messages = append(messages, steering...)
@@ -85,9 +124,12 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 
 			stream.Push(EventTurnStart{})
 
-			// Stream assistant response
+			// Stream assistant response.
 			assistantMsg, err := streamAssistantResponse(ctx, config, messages, stream)
 			if err != nil {
+				collector.RecordError(err)
+				collector.RecordStep(config.Model)
+				collector.SetStopReason(core.StopError)
 				errMsg := core.AssistantMessage{
 					Role:         "assistant",
 					StopReason:   core.StopError,
@@ -95,16 +137,31 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 				}
 				messages = append(messages, errMsg)
 				stream.Push(EventTurnEnd{Message: errMsg})
-				stream.End(messages)
+				finalize()
 				return
 			}
 
 			messages = append(messages, assistantMsg)
+			collector.RecordStep(config.Model)
+			collector.RecordUsage(assistantMsg.Usage)
+			collector.SetStopReason(assistantMsg.StopReason)
+
+			// Context-window management: if the policy is set and
+			// the cumulative usage has crossed the soft limit, run
+			// compaction BEFORE the next tool calls fire. The hard
+			// limit forces a compaction regardless of the strategy.
+			if config.ContextPolicy != nil {
+				if newMsgs, dropped, ok := maybeCompact(ctx, &config, messages, assistantMsg.Usage, stream); ok {
+					messages = newMsgs
+					collector.SetStopReason(assistantMsg.StopReason) // unchanged
+					_ = dropped                                      // already emitted
+				}
+			}
 
 			// Check for error/aborted stop reasons
 			if assistantMsg.StopReason == core.StopError || assistantMsg.StopReason == core.StopAborted {
 				stream.Push(EventTurnEnd{Message: assistantMsg})
-				stream.End(messages)
+				finalize()
 				return
 			}
 
@@ -126,7 +183,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 
 			// If all tools requested termination, stop the loop
 			if shouldTerminate {
-				stream.End(messages)
+				finalize()
 				return
 			}
 
@@ -137,7 +194,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 
 			// Should stop after turn hook
 			if config.ShouldStopAfterTurn != nil && config.ShouldStopAfterTurn(assistantMsg, toolResults) {
-				stream.End(messages)
+				finalize()
 				return
 			}
 
@@ -148,9 +205,16 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 			// Has tool calls or had steering, continue inner loop
 		}
 
-		// Check follow-up messages (outer loop)
+		// Check follow-up messages (outer loop). Source preference is
+		// the same as for steering: Queue first, legacy callback second.
 		hasFollowUp := false
-		if config.GetFollowUpMessages != nil {
+		if config.Queue != nil {
+			followUp := config.Queue.DrainFollowUp()
+			if len(followUp) > 0 {
+				messages = append(messages, followUp...)
+				hasFollowUp = true
+			}
+		} else if config.GetFollowUpMessages != nil {
 			followUp := config.GetFollowUpMessages()
 			if len(followUp) > 0 {
 				messages = append(messages, followUp...)
@@ -159,7 +223,7 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 		}
 
 		if !hasFollowUp {
-			stream.End(messages)
+			finalize()
 			return
 		}
 		// Has follow-up, continue outer loop
@@ -265,7 +329,123 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 	}
 
 	stream.Push(EventMessageEnd{Message: finalMsg})
+
+	// Detect overflow AFTER the stream has resolved so partial usage
+	// data is still available. This catches silent-overflow cases that
+	// the provider may report with a generic 4xx and no body.
+	if sig := detectOverflowFromMessage(finalMsg, config.Model); sig != nil {
+		if config.OnOverflow != nil {
+			if hookErr := config.OnOverflow(sig); hookErr != nil {
+				return finalMsg, hookErr
+			}
+		}
+	}
 	return finalMsg, nil
+}
+
+// detectOverflowFromMessage returns a non-nil OverflowSignal when the
+// stream-final message looks like it overflowed. It uses the same
+// patterns as core.Retry's IsContextOverflowError, but additionally
+// checks the partial usage / context window pair (silent overflow).
+func detectOverflowFromMessage(msg core.AssistantMessage, model core.Model) *OverflowSignal {
+	if msg.StopReason == core.StopError && core.IsContextOverflowError(parseErrFromMessage(msg)) {
+		return &OverflowSignal{
+			Provider:      model.Provider,
+			ModelID:       model.ID,
+			ContextWindow: model.ContextWindow,
+			Usage:         msg.Usage.Input,
+			OriginalErr:   parseErrFromMessage(msg),
+			Source:        "stream",
+		}
+	}
+	// Silent overflow: usage > context window.
+	if model.ContextWindow > 0 && msg.Usage.Input > model.ContextWindow {
+		return &OverflowSignal{
+			Provider:      model.Provider,
+			ModelID:       model.ID,
+			ContextWindow: model.ContextWindow,
+			Usage:         msg.Usage.Input,
+			Source:        "silent",
+		}
+	}
+	return nil
+}
+
+func parseErrFromMessage(msg core.AssistantMessage) error {
+	if msg.ErrorMessage == "" {
+		return nil
+	}
+	return &overflowStringError{msg: msg.ErrorMessage}
+}
+
+// overflowStringError wraps a plain error message so it round-trips
+// through core.IsContextOverflowError's pattern check.
+type overflowStringError struct{ msg string }
+
+func (e *overflowStringError) Error() string { return e.msg }
+
+// maybeCompact runs the configured compaction strategy when usage
+// crosses the policy's soft or hard limit. It returns the (possibly
+// compacted) message slice, the number of messages dropped, and a
+// `ok` flag indicating whether anything was actually done.
+//
+// The function is a no-op when no ContextPolicy is set, when the model
+// has a zero context window, or when usage is below the soft limit.
+func maybeCompact(
+	ctx context.Context,
+	config *AgentLoopConfig,
+	messages []core.Message,
+	lastUsage core.Usage,
+	stream *AgentEventStream,
+) (newMsgs []core.Message, dropped int, didCompact bool) {
+	if config.ContextPolicy == nil {
+		return messages, 0, false
+	}
+	cw := NewContextWindow(config.Model, *config.ContextPolicy)
+	if cw.Effective == 0 {
+		return messages, 0, false
+	}
+	// Use the LLM-reported input as the source of truth; fall back
+	// to the local estimate if the LLM did not report usage.
+	cw.Used = lastUsage.Input
+	if cw.Used == 0 {
+		cw.Used = EstimateMessagesTokens(messages, config.Model)
+	}
+
+	if !cw.NeedsCompaction() {
+		return messages, 0, false
+	}
+
+	triggeredBy := "soft"
+	if cw.MustCompact() {
+		triggeredBy = "hard"
+	}
+	policy := *config.ContextPolicy
+	compacted, drop, err := CompactByStrategy(ctx, messages, config.Model, policy, config.SummarizeModel)
+	if err != nil || drop == 0 {
+		return messages, 0, false
+	}
+
+	tokensBefore := cw.Used
+	tokensAfter := EstimateMessagesTokens(compacted, config.Model)
+
+	stream.Push(EventCompaction{
+		Strategy:     policy.withDefaults().Strategy,
+		TokensBefore: tokensBefore,
+		TokensAfter:  tokensAfter,
+		Dropped:      drop,
+		TriggeredBy:  triggeredBy,
+	})
+	if config.OnCompaction != nil {
+		config.OnCompaction(CompactionEvent{
+			Strategy:     policy.withDefaults().Strategy,
+			TokensBefore: tokensBefore,
+			TokensAfter:  tokensAfter,
+			Dropped:      drop,
+			TriggeredBy:  triggeredBy,
+		})
+	}
+	return compacted, drop, true
 }
 
 // executeToolCalls executes tool calls and returns the results.
@@ -425,10 +605,10 @@ func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assi
 	// Execute
 	onUpdate := func(partial json.RawMessage) {
 		stream.Push(EventToolExecUpdate{
-			ToolCallID:     tc.ID,
-			ToolName:       tc.Name,
-			Args:           tc.Arguments,
-			PartialResult:  partial,
+			ToolCallID:    tc.ID,
+			ToolName:      tc.Name,
+			Args:          tc.Arguments,
+			PartialResult: partial,
 		})
 	}
 

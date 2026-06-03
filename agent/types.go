@@ -26,8 +26,15 @@ type EventAgentStart struct{}
 func (EventAgentStart) agentEventTag() {}
 
 // EventAgentEnd signals the end of an agent run with final messages.
+//
+// Summary and Coverage are populated when the AgentLoop was constructed
+// with a Collector (either via the config or via AgentLoopDetailed).
+// They are nil if the run was short-circuited before the collector was
+// attached.
 type EventAgentEnd struct {
 	Messages []core.Message
+	Summary  *AgentRunSummary
+	Coverage *AgentRunCoverage
 }
 
 func (EventAgentEnd) agentEventTag() {}
@@ -78,9 +85,9 @@ func (EventToolExecStart) agentEventTag() {}
 
 // EventToolExecUpdate signals a partial result update during tool execution.
 type EventToolExecUpdate struct {
-	ToolCallID   string
-	ToolName     string
-	Args         json.RawMessage
+	ToolCallID    string
+	ToolName      string
+	Args          json.RawMessage
 	PartialResult json.RawMessage
 }
 
@@ -94,15 +101,28 @@ type EventToolExecEnd struct {
 	IsError    bool
 }
 
+// EventCompaction signals a context-compaction operation. It is emitted
+// AFTER the messages slice has been replaced in the loop, so consumers
+// can re-render the truncated history.
+type EventCompaction struct {
+	Strategy     CompactionStrategy
+	TokensBefore int
+	TokensAfter  int
+	Dropped      int
+	TriggeredBy  string
+}
+
+func (EventCompaction) agentEventTag() {}
+
 func (EventToolExecEnd) agentEventTag() {}
 
 // AgentTool defines a tool that the agent can call.
 type AgentTool struct {
-	Name         string
-	Description  string
-	Parameters   json.RawMessage // JSON Schema
-	Label        string
-	Execute      ToolExecuteFunc
+	Name          string
+	Description   string
+	Parameters    json.RawMessage // JSON Schema
+	Label         string
+	Execute       ToolExecuteFunc
 	ExecutionMode ToolExecutionMode // "" = inherit from config
 }
 
@@ -156,9 +176,9 @@ type StreamFn func(context.Context, core.Model, core.Context, core.SimpleStreamO
 type AgentLoopConfig struct {
 	core.SimpleStreamOptions
 
-	Model        core.Model
-	SystemPrompt string
-	Tools        []AgentTool
+	Model         core.Model
+	SystemPrompt  string
+	Tools         []AgentTool
 	ToolExecution ToolExecutionMode
 
 	// ConvertToLlm transforms messages before each LLM call.
@@ -191,6 +211,65 @@ type AgentLoopConfig struct {
 
 	// StreamFn is a custom streaming function. If nil, core.StreamSimple is used.
 	StreamFn StreamFn
+
+	// --- New (oh-my-pi parity) ---
+
+	// Yielder is the cooperative-scheduling checkpoint. If nil, a
+	// default 50ms yielder is used. Callers can override it to disable
+	// yields (set Interval = math.MaxInt64) or to instrument them.
+	Yielder *Yielder
+
+	// Collector is the per-run stats collector. If nil, an internal
+	// collector is created. The agent_end event payload will include a
+	// snapshot of this collector.
+	Collector *RunCollector
+
+	// Queue controls how Steering/FollowUp messages are scheduled.
+	// If nil, the loop falls back to the legacy GetSteeringMessages /
+	// GetFollowUpMessages callbacks.
+	Queue *MessageQueue
+
+	// OnOverflow, if set, is called when the LLM stream returns an
+	// overflow error or when the agent detects silent overflow via
+	// usage. The hook is informational; it does not change the loop
+	// behavior. The loop will still surface the overflow via the
+	// assistant message (StopReason=StopError) and the event stream.
+	//
+	// Return a non-nil error to short-circuit the loop with that error.
+	OnOverflow func(*OverflowSignal) error
+
+	// OverflowHook, if set, is invoked when silent overflow is detected
+	// mid-stream. The hook is given a chance to truncate / compact the
+	// context before the next LLM call. Return a (possibly new) message
+	// slice to continue the loop, or an error to abort.
+	OverflowHook func(messages []core.Message) ([]core.Message, error)
+
+	// ContextPolicy, if non-nil, enables context-window management.
+	// The agent loop will check usage after every LLM call and trigger
+	// compaction if usage exceeds the policy's soft limit. Hard limit
+	// forces compaction before the next call.
+	ContextPolicy *ContextPolicy
+
+	// SummarizeModel, if set, is used by the "summarize" compaction
+	// strategy. Ignored when ContextPolicy.Strategy != summarize.
+	SummarizeModel *SummarizeModel
+
+	// SummarizePrompt overrides the default summarization prompt.
+	SummarizePrompt string
+
+	// OnCompaction, if set, is called after a successful compaction.
+	// It is purely observational; the loop continues with the
+	// compacted slice regardless of the return value.
+	OnCompaction func(CompactionEvent)
+}
+
+// CompactionEvent is the payload passed to AgentLoopConfig.OnCompaction.
+type CompactionEvent struct {
+	Strategy     CompactionStrategy
+	TokensBefore int
+	TokensAfter  int
+	Dropped      int
+	TriggeredBy  string // "soft" / "hard" / "overflow"
 }
 
 // findTool looks up a tool by name.
