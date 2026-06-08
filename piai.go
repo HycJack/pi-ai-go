@@ -55,6 +55,10 @@ type AssistantMessageEventStream = core.AssistantMessageEventStream
 type APIProvider = core.APIProvider
 type ImagesAPIProvider = core.ImagesAPIProvider
 
+// Version is re-exported from core so consumers of the unified facade
+// can read the package version without importing core directly.
+const Version = core.Version
+
 // ============================================================
 // Event type aliases
 // ============================================================
