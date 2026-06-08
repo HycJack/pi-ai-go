@@ -260,12 +260,6 @@ func processSSE(
 		if id, ok := chunk["id"].(string); ok && id != "" {
 			msg.ResponseID = id
 		}
-		if usage, ok := chunk["usage"].(map[string]any); ok {
-			msg.Usage.Input = int(getFloat(usage, "prompt_tokens"))
-			msg.Usage.Output = int(getFloat(usage, "completion_tokens"))
-			msg.Usage.CacheRead = int(getFloat(usage, "prompt_tokens_details.cached_tokens"))
-			msg.Usage.TotalTokens = int(getFloat(usage, "total_tokens"))
-		}
 		choices, ok := chunk["choices"].([]any)
 		if !ok || len(choices) == 0 {
 			continue
@@ -276,6 +270,44 @@ func processSSE(
 		}
 		if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
 			msg.StopReason = convert.StopReason(fr)
+			// 只有在 finish_reason 为 "stop" 时才获取 usage 信息
+			if fr == "stop" {
+				// 尝试从顶层获取 usage（标准 OpenAI 格式）
+				if usage, ok := chunk["usage"].(map[string]any); ok {
+					if promptTokens := getFloat(usage, "prompt_tokens"); promptTokens > 0 {
+						msg.Usage.Input = int(promptTokens)
+					}
+					if completionTokens := getFloat(usage, "completion_tokens"); completionTokens > 0 {
+						msg.Usage.Output = int(completionTokens)
+					}
+					if cachedTokens := getFloat(usage, "prompt_tokens_details.cached_tokens"); cachedTokens > 0 {
+						msg.Usage.CacheRead = int(cachedTokens)
+					}
+					if totalTokens := getFloat(usage, "total_tokens"); totalTokens > 0 {
+						msg.Usage.TotalTokens = int(totalTokens)
+					}
+				}
+				// 尝试从 choice 中获取 usage（Kimi 格式）
+				if msg.Usage.Input == 0 || msg.Usage.Output == 0 {
+					if choiceUsage, ok := choice["usage"].(map[string]any); ok {
+						if promptTokens := getFloat(choiceUsage, "prompt_tokens"); promptTokens > 0 {
+							msg.Usage.Input = int(promptTokens)
+						}
+						if completionTokens := getFloat(choiceUsage, "completion_tokens"); completionTokens > 0 {
+							msg.Usage.Output = int(completionTokens)
+						}
+						if cachedTokens := getFloat(choiceUsage, "cached_tokens"); cachedTokens > 0 {
+							msg.Usage.CacheRead = int(cachedTokens)
+						}
+						if cachedTokens := getFloat(choiceUsage, "prompt_tokens_details.cached_tokens"); cachedTokens > 0 {
+							msg.Usage.CacheRead = int(cachedTokens)
+						}
+						if totalTokens := getFloat(choiceUsage, "total_tokens"); totalTokens > 0 {
+							msg.Usage.TotalTokens = int(totalTokens)
+						}
+					}
+				}
+			}
 		}
 		delta, ok := choice["delta"].(map[string]any)
 		if !ok {

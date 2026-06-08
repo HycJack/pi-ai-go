@@ -116,6 +116,9 @@ const (
 	ProviderXiaomi        = core.ProviderXiaomi
 	ProviderVercelGateway = core.ProviderVercelGateway
 	ProviderCloudflareGW  = core.ProviderCloudflareGW
+	ProviderKimi          = core.ProviderKimi
+	ProviderGLM           = core.ProviderGLM
+	ProviderZAI           = core.ProviderZAI
 
 	ModalityText  = core.ModalityText
 	ModalityImage = core.ModalityImage
