@@ -1,11 +1,11 @@
-package harness
+package session
 
 import (
 	"context"
 	"fmt"
 
 	core "pi-ai-go/core"
-	"pi-ai-go/ai"
+	"pi-ai-go/llm"
 )
 
 // BranchSummaryResult holds the result of branch summarization.
@@ -24,7 +24,7 @@ func SummarizeBranch(
 	streamOpts ...core.SimpleStreamOptions,
 ) (*BranchSummaryResult, error) {
 	if len(messages) == 0 {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrInvalid,
 			Message: "no messages to summarize",
 		}
@@ -43,11 +43,11 @@ Branch:
 		opts = streamOpts
 	}
 
-	summaryMsg, err := ai.CompleteSimple(ctx, model, []core.Message{
+	summaryMsg, err := llm.CompleteSimple(ctx, model, []core.Message{
 		core.UserMessage{Content: prompt},
 	}, opts...)
 	if err != nil {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrSummarization,
 			Message: "branch summarization failed",
 			Err:     err,
@@ -56,7 +56,7 @@ Branch:
 
 	summary := extractText(summaryMsg)
 	if summary == "" {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrSummarization,
 			Message: "LLM returned empty branch summary",
 		}

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"pi-ai-go/agent"
+	core "pi-ai-go/core"
 )
 
 const globSchema = `{
@@ -24,8 +24,8 @@ const globSchema = `{
 
 // Glob returns the glob tool. It expands the pattern and returns a
 // sorted list of matching paths.
-func Glob() agent.AgentTool {
-	return agent.AgentTool{
+func Glob() core.AgentTool {
+	return core.AgentTool{
 		Name:        "glob",
 		Label:       "Glob",
 		Description: "List files matching a glob pattern (e.g. **/*.go).",
@@ -40,7 +40,7 @@ type globArgs struct {
 	Limit    int    `json:"limit"`
 }
 
-func executeGlob(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeGlob(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args globArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -102,7 +102,7 @@ func executeGlob(ctx context.Context, toolCallID string, params json.RawMessage,
 		"count":     len(matches),
 		"truncated": truncated,
 	})
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(sb.String()),
 		Details: details,
 	}, nil

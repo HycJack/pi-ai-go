@@ -7,12 +7,13 @@ import (
 	core "pi-ai-go/core"
 )
 
-// ToolExecutionMode controls how tools are executed.
-type ToolExecutionMode string
+// ToolExecutionMode is an alias for core.ToolExecutionMode.
+// || core.ToolExecutionMode 的别名，保持向后兼容
+type ToolExecutionMode = core.ToolExecutionMode
 
 const (
-	ToolExecParallel   ToolExecutionMode = "parallel"
-	ToolExecSequential ToolExecutionMode = "sequential"
+	ToolExecParallel   = core.ToolExecParallel
+	ToolExecSequential = core.ToolExecSequential
 )
 
 // AgentEvent is the interface for all agent streaming events.
@@ -116,26 +117,17 @@ func (EventCompaction) agentEventTag() {}
 
 func (EventToolExecEnd) agentEventTag() {}
 
-// AgentTool defines a tool that the agent can call.
-type AgentTool struct {
-	Name          string
-	Description   string
-	Parameters    json.RawMessage // JSON Schema
-	Label         string
-	Execute       ToolExecuteFunc
-	ExecutionMode ToolExecutionMode // "" = inherit from config
-}
+// AgentTool is an alias for core.AgentTool.
+// || core.AgentTool 的别名，保持向后兼容
+type AgentTool = core.AgentTool
 
-// ToolExecuteFunc is the function signature for tool execution.
-type ToolExecuteFunc func(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (AgentToolResult, error)
+// ToolExecuteFunc is an alias for core.ToolExecuteFunc.
+// || core.ToolExecuteFunc 的别名，保持向后兼容
+type ToolExecuteFunc = core.ToolExecuteFunc
 
-// AgentToolResult is the result of a tool execution.
-type AgentToolResult struct {
-	Content   []core.ContentBlock
-	Details   json.RawMessage
-	IsError   bool
-	Terminate bool
-}
+// AgentToolResult is an alias for core.AgentToolResult.
+// || core.AgentToolResult 的别名，保持向后兼容
+type AgentToolResult = core.AgentToolResult
 
 // BeforeToolCallContext is passed to the beforeToolCall hook.
 type BeforeToolCallContext struct {

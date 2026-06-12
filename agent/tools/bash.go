@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"time"
 
-	"pi-ai-go/agent"
+	core "pi-ai-go/core"
 )
 
 const bashSchema = `{
@@ -29,8 +29,8 @@ const DefaultBashTimeout = 30 * time.Second
 // Bash returns the bash tool. It runs a shell command and returns
 // (stdout, stderr, exitCode). On Windows the default shell is
 // cmd.exe; on macOS/Linux it is sh.
-func Bash() agent.AgentTool {
-	return agent.AgentTool{
+func Bash() core.AgentTool {
+	return core.AgentTool{
 		Name:        "bash",
 		Label:       "Bash",
 		Description: "Run a shell command and return stdout, stderr, and exit code.",
@@ -45,7 +45,7 @@ type bashArgs struct {
 	Shell   string `json:"shell"`
 }
 
-func executeBash(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeBash(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args bashArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -106,7 +106,7 @@ func executeBash(ctx context.Context, toolCallID string, params json.RawMessage,
 		"truncated": truncated,
 		"timedOut":  runCtx.Err() == context.DeadlineExceeded,
 	})
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(combined),
 		Details: details,
 		IsError: isErr,

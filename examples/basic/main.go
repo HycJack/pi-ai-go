@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"pi-ai-go/core"
-	"pi-ai-go/ai"
+	"pi-ai-go/llm"
 	_ "pi-ai-go/providers"
 )
 
@@ -76,7 +76,7 @@ func main() {
 	fmt.Printf("API: %s\n\n", baseURL)
 
 	fmt.Println("=== 测试普通请求 ===")
-	msg, err := ai.CompleteSimple(context.Background(), model, []core.Message{
+	msg, err := llm.CompleteSimple(context.Background(), model, []core.Message{
 		core.UserMessage{Content: "你好，请用一句话介绍自己"},
 	}, core.SimpleStreamOptions{
 		StreamOptions: core.StreamOptions{

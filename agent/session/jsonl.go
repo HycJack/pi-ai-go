@@ -1,4 +1,4 @@
-package harness
+package session
 
 import (
 	"encoding/json"
@@ -19,7 +19,7 @@ type JSONLStorage struct {
 func NewJSONLStorage(path string) (*JSONLStorage, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		return nil, &HarnessError{Code: ErrStorage, Message: "failed to open file", Path: path, Err: err}
+		return nil, &SessionError{Code: ErrStorage, Message: "failed to open file", Path: path, Err: err}
 	}
 	return &JSONLStorage{file: f, path: path}, nil
 }
@@ -29,14 +29,14 @@ func (j *JSONLStorage) Append(entries []SessionTreeEntry) error {
 	defer j.mu.Unlock()
 
 	if _, err := j.file.Seek(0, 2); err != nil {
-		return &HarnessError{Code: ErrStorage, Message: "seek failed", Err: err}
+		return &SessionError{Code: ErrStorage, Message: "seek failed", Err: err}
 	}
 
 	enc := json.NewEncoder(j.file)
 	for _, entry := range entries {
 		raw := entryToRaw(entry)
 		if err := enc.Encode(raw); err != nil {
-			return &HarnessError{Code: ErrStorage, Message: "write failed", Err: err}
+			return &SessionError{Code: ErrStorage, Message: "write failed", Err: err}
 		}
 	}
 	return j.file.Sync()
@@ -47,7 +47,7 @@ func (j *JSONLStorage) ReadAll() ([]SessionTreeEntry, error) {
 	defer j.mu.Unlock()
 
 	if _, err := j.file.Seek(0, 0); err != nil {
-		return nil, &HarnessError{Code: ErrStorage, Message: "seek failed", Err: err}
+		return nil, &SessionError{Code: ErrStorage, Message: "seek failed", Err: err}
 	}
 
 	var entries []SessionTreeEntry

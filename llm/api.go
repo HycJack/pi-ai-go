@@ -1,6 +1,6 @@
-// Package ai provides the AI calling layer: public streaming/completion API,
+// Package llm provides the LLM calling layer: public streaming/completion API,
 // model management, and environment variable resolution.
-package ai
+package llm
 
 import (
 	"context"

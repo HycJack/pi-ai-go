@@ -25,6 +25,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 )
@@ -400,4 +401,42 @@ type ImageOptions struct {
 	APIKey  string            `json:"-"` // API Key
 	Headers map[string]string `json:"-"` // 自定义请求头
 	Signal  <-chan struct{}   `json:"-"` // 取消信号
+}
+
+// --- Agent Tool Contract Types ---
+// These types define the shared contract between agent loops and tool
+// implementations. They live in core so that tool packages can import
+// them without depending on the agent package.
+
+// ToolExecutionMode controls how tools are executed.
+// || 控制工具执行模式
+type ToolExecutionMode string
+
+const (
+	ToolExecParallel   ToolExecutionMode = "parallel"   // 并行执行
+	ToolExecSequential ToolExecutionMode = "sequential" // 顺序执行
+)
+
+// AgentTool defines a tool that the agent can call.
+// || 定义 Agent 可调用的工具
+type AgentTool struct {
+	Name          string            `json:"name"`                    // 工具名称
+	Description   string            `json:"description,omitempty"`   // 工具描述
+	Parameters    json.RawMessage   `json:"parameters,omitempty"`    // 参数 JSON Schema
+	Label         string            `json:"label,omitempty"`         // 显示标签
+	Execute       ToolExecuteFunc   `json:"-"`                       // 执行函数
+	ExecutionMode ToolExecutionMode `json:"executionMode,omitempty"` // 执行模式（空=继承配置）
+}
+
+// ToolExecuteFunc is the function signature for tool execution.
+// || 工具执行函数签名
+type ToolExecuteFunc func(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (AgentToolResult, error)
+
+// AgentToolResult is the result of a tool execution.
+// || 工具执行结果
+type AgentToolResult struct {
+	Content   []ContentBlock    `json:"content,omitempty"`   // 结果内容
+	Details   json.RawMessage   `json:"details,omitempty"`   // 详细信息
+	IsError   bool              `json:"isError,omitempty"`   // 是否错误
+	Terminate bool              `json:"terminate,omitempty"` // 是否终止 Agent
 }

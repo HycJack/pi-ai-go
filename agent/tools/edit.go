@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"pi-ai-go/agent"
+	core "pi-ai-go/core"
 )
 
 const editSchema = `{
@@ -24,8 +24,8 @@ const editSchema = `{
 // Edit returns the edit_file tool. It performs a string replacement
 // on a file. By default only the first occurrence is replaced; set
 // allOccurrences=true to replace every match.
-func Edit() agent.AgentTool {
-	return agent.AgentTool{
+func Edit() core.AgentTool {
+	return core.AgentTool{
 		Name:        "edit_file",
 		Label:       "Edit",
 		Description: "Replace oldText with newText in a file. Default: first match only. allOccurrences=true replaces every match.",
@@ -41,7 +41,7 @@ type editArgs struct {
 	AllOccurrences bool   `json:"allOccurrences"`
 }
 
-func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args editArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -81,7 +81,7 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		"replacements": replacements,
 		"bytes":        len(out),
 	})
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(fmt.Sprintf("Edited %s (%d replacement(s))", args.FilePath, replacements)),
 		Details: details,
 	}, nil

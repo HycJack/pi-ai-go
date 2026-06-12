@@ -1,4 +1,4 @@
-package harness
+package session
 
 import (
 	"fmt"

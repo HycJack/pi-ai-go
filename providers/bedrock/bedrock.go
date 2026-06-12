@@ -333,6 +333,9 @@ func doBedrockStream(ctx context.Context, region, apiKey string, model core.Mode
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		if classified := core.ClassifyHTTPError(model.Provider, resp.StatusCode, string(bodyBytes)); classified != nil {
+			return core.AssistantMessage{}, classified
+		}
 		return core.AssistantMessage{}, fmt.Errorf("bedrock: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

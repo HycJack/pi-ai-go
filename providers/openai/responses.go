@@ -239,6 +239,9 @@ func doResponsesStream(ctx context.Context, baseURL, apiKey string, model core.M
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		if classified := core.ClassifyHTTPError(model.Provider, resp.StatusCode, string(bodyBytes)); classified != nil {
+			return core.AssistantMessage{}, classified
+		}
 		return core.AssistantMessage{}, fmt.Errorf("openai-responses: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

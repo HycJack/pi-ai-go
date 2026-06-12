@@ -308,6 +308,9 @@ func doMistralStream(ctx context.Context, baseURL, apiKey string, model core.Mod
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		if classified := core.ClassifyHTTPError(model.Provider, resp.StatusCode, string(bodyBytes)); classified != nil {
+			return core.AssistantMessage{}, classified
+		}
 		return core.AssistantMessage{}, fmt.Errorf("mistral: API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 

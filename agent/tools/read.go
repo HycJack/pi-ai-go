@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	core "pi-ai-go/core"
-	"pi-ai-go/agent"
 )
 
 const readSchema = `{
@@ -24,8 +23,8 @@ const readSchema = `{
 // Read returns the read_file tool. It reads the file at filePath and
 // returns its content. If offset and limit are set, only the
 // corresponding slice of lines is returned.
-func Read() agent.AgentTool {
-	return agent.AgentTool{
+func Read() core.AgentTool {
+	return core.AgentTool{
 		Name:        "read_file",
 		Label:       "Read",
 		Description: "Read the contents of a file. Optionally limit by offset/line.",
@@ -40,7 +39,7 @@ type readArgs struct {
 	Limit    int    `json:"limit"`
 }
 
-func executeRead(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeRead(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args readArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -87,15 +86,15 @@ func executeRead(ctx context.Context, toolCallID string, params json.RawMessage,
 		"truncated": truncated,
 	}
 	detailJSON, _ := json.Marshal(details)
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(text),
 		Details: detailJSON,
 	}, nil
 }
 
 // errResult is a tiny helper for the canonical error result shape.
-func errResult(msg string) agent.AgentToolResult {
-	return agent.AgentToolResult{
+func errResult(msg string) core.AgentToolResult {
+	return core.AgentToolResult{
 		Content: textBlock(msg),
 		IsError: true,
 	}

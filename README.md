@@ -209,37 +209,44 @@ piai.Complete(ctx, model, msgs, piai.StreamOptions{APIKey: "your-key"})
 
 ```
 pi-ai-go/
-├── piai.go                 # Facade 入口，re-export core + ai
+├── piai.go                 # Facade 入口，re-export core + llm
 │
-├── core/                   # 核心层：纯类型，零依赖
-│   ├── types.go            #   类型定义 (Message, Model, Tool, Usage...)
+├── core/                   # 核心层：纯类型 + 工具契约，零依赖
+│   ├── types.go            #   类型定义 (Message, Model, Tool, AgentTool...)
 │   ├── events.go           #   EventStream 泛型 + 流式事件
 │   ├── registry.go         #   Provider 注册表 + APIProvider 接口
+│   ├── errors.go           #   错误类型体系
+│   ├── retry.go            #   自动重试 + 指数退避
 │   └── env.go              #   环境变量 API Key 解析
 │
-├── ai/                     # AI 调用层：公开 API + 模型管理
+├── llm/                    # LLM 调用层：公开 API + 模型管理
 │   ├── api.go              #   Stream / Complete / GenerateImages
 │   └── models.go           #   Model 注册表 + ThinkingLevel 工具
 │
 ├── providers/              # Provider 实现层
 │   ├── register.go         #   内置 Provider 注册
-│   ├── openai/             #   OpenAI / Azure / Codex
+│   ├── openai/             #   OpenAI Responses / Azure / Codex
+│   │   └── format/         #     OpenAI 消息格式转换
 │   ├── anthropic/          #   Anthropic Messages
 │   ├── bedrock/            #   Amazon Bedrock
 │   ├── google/             #   Google Gemini / Vertex
 │   ├── mistral/            #   Mistral
-│   └── images/             #   图像生成 (OpenRouter)
+│   ├── compat/             #   OpenAI 兼容路由（DeepSeek/Kimi/Xiaomi/GLM）
+│   └── openrouter/         #   OpenRouter 图像生成
 │
 ├── agent/                  # Agent 智能体层
-│   ├── types.go            #   Agent 事件/工具/配置
+│   ├── types.go            #   Agent 事件/配置（类型别名 → core）
 │   ├── agent.go            #   Agent 状态管理
-│   └── agent-loop.go       #   核心循环 + 工具执行
+│   ├── agent-loop.go       #   核心循环 + 工具执行
+│   ├── context.go          #   上下文窗口管理 + 压缩
+│   ├── session/            #   会话持久化、技能、提示模板
+│   └── tools/              #   内置工具 (read/write/edit/bash/glob/grep)
 │
-├── utils/                  # 工具包
+├── internal/               # 内部工具包（仅本模块可见）
 │   ├── oauth/              #   OAuth 认证
-│   ├── jsonparse/          #   JSON 修复解析
-│   ├── validation/         #   工具调用校验
+│   ├── validation/         #   工具调用参数校验
 │   ├── overflow/           #   Context 溢出检测
+│   ├── jsonparse/          #   JSON 修复解析
 │   ├── sanitize/           #   Unicode 清理
 │   ├── hash/               #   短哈希
 │   └── diagnostics/        #   诊断工具
@@ -252,15 +259,15 @@ pi-ai-go/
 ### 依赖关系
 
 ```
-core/  ← 零依赖 (纯类型 + 注册表)
+core/       ← 零依赖 (纯类型 + 注册表 + 工具契约)
   ↑
-ai/    ← 仅依赖 core
+llm/        ← 仅依赖 core
   ↑
-providers/ ← 仅依赖 core
+providers/  ← 仅依赖 core
   ↑
-agent/ ← 依赖 core + ai
+agent/      ← 依赖 core + llm
   ↑
-piai.go ← 依赖 core + ai (facade re-export)
+piai.go     ← 依赖 core + llm (facade re-export)
 ```
 
 ## 运行测试

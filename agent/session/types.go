@@ -1,6 +1,6 @@
-// Package harness provides a production-grade agent framework with session
+// Package session provides a production-grade agent framework with session
 // persistence, context compaction, skills, and prompt templates.
-package harness
+package session
 
 import (
 	"fmt"
@@ -27,28 +27,22 @@ const (
 	ErrUnknown         ErrorCode = "unknown"
 )
 
-// HarnessError is the base error type for harness operations.
-type HarnessError struct {
+// SessionError is the base error type for session operations.
+type SessionError struct {
 	Code    ErrorCode
 	Message string
 	Path    string
 	Err     error
 }
 
-func (e *HarnessError) Error() string {
+func (e *SessionError) Error() string {
 	if e.Path != "" {
 		return fmt.Sprintf("[%s] %s: %s", e.Code, e.Path, e.Message)
 	}
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
-func (e *HarnessError) Unwrap() error { return e.Err }
-
-// SessionError is returned by session operations.
-type SessionError = HarnessError
-
-// CompactionError is returned by compaction operations.
-type CompactionError = HarnessError
+func (e *SessionError) Unwrap() error { return e.Err }
 
 // --- Skill ---
 

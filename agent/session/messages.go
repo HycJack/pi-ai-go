@@ -1,4 +1,4 @@
-package harness
+package session
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	core "pi-ai-go/core"
 )
 
-// --- Harness-specific message types (NOT core.Message) ---
+// --- Session-specific message types (NOT core.Message) ---
 // These are stored as session entries and converted to core.Message
 // (as UserMessage with structured text) when building LLM context.
 

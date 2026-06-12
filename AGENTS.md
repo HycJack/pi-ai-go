@@ -18,15 +18,15 @@ Go 1.23+。唯一外部依赖 `jsonschema/v6`。
 四层分层，依赖方向单一：
 
 ```
-core/ ← 零依赖 (类型 + EventStream + 注册表)
+core/ ← 零依赖 (类型 + EventStream + 注册表 + 工具契约)
   ↑
-ai/   ← 仅依赖 core (公开 API + Model 注册表)
+llm/        ← 仅依赖 core (公开 API + Model 注册表)
   ↑
-providers/ ← 仅依赖 core (LLM 实现)
+providers/  ← 仅依赖 core (LLM 实现)
   ↑
-agent/ ← 依赖 core + ai (多轮循环 + 工具执行)
+agent/      ← 依赖 core + llm (多轮循环 + 工具执行)
   ↑
-piai.go ← facade re-export
+piai.go     ← facade re-export
 ```
 
 ## 如何添加新 Provider

@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"pi-ai-go/agent"
 	core "pi-ai-go/core"
 )
 
@@ -36,8 +35,8 @@ func textBlock(s string) []core.ContentBlock {
 
 // All returns the canonical built-in tool set. Callers can spread this
 // into an agent.AgentLoopConfig.Tools slice in one go.
-func All() []agent.AgentTool {
-	return []agent.AgentTool{
+func All() []core.AgentTool {
+	return []core.AgentTool{
 		Read(),
 		Write(),
 		Edit(),

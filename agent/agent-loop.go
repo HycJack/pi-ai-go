@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"pi-ai-go/ai"
 	core "pi-ai-go/core"
+	"pi-ai-go/llm"
 )
 
 // AgentEventStream is the type alias for the agent event stream.
@@ -263,7 +263,7 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 	streamFn := config.StreamFn
 	if streamFn == nil {
 		streamFn = func(ctx context.Context, m core.Model, c core.Context, o core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
-			return ai.StreamSimpleWithContext(ctx, m, c, o)
+			return llm.StreamSimpleWithContext(ctx, m, c, o)
 		}
 	}
 

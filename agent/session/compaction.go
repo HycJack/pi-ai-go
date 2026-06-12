@@ -1,4 +1,4 @@
-package harness
+package session
 
 import (
 	"time"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	core "pi-ai-go/core"
-	"pi-ai-go/ai"
+	"pi-ai-go/llm"
 )
 
 // CompactionResult holds the result of a compaction operation.
@@ -32,7 +32,7 @@ func Compact(
 	streamOpts ...core.SimpleStreamOptions,
 ) (*CompactionResult, error) {
 	if len(messages) <= settings.MinMessagesToKeep {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrInvalid,
 			Message: "not enough messages to compact",
 		}
@@ -54,11 +54,11 @@ func Compact(
 		opts = streamOpts
 	}
 
-	summaryMsg, err := ai.CompleteSimple(ctx, model, []core.Message{
+	summaryMsg, err := llm.CompleteSimple(ctx, model, []core.Message{
 		core.UserMessage{Content: prompt},
 	}, opts...)
 	if err != nil {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrSummarization,
 			Message: "LLM summarization failed",
 			Err:     err,
@@ -67,7 +67,7 @@ func Compact(
 
 	summary := extractText(summaryMsg)
 	if summary == "" {
-		return nil, &HarnessError{
+		return nil, &SessionError{
 			Code:    ErrSummarization,
 			Message: "LLM returned empty summary",
 		}

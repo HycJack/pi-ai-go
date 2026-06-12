@@ -108,7 +108,8 @@ func doVertexStream(ctx context.Context, baseURL, apiKey, project, location stri
 		return core.AssistantMessage{}, err
 	}
 
-	// Vertex AI uses a different URL pattern than Google AI
+	// Vertex AI uses a different URL pattern than Google AI.
+	// API key is passed as a query parameter per Google's API convention.
 	url := fmt.Sprintf("%s/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse",
 		baseURL, project, location, model.ID)
 
@@ -139,6 +140,9 @@ func doVertexStream(ctx context.Context, baseURL, apiKey, project, location stri
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
+		if classified := core.ClassifyHTTPError(model.Provider, resp.StatusCode, string(errBody)); classified != nil {
+			return core.AssistantMessage{}, classified
+		}
 		return core.AssistantMessage{}, fmt.Errorf("google-vertex: API error %d: %s", resp.StatusCode, string(errBody))
 	}
 

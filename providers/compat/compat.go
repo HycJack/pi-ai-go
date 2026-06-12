@@ -10,7 +10,6 @@
 package compat
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,6 +21,7 @@ import (
 	"time"
 
 	core "pi-ai-go/core"
+	"pi-ai-go/internal/sse"
 	"pi-ai-go/providers/openai/convert"
 )
 
@@ -205,21 +205,22 @@ func doRequest(
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
+		if classified := core.ClassifyHTTPError(cfg.Provider, resp.StatusCode, string(errBody)); classified != nil {
+			return core.AssistantMessage{}, classified
+		}
 		return core.AssistantMessage{}, fmt.Errorf("%s: API error %d: %s", cfg.Provider, resp.StatusCode, string(errBody))
 	}
-	return processSSE(cfg, resp.Body, stream, model, opts)
+	return processSSE(ctx, cfg, resp.Body, stream, model, opts)
 }
 
 func processSSE(
+	ctx context.Context,
 	cfg Config,
 	body io.Reader,
 	stream *core.EventStream[core.AssistantMessageEvent, core.AssistantMessage],
 	model core.Model,
 	opts core.StreamOptions,
 ) (core.AssistantMessage, error) {
-	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
 	var (
 		msg         core.AssistantMessage
 		textBuf     strings.Builder
@@ -240,78 +241,44 @@ func processSSE(
 		Timestamp: time.Now(),
 	})
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
+	scanErr := sse.Scan(ctx, body, sse.ScanConfig{}, func(data string) error {
 		if opts.OnResponse != nil {
 			opts.OnResponse(data)
 		}
 
 		var chunk map[string]any
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
+			return nil // skip malformed events
 		}
 		if id, ok := chunk["id"].(string); ok && id != "" {
 			msg.ResponseID = id
 		}
+
+		// Parse usage from any chunk that carries it (top-level "usage").
+		// Some providers (e.g. Xiaomi MiMo) send usage in a separate final
+		// chunk with empty "choices", after the finish_reason chunk.
+		if usage, ok := chunk["usage"].(map[string]any); ok && usage != nil {
+			mergeUsage(&msg.Usage, usage)
+		}
+
 		choices, ok := chunk["choices"].([]any)
 		if !ok || len(choices) == 0 {
-			continue
+			return nil
 		}
 		choice, ok := choices[0].(map[string]any)
 		if !ok {
-			continue
+			return nil
 		}
 		if fr, ok := choice["finish_reason"].(string); ok && fr != "" {
 			msg.StopReason = convert.StopReason(fr)
-			// 只有在 finish_reason 为 "stop" 时才获取 usage 信息
-			if fr == "stop" {
-				// 尝试从顶层获取 usage（标准 OpenAI 格式）
-				if usage, ok := chunk["usage"].(map[string]any); ok {
-					if promptTokens := getFloat(usage, "prompt_tokens"); promptTokens > 0 {
-						msg.Usage.Input = int(promptTokens)
-					}
-					if completionTokens := getFloat(usage, "completion_tokens"); completionTokens > 0 {
-						msg.Usage.Output = int(completionTokens)
-					}
-					if cachedTokens := getFloat(usage, "prompt_tokens_details.cached_tokens"); cachedTokens > 0 {
-						msg.Usage.CacheRead = int(cachedTokens)
-					}
-					if totalTokens := getFloat(usage, "total_tokens"); totalTokens > 0 {
-						msg.Usage.TotalTokens = int(totalTokens)
-					}
-				}
-				// 尝试从 choice 中获取 usage（Kimi 格式）
-				if msg.Usage.Input == 0 || msg.Usage.Output == 0 {
-					if choiceUsage, ok := choice["usage"].(map[string]any); ok {
-						if promptTokens := getFloat(choiceUsage, "prompt_tokens"); promptTokens > 0 {
-							msg.Usage.Input = int(promptTokens)
-						}
-						if completionTokens := getFloat(choiceUsage, "completion_tokens"); completionTokens > 0 {
-							msg.Usage.Output = int(completionTokens)
-						}
-						if cachedTokens := getFloat(choiceUsage, "cached_tokens"); cachedTokens > 0 {
-							msg.Usage.CacheRead = int(cachedTokens)
-						}
-						if cachedTokens := getFloat(choiceUsage, "prompt_tokens_details.cached_tokens"); cachedTokens > 0 {
-							msg.Usage.CacheRead = int(cachedTokens)
-						}
-						if totalTokens := getFloat(choiceUsage, "total_tokens"); totalTokens > 0 {
-							msg.Usage.TotalTokens = int(totalTokens)
-						}
-					}
-				}
-			}
+		}
+		// Some providers (e.g. Kimi) put usage inside choices[0].usage.
+		if choiceUsage, ok := choice["usage"].(map[string]any); ok && choiceUsage != nil {
+			mergeUsage(&msg.Usage, choiceUsage)
 		}
 		delta, ok := choice["delta"].(map[string]any)
 		if !ok {
-			continue
+			return nil
 		}
 		if content, ok := delta["content"].(string); ok && content != "" {
 			textBuf.WriteString(content)
@@ -343,8 +310,13 @@ func processSSE(
 				}
 			}
 		}
+		return nil
+	})
+	if scanErr != nil {
+		return core.AssistantMessage{}, scanErr
 	}
 
+	// Finalization — runs after scan completes or connection drops
 	if textBuf.Len() > 0 {
 		msg.Content = append(msg.Content, core.TextContent{Type: "text", Text: textBuf.String()})
 		stream.Push(core.EventTextEnd{Type: "text_end"})
@@ -355,7 +327,9 @@ func processSSE(
 			msg.Content = append(msg.Content, *tc)
 		}
 	}
-	msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output
+	if msg.Usage.TotalTokens == 0 {
+		msg.Usage.TotalTokens = msg.Usage.Input + msg.Usage.Output
+	}
 	msg.Usage.Cost = core.CalculateCost(model, msg.Usage)
 
 	if cfg.FinalizeResponse != nil {
@@ -363,6 +337,34 @@ func processSSE(
 	}
 	stream.Push(core.EventDone{Type: "done", Message: msg})
 	return msg, nil
+}
+
+// mergeUsage merges token usage from a provider's JSON map into the
+// core.Usage struct. It only overwrites fields that are currently zero,
+// so the first non-empty usage source wins.
+func mergeUsage(dst *core.Usage, src map[string]any) {
+	if dst.Input == 0 {
+		if v := getFloat(src, "prompt_tokens"); v > 0 {
+			dst.Input = int(v)
+		}
+	}
+	if dst.Output == 0 {
+		if v := getFloat(src, "completion_tokens"); v > 0 {
+			dst.Output = int(v)
+		}
+	}
+	if dst.CacheRead == 0 {
+		if v := getFloat(src, "prompt_tokens_details.cached_tokens"); v > 0 {
+			dst.CacheRead = int(v)
+		} else if v := getFloat(src, "cached_tokens"); v > 0 {
+			dst.CacheRead = int(v)
+		}
+	}
+	if dst.TotalTokens == 0 {
+		if v := getFloat(src, "total_tokens"); v > 0 {
+			dst.TotalTokens = int(v)
+		}
+	}
 }
 
 func getFloat(m map[string]any, key string) float64 {

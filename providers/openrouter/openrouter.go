@@ -1,8 +1,9 @@
-// Package images implements image generation providers.
-package images
+// Package openrouter implements image generation via OpenRouter.
+package openrouter
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,12 +44,25 @@ func (p *OpenRouterProvider) GenerateImages(model core.ImagesModel, c core.Conte
 	}
 
 	for _, msg := range c.Messages {
-		if userMsg, ok := msg.(core.UserMessage); ok {
-			content := fmt.Sprintf("%v", userMsg.Content)
+		switch m := msg.(type) {
+		case core.UserMessage:
 			messages = append(messages, map[string]any{
 				"role":    "user",
-				"content": content,
+				"content": stringifyContent(m.Content),
 			})
+		case core.AssistantMessage:
+			var parts []string
+			for _, b := range m.Content {
+				if tc, ok := b.(core.TextContent); ok {
+					parts = append(parts, tc.Text)
+				}
+			}
+			if len(parts) > 0 {
+				messages = append(messages, map[string]any{
+					"role":    "assistant",
+					"content": strings.Join(parts, "\n"),
+				})
+			}
 		}
 	}
 
@@ -65,7 +79,7 @@ func (p *OpenRouterProvider) GenerateImages(model core.ImagesModel, c core.Conte
 
 	url := baseURL + "/chat/completions"
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -152,4 +166,22 @@ func (p *OpenRouterProvider) GenerateImages(model core.ImagesModel, c core.Conte
 	}
 
 	return &images, nil
+}
+
+// stringifyContent converts UserMessage.Content to a string suitable for API.
+func stringifyContent(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []core.ContentBlock:
+		var parts []string
+		for _, b := range c {
+			if tc, ok := b.(core.TextContent); ok {
+				parts = append(parts, tc.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return fmt.Sprintf("%v", content)
+	}
 }

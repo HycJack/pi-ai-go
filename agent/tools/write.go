@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"pi-ai-go/agent"
+	core "pi-ai-go/core"
 )
 
 const writeSchema = `{
@@ -21,8 +21,8 @@ const writeSchema = `{
 
 // Write returns the write_file tool. It creates parent directories as
 // needed and overwrites the destination if it exists.
-func Write() agent.AgentTool {
-	return agent.AgentTool{
+func Write() core.AgentTool {
+	return core.AgentTool{
 		Name:        "write_file",
 		Label:       "Write",
 		Description: "Create or overwrite a file with the given content. Creates parent directories.",
@@ -36,7 +36,7 @@ type writeArgs struct {
 	Content  string `json:"content"`
 }
 
-func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args writeArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -67,7 +67,7 @@ func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage
 		"filePath": args.FilePath,
 		"bytes":    len(args.Content),
 	})
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(fmt.Sprintf("Wrote %d bytes to %s", len(args.Content), args.FilePath)),
 		Details: details,
 	}, nil

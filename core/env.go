@@ -62,6 +62,7 @@ func FindEnvKeys(provider KnownProvider) []string {
 // || 提供者到环境变量名称的映射（按优先级排序）
 var providerEnvVars = map[KnownProvider][]string{
 	ProviderAnthropic:     {"ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"}, // OAuth 令牌优先
+	ProviderAmazonBedrock: {"AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID"},
 	ProviderOpenAI:        {"OPENAI_API_KEY"},
 	ProviderGoogle:        {"GOOGLE_API_KEY", "GEMINI_API_KEY"},
 	ProviderGoogleVertex:  {"GOOGLE_CLOUD_PROJECT"},

@@ -1,4 +1,4 @@
-package harness
+package session
 
 import (
 	"sync"
@@ -21,7 +21,7 @@ func NewSession(storage SessionStorage) (*Session, error) {
 
 	entries, err := storage.ReadAll()
 	if err != nil {
-		return nil, &HarnessError{Code: ErrStorage, Message: "failed to load session", Err: err}
+		return nil, &SessionError{Code: ErrStorage, Message: "failed to load session", Err: err}
 	}
 	s.entries = entries
 
@@ -49,7 +49,7 @@ func (s *Session) Append(entries ...SessionTreeEntry) error {
 
 	if s.storage != nil {
 		if err := s.storage.Append(entries); err != nil {
-			return &HarnessError{Code: ErrStorage, Message: "failed to append entries", Err: err}
+			return &SessionError{Code: ErrStorage, Message: "failed to append entries", Err: err}
 		}
 	}
 	for _, e := range entries {

@@ -106,17 +106,24 @@ func convertAssistantParts(content []core.ContentBlock) []any {
 
 func convertToolResultParts(content []core.ContentBlock) map[string]any {
 	result := make(map[string]any)
+	var texts []string
 	for _, block := range content {
 		if text, ok := block.(core.TextContent); ok {
-			// Try to parse as JSON object
-			var v any
-			if err := json.Unmarshal([]byte(text.Text), &v); err == nil {
-				if m, ok := v.(map[string]any); ok {
-					return m
-				}
-			}
-			result["text"] = text.Text
+			texts = append(texts, text.Text)
 		}
+	}
+	if len(texts) == 1 {
+		// Single text block: try to parse as JSON object for structured response
+		var v any
+		if err := json.Unmarshal([]byte(texts[0]), &v); err == nil {
+			if m, ok := v.(map[string]any); ok {
+				return m
+			}
+		}
+		result["text"] = texts[0]
+	} else if len(texts) > 1 {
+		// Multiple text blocks: join them
+		result["text"] = strings.Join(texts, "\n")
 	}
 	return result
 }

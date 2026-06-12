@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"pi-ai-go/agent"
+	core "pi-ai-go/core"
 )
 
 const grepSchema = `{
@@ -28,8 +28,8 @@ const grepSchema = `{
 // Grep returns the grep tool. It searches for a substring (or regex)
 // in the contents of files under basePath. Results are formatted
 // "file:line: text".
-func Grep() agent.AgentTool {
-	return agent.AgentTool{
+func Grep() core.AgentTool {
+	return core.AgentTool{
 		Name:        "grep",
 		Label:       "Grep",
 		Description: "Search file contents. Returns file:line hits. Supports substring and regex modes.",
@@ -46,7 +46,7 @@ type grepArgs struct {
 	Limit    int    `json:"limit"`
 }
 
-func executeGrep(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (agent.AgentToolResult, error) {
+func executeGrep(ctx context.Context, toolCallID string, params json.RawMessage, onUpdate func(json.RawMessage)) (core.AgentToolResult, error) {
 	var args grepArgs
 	if err := json.Unmarshal(params, &args); err != nil {
 		return errResult("invalid arguments: " + err.Error()), nil
@@ -145,7 +145,7 @@ func executeGrep(ctx context.Context, toolCallID string, params json.RawMessage,
 		"count":     len(hits),
 		"truncated": truncated,
 	})
-	return agent.AgentToolResult{
+	return core.AgentToolResult{
 		Content: textBlock(sb.String()),
 		Details: details,
 	}, nil

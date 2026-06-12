@@ -3,13 +3,15 @@ package providers
 import (
 	"pi-ai-go/core"
 	"pi-ai-go/providers/anthropic"
+	"pi-ai-go/providers/bedrock"
 	"pi-ai-go/providers/compat"
 	"pi-ai-go/providers/deepseek"
 	"pi-ai-go/providers/glm"
 	"pi-ai-go/providers/google"
 	"pi-ai-go/providers/kimi"
+	"pi-ai-go/providers/mistral"
 	"pi-ai-go/providers/openai"
-	images "pi-ai-go/providers/openrouter"
+	"pi-ai-go/providers/openrouter"
 	"pi-ai-go/providers/xiaomi"
 )
 
@@ -32,7 +34,9 @@ func RegisterBuiltInProviders() {
 	core.RegisterProvider(core.APIOpenAICodexResponses, openai.NewCodex(), "builtin")
 	core.RegisterProvider(core.APIGoogleGenerative, google.New(), "builtin")
 	core.RegisterProvider(core.APIGoogleVertex, google.NewVertex(), "builtin")
-	core.RegisterImagesProvider("openrouter-images", images.NewOpenRouter(), "builtin")
+	core.RegisterProvider(core.APIMistralConversations, mistral.New(), "builtin")
+	core.RegisterProvider(core.APIBedrockConverse, bedrock.New(), "builtin")
+	core.RegisterImagesProvider("openrouter-images", openrouter.NewOpenRouter(), "builtin")
 }
 
 // UnregisterBuiltInProviders removes all built-in providers.

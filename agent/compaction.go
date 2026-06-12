@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/ai"
 	core "pi-ai-go/core"
+	"pi-ai-go/llm"
 )
 
 // SummarizeModel is the model used for LLM-based compaction. If nil,
@@ -139,7 +139,7 @@ func callSummarizeLLM(ctx context.Context, sm *SummarizeModel, msgs []core.Messa
 	streamFn := sm.Stream
 	if streamFn == nil {
 		streamFn = func(ctx context.Context, m core.Model, c core.Context, o core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
-			return ai.StreamSimpleWithContext(ctx, m, c, o)
+			return llm.StreamSimpleWithContext(ctx, m, c, o)
 		}
 	}
 
