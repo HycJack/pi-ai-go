@@ -12,6 +12,7 @@
 *.dylib
 pi-ai-go
 test/test
+examples/agent-with-skills/agent-with-skills
 
 # 测试输出
 *.test

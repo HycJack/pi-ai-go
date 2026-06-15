@@ -404,7 +404,7 @@ func TestAgentStateManagement(t *testing.T) {
 
 	// 第一轮对话
 	fmt.Println("第一轮对话:")
-	result1, err := aiAgent.Run(ctx, piai.UserMessage{
+	_, err := aiAgent.Run(ctx, piai.UserMessage{
 		Role:    "user",
 		Content: "计算 10 + 20",
 	})
