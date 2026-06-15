@@ -134,13 +134,15 @@ func (r *RunCollector) Snapshot() (AgentRunSummary, AgentRunCoverage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	ended := time.Unix(0, r.endedAt.Load())
-	endedTime := time.Time{}
-	if !ended.IsZero() {
-		endedTime = ended
+	// Check endedAt BEFORE constructing time.Unix: time.Unix(0,0) returns
+	// the Unix epoch (1970-01-01), not Go's zero value, so IsZero() would
+	// return false and Duration would compute as a huge negative number.
+	var endedTime time.Time
+	if nano := r.endedAt.Load(); nano != 0 {
+		endedTime = time.Unix(0, nano)
 	}
 
-	dur := time.Duration(0)
+	var dur time.Duration
 	if !endedTime.IsZero() {
 		dur = endedTime.Sub(r.startedAt)
 	}

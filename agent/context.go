@@ -40,7 +40,9 @@ func (c ContextPolicy) withDefaults() ContextPolicy {
 	if c.HardLimit <= 0 {
 		c.HardLimit = 0.95
 	}
-	if c.ReservedOutput <= 0 {
+	// Use < 0 (not <= 0) so callers can explicitly set ReservedOutput=0
+	// to mean "no reserved tokens". Use -1 as sentinel for "not set".
+	if c.ReservedOutput < 0 {
 		c.ReservedOutput = 4096
 	}
 	if c.MinTailMessages <= 0 {
