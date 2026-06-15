@@ -27,13 +27,12 @@ func AgentLoop(ctx context.Context, msgs []core.Message, config AgentLoopConfig)
 
 		stream.Push(EventAgentStart{})
 
-		// Emit message_start/message_end for prompt messages
-		for _, m := range msgs {
-			if am, ok := m.(core.AssistantMessage); ok {
-				stream.Push(EventMessageStart{Message: am})
-				stream.Push(EventMessageEnd{Message: am})
-			}
-		}
+		// NOTE: We intentionally do NOT emit EventMessageStart/EventMessageEnd
+		// for prompt messages here. These messages are already part of the
+		// conversation history and are included in the final result from
+		// stream.Result(). Emitting events for them would cause the Agent's
+		// processStream to duplicate them (since Run already appends prompts
+		// to a.state.Messages before calling AgentLoop).
 
 		messages := make([]core.Message, len(msgs))
 		copy(messages, msgs)
@@ -174,6 +173,10 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 			if len(toolCalls) > 0 {
 				toolResults, shouldTerminate = executeToolCalls(ctx, config, assistantMsg, toolCalls, messages, stream)
 				messages = append(messages, msgSlice(toolResults)...)
+				// Record tool calls to collector
+				for _, result := range toolResults {
+					collector.RecordToolCall(result.ToolName, result.IsError)
+				}
 			}
 
 			stream.Push(EventTurnEnd{
