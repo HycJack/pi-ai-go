@@ -1,0 +1,44 @@
+{
+  "user_id": "user-001",
+  "name": "张明",
+  "preferences": {
+    "language": "zh-CN",
+    "timezone": "Asia/Shanghai",
+    "code_style": "idiomatic",
+    "explanation_level": "detailed",
+    "preferred_languages": ["Go", "Python", "TypeScript"]
+  },
+  "context": {
+    "current_projects": [
+      {
+        "name": "电商网站",
+        "stack": ["Go", "PostgreSQL", "React"],
+        "stage": "架构设计"
+      },
+      {
+        "name": "内部工具",
+        "stack": ["Python", "FastAPI"],
+        "stage": "开发中"
+      }
+    ],
+    "team_size": 5,
+    "experience_years": 8
+  },
+  "memory": {
+    "important_facts": [
+      "用户在北京工作",
+      "用户是技术团队负责人",
+      "用户偏好简洁的代码风格",
+      "用户关注性能优化"
+    ],
+    "reminders": [
+      "下次会议：周一 10:00 讨论电商项目进度",
+      "待办：review 团队 PR"
+    ]
+  },
+  "session_history": {
+    "total_sessions": 42,
+    "last_session": "2026-06-14T18:30:00Z",
+    "average_length_minutes": 25
+  }
+}
