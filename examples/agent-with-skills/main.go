@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -203,12 +204,8 @@ func runSingleQuery(config agent.AgentLoopConfig, query string, verbose bool) {
 				fmt.Fprintf(os.Stderr, "\nError: %v\n", ae.Error)
 			}
 		case agent.EventMessageEnd:
-			printAssistantMessage(e.Message)
 			if e.Message.ErrorMessage != "" {
 				fmt.Fprintf(os.Stderr, "\nError: %s\n", e.Message.ErrorMessage)
-			}
-			if len(e.Message.Content) == 0 {
-				fmt.Fprintf(os.Stderr, "\n[Warning] Assistant message has no content\n")
 			}
 		case agent.EventToolExecStart:
 			fmt.Fprintf(os.Stderr, "\n[exec] %s\n", e.ToolName)
@@ -270,11 +267,6 @@ func runInteractive(config agent.AgentLoopConfig, verbose bool) {
 			Timestamp: time.Now(),
 		})
 
-		// Configure follow-up
-		config.GetFollowUpMessages = func() []core.Message {
-			return nil
-		}
-
 		// Run agent
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		stream, detailed := agent.AgentLoopDetailed(ctx, messages, config)
@@ -301,7 +293,7 @@ func runInteractive(config agent.AgentLoopConfig, verbose bool) {
 					fmt.Fprintf(os.Stderr, "\nError: %v\n", ae.Error)
 				}
 			case agent.EventMessageEnd:
-				printAssistantMessage(e.Message)
+				// Text is already streamed via EventMessageUpdate/EventTextDelta.
 				if e.Message.ErrorMessage != "" {
 					fmt.Fprintf(os.Stderr, "\nError: %s\n", e.Message.ErrorMessage)
 				}
@@ -338,17 +330,6 @@ func runInteractive(config agent.AgentLoopConfig, verbose bool) {
 	}
 }
 
-func printAssistantMessage(msg core.AssistantMessage) {
-	for _, block := range msg.Content {
-		switch b := block.(type) {
-		case core.TextContent:
-			fmt.Print(b.Text)
-		case core.ThinkingContent:
-			fmt.Fprintf(os.Stderr, "[thinking] %s", b.Thinking)
-		}
-	}
-}
-
 func printSummary(detailed func() (agent.AgentLoopDetailedResult, error)) {
 	fmt.Fprintf(os.Stderr, "\n[Summary] Getting detailed result...\n")
 	res, err := detailed()
@@ -365,9 +346,16 @@ func printSummary(detailed func() (agent.AgentLoopDetailedResult, error)) {
 }
 
 func loadEnv() {
-	file, err := os.Open("C:\\Users\\huangyicao\\Downloads\\hyperframes-test\\pi-ai-go\\examples\\agent-with-skills\\.env")
+	// Try .env in current working directory (portable across platforms)
+	file, err := os.Open(".env")
 	if err != nil {
-		return
+		// Also try next to the executable (useful when run from a different cwd)
+		if exe, e := os.Executable(); e == nil {
+			file, err = os.Open(filepath.Join(filepath.Dir(exe), ".env"))
+		}
+		if err != nil {
+			return
+		}
 	}
 	defer file.Close()
 

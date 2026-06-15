@@ -224,6 +224,7 @@ func processSSE(
 	var (
 		msg         core.AssistantMessage
 		textBuf     strings.Builder
+		thinkBuf    strings.Builder
 		toolCalls   = make(map[int]*core.ToolCall)
 		toolIndices []int
 	)
@@ -285,6 +286,7 @@ func processSSE(
 			stream.Push(core.EventTextDelta{Type: "text_delta", Delta: content})
 		}
 		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+			thinkBuf.WriteString(reasoning)
 			stream.Push(core.EventThinkingDelta{Type: "thinking_delta", Delta: reasoning})
 		}
 		if calls, ok := delta["tool_calls"].([]any); ok {
@@ -317,6 +319,10 @@ func processSSE(
 	}
 
 	// Finalization — runs after scan completes or connection drops
+	if thinkBuf.Len() > 0 {
+		msg.Content = append(msg.Content, core.ThinkingContent{Type: "thinking", Thinking: thinkBuf.String()})
+		stream.Push(core.EventThinkingEnd{Type: "thinking_end"})
+	}
 	if textBuf.Len() > 0 {
 		msg.Content = append(msg.Content, core.TextContent{Type: "text", Text: textBuf.String()})
 		stream.Push(core.EventTextEnd{Type: "text_end"})

@@ -28,15 +28,21 @@ func Messages(messages []core.Message, model core.Model) ([]map[string]any, erro
 
 		case core.AssistantMessage:
 			openaiMsg := map[string]any{"role": "assistant"}
-			content := convertAssistantContent(m.Content)
-			if len(content) == 1 {
-				if textBlock, ok := content[0].(map[string]any); ok && textBlock["type"] == "text" {
+			textBlocks, toolCalls := convertAssistantContent(m.Content)
+			// Set content: plain string if single text block, nil if only tool calls.
+			if len(textBlocks) == 1 {
+				if textBlock, ok := textBlocks[0].(map[string]any); ok && textBlock["type"] == "text" {
 					openaiMsg["content"] = textBlock["text"]
 				} else {
-					openaiMsg["content"] = content
+					openaiMsg["content"] = textBlocks
 				}
+			} else if len(textBlocks) > 1 {
+				openaiMsg["content"] = textBlocks
 			} else {
-				openaiMsg["content"] = content
+				openaiMsg["content"] = nil
+			}
+			if len(toolCalls) > 0 {
+				openaiMsg["tool_calls"] = toolCalls
 			}
 			result = append(result, openaiMsg)
 
@@ -80,23 +86,19 @@ func convertUserContent(content any) (any, error) {
 	}
 }
 
-func convertAssistantContent(content []core.ContentBlock) []any {
-	var blocks []any
-	var toolCalls []any
-
+func convertAssistantContent(content []core.ContentBlock) (textBlocks []any, toolCalls []any) {
 	for _, block := range content {
 		switch b := block.(type) {
 		case core.TextContent:
-			blocks = append(blocks, map[string]any{
+			textBlocks = append(textBlocks, map[string]any{
 				"type": "text",
 				"text": b.Text,
 			})
 		case core.ThinkingContent:
-			// OpenAI uses reasoning_content or similar
-			blocks = append(blocks, map[string]any{
-				"type":              "reasoning_content",
-				"reasoning_content": map[string]any{"text": b.Thinking},
-			})
+			// ThinkingContent is request-scoped metadata. Do NOT include it
+			// in the messages array: most providers (including DeepSeek)
+			// reject `reasoning_content` in conversation history, and
+			// reasoning tokens are not meant to be replayed across turns.
 		case core.ToolCall:
 			toolCalls = append(toolCalls, map[string]any{
 				"id":   b.ID,
@@ -108,11 +110,7 @@ func convertAssistantContent(content []core.ContentBlock) []any {
 			})
 		}
 	}
-
-	if len(toolCalls) > 0 {
-		blocks = append(blocks, toolCalls...)
-	}
-	return blocks
+	return
 }
 
 func convertToolResultContent(content []core.ContentBlock) string {
