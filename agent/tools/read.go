@@ -48,7 +48,12 @@ func executeRead(ctx context.Context, toolCallID string, params json.RawMessage,
 		return errResult("filePath is required"), nil
 	}
 
-	data, err := os.ReadFile(args.FilePath)
+	safePath, err := resolveSafePath(args.FilePath, "")
+	if err != nil {
+		return errResult(fmt.Sprintf("read_file: %v", err)), nil
+	}
+
+	data, err := os.ReadFile(safePath)
 	if err != nil {
 		return errResult(fmt.Sprintf("read_file: %v", err)), nil
 	}
@@ -79,7 +84,7 @@ func executeRead(ctx context.Context, toolCallID string, params json.RawMessage,
 	}
 
 	details := map[string]any{
-		"filePath":  args.FilePath,
+		"filePath":  safePath,
 		"bytes":     len(data),
 		"offset":    args.Offset,
 		"limit":     args.Limit,

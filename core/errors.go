@@ -1,18 +1,18 @@
 /*
  * 功能说明：错误类型定义和 HTTP 错误分类
- * 
+ *
  * 解决的问题：
  * 1. 需要统一的错误类型来区分不同类型的失败
  * 2. 需要支持 errors.Is/As 模式进行错误判断
  * 3. 需要将 HTTP 错误映射到语义化的错误类型
  * 4. 需要携带上下文信息（提供者、状态码等）
- * 
+ *
  * 解决方案：
  * 1. 定义哨兵错误（ErrOverflow、ErrAuth 等）支持 errors.Is
  * 2. 定义具体错误类型（OverflowError、RateLimitError 等）携带详细信息
  * 3. 实现 Is/Unwrap 方法支持错误链
  * 4. ClassifyHTTPError 将 HTTP 状态码映射到错误类型
- * 
+ *
  * 应用场景：
  * - providers/ 层在解析响应时创建错误
  * - retry.go 使用错误类型判断是否重试
@@ -57,6 +57,11 @@ var (
 	// ErrNetwork indicates a transport / connection failure.
 	// || 网络/连接错误
 	ErrNetwork = errors.New("network error")
+
+	// ErrTimeout indicates a timeout occurred. Use *TimeoutError for
+	// richer context about the timeout source.
+	// || 超时错误标记
+	ErrTimeout = errors.New("timeout")
 )
 
 // OverflowError is the typed signal raised when a request exceeds the
@@ -170,9 +175,9 @@ func (e *AuthError) Is(t error) bool { return t == ErrAuth }
 // RateLimitError wraps a 429 with optional retry-after hint.
 // || 限流错误（429），包含可选的重试等待时间
 type RateLimitError struct {
-	Provider   KnownProvider  // 提供者
-	RetryAfter time.Duration  // 重试等待时间
-	Cause      error          // 原因
+	Provider   KnownProvider // 提供者
+	RetryAfter time.Duration // 重试等待时间
+	Cause      error         // 原因
 }
 
 // Error returns the error message.
@@ -244,17 +249,88 @@ func (e *NetworkError) Unwrap() error { return e.Cause }
 // || 支持 errors.Is 匹配 ErrNetwork
 func (e *NetworkError) Is(t error) bool { return t == ErrNetwork }
 
+// TimeoutSource identifies where a timeout originated.
+// || 超时来源标识
+type TimeoutSource string
+
+const (
+	// TimeoutSourceAgent indicates the entire agent run exceeded its timeout.
+	// || Agent 运行超时
+	TimeoutSourceAgent TimeoutSource = "agent"
+
+	// TimeoutSourceHTTP indicates an HTTP request to the LLM provider timed out.
+	// || HTTP 请求超时
+	TimeoutSourceHTTP TimeoutSource = "http"
+
+	// TimeoutSourceTool indicates a tool execution (e.g., bash) timed out.
+	// || 工具执行超时
+	TimeoutSourceTool TimeoutSource = "tool"
+)
+
+// TimeoutError wraps a context.DeadlineExceeded with source information.
+// || 超时错误，携带来源信息
+type TimeoutError struct {
+	Source   TimeoutSource // 超时来源
+	Duration time.Duration // 超时时长
+	Provider KnownProvider // 提供者（HTTP 超时时使用）
+	ToolName string        // 工具名称（工具超时时使用）
+	Cause    error         // 底层原因
+}
+
+// Error returns the error message.
+// || 返回错误消息
+func (e *TimeoutError) Error() string {
+	var parts []string
+	parts = append(parts, string(e.Source))
+
+	if e.Duration > 0 {
+		parts = append(parts, fmt.Sprintf("after %s", e.Duration))
+	}
+
+	if e.Provider != "" {
+		parts = append(parts, fmt.Sprintf("provider=%s", e.Provider))
+	}
+
+	if e.ToolName != "" {
+		parts = append(parts, fmt.Sprintf("tool=%s", e.ToolName))
+	}
+
+	if e.Cause != nil && e.Cause != context.DeadlineExceeded {
+		parts = append(parts, fmt.Sprintf("cause=%v", e.Cause))
+	}
+
+	return fmt.Sprintf("timeout: %s", strings.Join(parts, " "))
+}
+
+// Unwrap returns the underlying cause.
+// || 返回底层原因
+func (e *TimeoutError) Unwrap() error {
+	if e.Cause != nil {
+		return e.Cause
+	}
+	return ErrTimeout
+}
+
+// Is allows errors.Is to match ErrTimeout or context.DeadlineExceeded.
+// || 支持 errors.Is 匹配 ErrTimeout 或 context.DeadlineExceeded
+func (e *TimeoutError) Is(t error) bool {
+	return t == ErrTimeout || t == context.DeadlineExceeded
+}
+
 // ClassifyHTTPError maps an HTTP error response to a typed error. The body
 // is the error payload returned by the provider. If no classification
 // applies, nil is returned and the caller is expected to surface the raw
 // error.
 // || 将 HTTP 错误响应映射到类型化错误
 // 参数：
-//   provider - 提供者
-//   status - HTTP 状态码
-//   body - 响应体
+//
+//	provider - 提供者
+//	status - HTTP 状态码
+//	body - 响应体
+//
 // 返回：
-//   类型化错误（如果无法分类返回 nil）
+//
+//	类型化错误（如果无法分类返回 nil）
 func ClassifyHTTPError(provider KnownProvider, status int, body string) error {
 	switch {
 	case status == http.StatusRequestTimeout, status == http.StatusTooManyRequests:
@@ -283,4 +359,45 @@ func trimBody(body string) string {
 		return body[:max] + "..."
 	}
 	return body
+}
+
+// WrapTimeout wraps a context.DeadlineExceeded error with source information.
+// || 包装超时错误，添加来源信息
+func WrapTimeout(source TimeoutSource, duration time.Duration, cause error) error {
+	if cause == nil {
+		cause = context.DeadlineExceeded
+	}
+	return &TimeoutError{
+		Source:   source,
+		Duration: duration,
+		Cause:    cause,
+	}
+}
+
+// WrapHTTPTimeout wraps an HTTP request timeout with provider information.
+// || 包装 HTTP 请求超时错误
+func WrapHTTPTimeout(provider KnownProvider, duration time.Duration, cause error) error {
+	if cause == nil {
+		cause = context.DeadlineExceeded
+	}
+	return &TimeoutError{
+		Source:   TimeoutSourceHTTP,
+		Duration: duration,
+		Provider: provider,
+		Cause:    cause,
+	}
+}
+
+// WrapToolTimeout wraps a tool execution timeout with tool name.
+// || 包装工具执行超时错误
+func WrapToolTimeout(toolName string, duration time.Duration, cause error) error {
+	if cause == nil {
+		cause = context.DeadlineExceeded
+	}
+	return &TimeoutError{
+		Source:   TimeoutSourceTool,
+		Duration: duration,
+		ToolName: toolName,
+		Cause:    cause,
+	}
 }

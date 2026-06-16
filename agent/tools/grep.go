@@ -58,6 +58,13 @@ func executeGrep(ctx context.Context, toolCallID string, params json.RawMessage,
 	if base == "" {
 		base, _ = os.Getwd()
 	}
+
+	// Validate base path is within the working directory.
+	safeBase, err := resolveSafePath(base, "")
+	if err != nil {
+		return errResult(fmt.Sprintf("grep: %v", err)), nil
+	}
+	base = safeBase
 	limit := args.Limit
 	if limit <= 0 {
 		limit = 200

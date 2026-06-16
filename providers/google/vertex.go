@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -134,6 +135,9 @@ func doVertexStream(ctx context.Context, baseURL, apiKey, project, location stri
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderGoogleVertex, 5*time.Minute, err)
+		}
 		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()

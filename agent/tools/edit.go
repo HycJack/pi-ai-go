@@ -50,17 +50,22 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		return errResult("filePath and oldText are required"), nil
 	}
 
-	data, err := os.ReadFile(args.FilePath)
+	safePath, err := resolveSafePath(args.FilePath, "")
+	if err != nil {
+		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
+	}
+
+	data, err := os.ReadFile(safePath)
 	if err != nil {
 		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
 	}
 	src := string(data)
 	count := strings.Count(src, args.OldText)
 	if count == 0 {
-		return errResult(fmt.Sprintf("edit_file: oldText not found in %s", args.FilePath)), nil
+		return errResult(fmt.Sprintf("edit_file: oldText not found in %s", safePath)), nil
 	}
 	if !args.AllOccurrences && count > 1 {
-		return errResult(fmt.Sprintf("edit_file: oldText matches %d times in %s; pass allOccurrences=true to replace all", count, args.FilePath)), nil
+		return errResult(fmt.Sprintf("edit_file: oldText matches %d times in %s; pass allOccurrences=true to replace all", count, safePath)), nil
 	}
 
 	var out string
@@ -72,17 +77,17 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		out = strings.Replace(src, args.OldText, args.NewText, 1)
 	}
 
-	if err := os.WriteFile(args.FilePath, []byte(out), 0o644); err != nil {
+	if err := os.WriteFile(safePath, []byte(out), 0o644); err != nil {
 		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
 	}
 
 	details, _ := json.Marshal(map[string]any{
-		"filePath":     args.FilePath,
+		"filePath":     safePath,
 		"replacements": replacements,
 		"bytes":        len(out),
 	})
 	return core.AgentToolResult{
-		Content: textBlock(fmt.Sprintf("Edited %s (%d replacement(s))", args.FilePath, replacements)),
+		Content: textBlock(fmt.Sprintf("Edited %s (%d replacement(s))", safePath, replacements)),
 		Details: details,
 	}, nil
 }

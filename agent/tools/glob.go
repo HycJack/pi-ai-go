@@ -53,6 +53,13 @@ func executeGlob(ctx context.Context, toolCallID string, params json.RawMessage,
 		base, _ = os.Getwd()
 	}
 
+	// Validate base path is within the working directory.
+	safeBase, err := resolveSafePath(base, "")
+	if err != nil {
+		return errResult(fmt.Sprintf("glob: %v", err)), nil
+	}
+	base = safeBase
+
 	// Convert forward-slash patterns to native separators and split
 	// into a base and the glob portion.
 	pattern := filepath.FromSlash(args.Pattern)

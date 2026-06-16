@@ -45,8 +45,13 @@ func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage
 		return errResult("filePath is required"), nil
 	}
 
+	safePath, err := resolveSafePath(args.FilePath, "")
+	if err != nil {
+		return errResult(fmt.Sprintf("write_file: %v", err)), nil
+	}
+
 	// Create parent directories.
-	dir := filepath.Dir(args.FilePath)
+	dir := filepath.Dir(safePath)
 	if dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return errResult(fmt.Sprintf("write_file: mkdir: %v", err)), nil
@@ -54,21 +59,21 @@ func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage
 	}
 
 	// Write atomically: write to a temp file, then rename.
-	tmp := args.FilePath + ".tmp"
+	tmp := safePath + ".tmp"
 	if err := os.WriteFile(tmp, []byte(args.Content), 0o644); err != nil {
 		return errResult(fmt.Sprintf("write_file: %v", err)), nil
 	}
-	if err := os.Rename(tmp, args.FilePath); err != nil {
+	if err := os.Rename(tmp, safePath); err != nil {
 		_ = os.Remove(tmp)
 		return errResult(fmt.Sprintf("write_file: rename: %v", err)), nil
 	}
 
 	details, _ := json.Marshal(map[string]any{
-		"filePath": args.FilePath,
+		"filePath": safePath,
 		"bytes":    len(args.Content),
 	})
 	return core.AgentToolResult{
-		Content: textBlock(fmt.Sprintf("Wrote %d bytes to %s", len(args.Content), args.FilePath)),
+		Content: textBlock(fmt.Sprintf("Wrote %d bytes to %s", len(args.Content), safePath)),
 		Details: details,
 	}, nil
 }

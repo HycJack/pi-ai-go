@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -93,6 +94,20 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 		// Inner loop: process tool calls and steering messages
 		for {
 			if ctx.Err() != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					// Wrap agent timeout with source information
+					if deadline, ok := ctx.Deadline(); ok {
+						duration := time.Until(deadline)
+						if duration < 0 {
+							duration = -duration
+						}
+						stream.Error(core.WrapTimeout(core.TimeoutSourceAgent, duration, ctx.Err()))
+					} else {
+						stream.Error(core.WrapTimeout(core.TimeoutSourceAgent, 0, ctx.Err()))
+					}
+				} else {
+					stream.Error(ctx.Err())
+				}
 				finalize()
 				return
 			}

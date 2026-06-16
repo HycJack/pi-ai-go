@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,8 +20,8 @@ const defaultBaseURL = "https://api.mistral.ai/v1"
 
 // Options holds Mistral-specific options.
 type Options struct {
-	ToolChoice     any    `json:"toolChoice,omitempty"`
-	PromptMode     string `json:"promptMode,omitempty"` // reasoning
+	ToolChoice      any    `json:"toolChoice,omitempty"`
+	PromptMode      string `json:"promptMode,omitempty"`      // reasoning
 	ReasoningEffort string `json:"reasoningEffort,omitempty"` // none, high
 }
 
@@ -155,9 +156,9 @@ func convertMessages(messages []core.Message) ([]map[string]any, error) {
 		case core.ToolResultMessage:
 			content := convertToolResultContent(m.Content)
 			result = append(result, map[string]any{
-				"role":       "tool",
+				"role":         "tool",
 				"tool_call_id": normalizeToolCallID(m.ToolCallID),
-				"content":    content,
+				"content":      content,
 			})
 		}
 	}
@@ -302,6 +303,9 @@ func doMistralStream(ctx context.Context, baseURL, apiKey string, model core.Mod
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderMistral, 5*time.Minute, err)
+		}
 		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()

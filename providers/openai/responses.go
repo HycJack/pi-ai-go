@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -192,7 +193,7 @@ func convertResponsesTools(tools []core.Tool) []map[string]any {
 	result := make([]map[string]any, len(tools))
 	for i, tool := range tools {
 		t := map[string]any{
-			"type": "function",
+			"type":        "function",
 			"name":        tool.Name,
 			"description": tool.Description,
 		}
@@ -233,6 +234,9 @@ func doResponsesStream(ctx context.Context, baseURL, apiKey string, model core.M
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderOpenAI, 5*time.Minute, err)
+		}
 		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()

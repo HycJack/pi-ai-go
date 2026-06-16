@@ -76,6 +76,9 @@ func executeBash(ctx context.Context, toolCallID string, params json.RawMessage,
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			exitCode = ee.ExitCode()
+		} else if errors.Is(err, context.DeadlineExceeded) {
+			// Timeout is handled via the timedOut flag, not as an error
+			exitCode = 124 // Standard timeout exit code
 		} else {
 			return errResult(fmt.Sprintf("bash: %v", err)), nil
 		}

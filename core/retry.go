@@ -141,7 +141,7 @@ func IsRetryableError(err error) bool {
 	}
 	// Abort / cancellation must never be retried.
 	// || 中止/取消错误不可重试
-	if errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrTimeout) {
 		return false
 	}
 	// 字符串模式匹配

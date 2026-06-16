@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,12 +20,12 @@ const defaultBaseURL = "https://api.anthropic.com"
 
 // Options holds Anthropic-specific options.
 type Options struct {
-	ThinkingEnabled    bool   `json:"thinkingEnabled,omitempty"`
-	ThinkingBudgetTokens int  `json:"thinkingBudgetTokens,omitempty"`
-	Effort             string `json:"effort,omitempty"` // low, medium, high, xhigh, max
-	ThinkingDisplay    string `json:"thinkingDisplay,omitempty"` // summarized, omitted
-	InterleavedThinking bool  `json:"interleavedThinking,omitempty"`
-	ToolChoice         any    `json:"toolChoice,omitempty"`
+	ThinkingEnabled      bool   `json:"thinkingEnabled,omitempty"`
+	ThinkingBudgetTokens int    `json:"thinkingBudgetTokens,omitempty"`
+	Effort               string `json:"effort,omitempty"`          // low, medium, high, xhigh, max
+	ThinkingDisplay      string `json:"thinkingDisplay,omitempty"` // summarized, omitted
+	InterleavedThinking  bool   `json:"interleavedThinking,omitempty"`
+	ToolChoice           any    `json:"toolChoice,omitempty"`
 }
 
 // Provider implements the Anthropic Messages API.
@@ -199,9 +200,9 @@ func convertUserContent(content any) (any, error) {
 				blocks = append(blocks, map[string]any{
 					"type": "image",
 					"source": map[string]any{
-						"type":      "base64",
+						"type":       "base64",
 						"media_type": b.MimeType,
-						"data":      b.Data,
+						"data":       b.Data,
 					},
 				})
 			}
@@ -259,9 +260,9 @@ func convertToolResultContent(content []core.ContentBlock) any {
 			blocks = append(blocks, map[string]any{
 				"type": "image",
 				"source": map[string]any{
-					"type":      "base64",
+					"type":       "base64",
 					"media_type": b.MimeType,
-					"data":      b.Data,
+					"data":       b.Data,
 				},
 			})
 		}
@@ -330,6 +331,9 @@ func doStream(ctx context.Context, baseURL, apiKey string, model core.Model, bod
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderAnthropic, 5*time.Minute, err)
+		}
 		return core.AssistantMessage{}, err
 	}
 	defer resp.Body.Close()
@@ -350,12 +354,12 @@ func processSSEStream(body io.Reader, stream *core.EventStream[core.AssistantMes
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 	var (
-		msg              core.AssistantMessage
-		textBuf          strings.Builder
-		thinkingBuf      strings.Builder
-		textSignature    string
+		msg               core.AssistantMessage
+		textBuf           strings.Builder
+		thinkingBuf       strings.Builder
+		textSignature     string
 		thinkingSignature string
-		toolCalls        map[int]*core.ToolCall
+		toolCalls         map[int]*core.ToolCall
 	)
 
 	msg.API = model.API
