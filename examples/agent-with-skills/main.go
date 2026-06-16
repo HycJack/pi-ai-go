@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ import (
 
 	"examples/agent-with-skills/autolearn"
 	"examples/agent-with-skills/contextmgr"
+	"examples/agent-with-skills/keypool"
 	"examples/agent-with-skills/memory"
 )
 
@@ -49,7 +51,8 @@ func main() {
 	modelID := flag.String("model", os.Getenv("MODEL"), "Model ID")
 	provider := flag.String("provider", os.Getenv("PROVIDER"), "Provider name")
 	baseURL := flag.String("base-url", os.Getenv("BASE_URL"), "Base URL")
-	apiKeyFlag := flag.String("api-key", "", "API key")
+	apiKeyFlag := flag.String("api-key", "", "API key (single, or use -api-keys for rotation)")
+	apiKeysFlag := flag.String("api-keys", os.Getenv("API_KEYS"), "Comma-separated API keys for rotation (highest priority)")
 	query := flag.String("query", "", "Query to run (interactive if empty)")
 	verbose := flag.Bool("v", false, "Verbose mode")
 
@@ -71,16 +74,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	apiKey := *apiKeyFlag
-	if apiKey == "" {
-		apiKey = os.Getenv("API_KEY")
-		if apiKey == "" && *provider != "" {
-			apiKey = os.Getenv(strings.ToUpper(*provider) + "_API_KEY")
-		}
-	}
-	if apiKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: API key not configured")
+	// 收集 API key 列表（多 key 轮询）
+	keys := collectAPIKeys(*apiKeysFlag, *apiKeyFlag, *provider, *verbose)
+	if len(keys) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: API key(s) not configured (use -api-keys or API_KEYS env)")
 		os.Exit(1)
+	}
+
+	keyPool := keypool.New(keys, keypool.DefaultSettings())
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "[keypool] %d key(s) loaded\n", keyPool.Size())
+		for _, s := range keyPool.Status() {
+			fmt.Fprintf(os.Stderr, "[keypool] %s\n", s.String())
+		}
 	}
 
 	model := resolveModel(*provider, *modelID, *baseURL)
@@ -93,26 +99,36 @@ func main() {
 	type loadResult struct {
 		skillsText string
 		mem        *memory.Memory
-		sess       *session.Session
-		sessStore  *session.JSONLStorage
+		sessRef    *SessionRef
 		err        error
 	}
 	resCh := make(chan loadResult, 1)
 	go func() {
-		// skills 加载
 		skillsText := loadSkillsText(*skillsDir, *verbose)
-
-		// 长期记忆
 		mem := initMemory(*memoryPath, *verbose)
 
-		// session
-		sess, sessStore, err := initSession(*sessionPath)
+		// Session 目录：
+		//   - -session 指定的是单文件路径：取其所在目录
+		//   - 未指定：使用 ./sessions/
+		sessionsDir := "./sessions"
+		defaultName := "main"
+		if *sessionPath != "" {
+			abs, _ := filepath.Abs(*sessionPath)
+			dir := filepath.Dir(abs)
+			if dir != "." {
+				sessionsDir = dir
+			}
+			defaultName = strings.TrimSuffix(filepath.Base(abs), ".jsonl")
+			if defaultName == "" || defaultName == filepath.Base(abs) {
+				defaultName = "main"
+			}
+		}
 
+		sessRef, err := NewSessionRef(defaultName, sessionsDir, 500*time.Millisecond)
 		resCh <- loadResult{
 			skillsText: skillsText,
 			mem:        mem,
-			sess:       sess,
-			sessStore:  sessStore,
+			sessRef:    sessRef,
 			err:        err,
 		}
 	}()
@@ -123,17 +139,16 @@ func main() {
 	}
 	skillsText := loaded.skillsText
 	mem := loaded.mem
-	sess := loaded.sess
-	sessStore := loaded.sessStore
-
+	sessRef := loaded.sessRef
 	defer func() {
-		if sess != nil {
-			sess.Close()
-		}
-		if sessStore != nil {
-			sessStore.Close()
+		if sessRef != nil {
+			sessRef.Close()
 		}
 	}()
+
+	if *verbose && sessRef != nil {
+		fmt.Fprintf(os.Stderr, "[session] dir=%s, current=%s\n", sessRef.dir, sessRef.Name())
+	}
 
 	// 上下文管理
 	ctxSettings := contextmgr.DefaultSettings(model.ID)
@@ -152,38 +167,35 @@ func main() {
 		SystemPrompt: systemPrompt,
 		Tools:        tools.All(),
 	}
-	config.SimpleStreamOptions.APIKey = apiKey
+	// 初始 key（每次 AgentLoopDetailed 调用前会重新从 keyPool 取）
+	if firstKey, err := keyPool.Next(); err == nil {
+		config.SimpleStreamOptions.APIKey = firstKey
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 	config.SimpleStreamOptions.MaxRetries = 3
 	config.SimpleStreamOptions.MaxRetryDelayMs = 30000
 
 	// 从 session 加载历史消息（增量统计 token）
-	var messages []core.Message
 	tokenStats := contextmgr.NewTokenStats(ctxSettings)
-	if sess != nil {
-		ctx2 := sess.BuildContext()
-		messages = ctx2.Messages
-		tokenStats.Recompute(messages)
+	if sessRef != nil && sessRef.Session() != nil {
+		ctx2 := sessRef.Session().BuildContext()
+		sessRef.Messages = ctx2.Messages
+		tokenStats.Recompute(sessRef.Messages)
 		if *verbose {
 			fmt.Fprintf(os.Stderr, "[session] Loaded %d message(s), %d tokens\n",
-				len(messages), tokenStats.Tokens())
+				len(sessRef.Messages), tokenStats.Tokens())
 		}
-	}
-
-	// 启动异步 session flusher
-	var sessFlusher *SessionFlusher
-	if sess != nil && sessStore != nil {
-		sessFlusher = NewSessionFlusher(sess, sessStore, 500*time.Millisecond)
-		sessFlusher.Start()
-		defer sessFlusher.Stop()
 	}
 
 	// 自动学习器
 	autoLearn := autolearn.New(mem, autolearn.DefaultSettings())
 
 	if *query != "" {
-		runSingleQuery(config, messages, *query, *verbose, sess, mem, tokenStats, ctxSettings, model, apiKey, *autoCompact, promptCache, sessFlusher, autoLearn)
+		runSingleQuery(config, *query, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn)
 	} else {
-		runInteractive(config, messages, *verbose, sess, mem, tokenStats, ctxSettings, model, apiKey, *autoCompact, promptCache, sessFlusher, autoLearn)
+		runInteractive(config, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn)
 	}
 }
 
@@ -274,6 +286,11 @@ func (f *SessionFlusher) Start() {
 func (f *SessionFlusher) Stop() {
 	close(f.stopCh)
 	<-f.doneCh
+	f.flushNow()
+}
+
+// Flush 立即同步写一次（不停止后台 goroutine）。
+func (f *SessionFlusher) Flush() {
 	f.flushNow()
 }
 
@@ -371,6 +388,169 @@ func initSession(path string) (*session.Session, *session.JSONLStorage, error) {
 	return sess, storage, nil
 }
 
+// SessionRef 持有当前活跃 session 及其状态。
+// 通过该引用可以在运行时切换到不同的 session 文件。
+type SessionRef struct {
+	mu       sync.Mutex
+	name     string // 当前 session 名称
+	dir      string // sessions 目录
+	sess     *session.Session
+	store    *session.JSONLStorage
+	flusher  *SessionFlusher
+	Messages []core.Message
+}
+
+// NewSessionRef 创建一个 session 引用。
+// name: session 名称（不含 .jsonl 后缀）
+// dir: session 文件存放目录（自动创建）
+// flushEvery: 后台 flush 间隔；<=0 表示不启动 flusher
+func NewSessionRef(name, dir string, flushEvery time.Duration) (*SessionRef, error) {
+	r := &SessionRef{name: name, dir: dir}
+	if err := r.openLocked(name); err != nil {
+		return nil, err
+	}
+	if flushEvery > 0 {
+		r.flusher = NewSessionFlusher(r.sess, r.store, flushEvery)
+		r.flusher.Start()
+	}
+	return r, nil
+}
+
+// openLocked 打开一个 session（调用方需持锁）。
+func (r *SessionRef) openLocked(name string) error {
+	if err := os.MkdirAll(r.dir, 0755); err != nil {
+		return err
+	}
+	path := filepath.Join(r.dir, name+".jsonl")
+	store, err := session.NewJSONLStorage(path)
+	if err != nil {
+		return err
+	}
+	sess, err := session.NewSession(store)
+	if err != nil {
+		store.Close()
+		return err
+	}
+	r.sess = sess
+	r.store = store
+	r.name = name
+	r.Messages = nil
+	return nil
+}
+
+// Session 访问当前 Session。
+func (r *SessionRef) Session() *session.Session {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.sess
+}
+
+// Name 返回当前 session 名称。
+func (r *SessionRef) Name() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.name
+}
+
+// Switch 切换到指定 name 的 session。会自动 flush 当前 session。
+func (r *SessionRef) Switch(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.flusher != nil {
+		r.flusher.Flush()
+		r.flusher.Stop()
+		r.flusher = nil
+	}
+	if r.store != nil {
+		_ = r.store.Close()
+	}
+	return r.openLocked(name)
+}
+
+// AppendTreeEntries 把 entries 加入后台 flusher。
+func (r *SessionRef) AppendTreeEntries(entries []session.SessionTreeEntry) {
+	r.mu.Lock()
+	flusher := r.flusher
+	r.mu.Unlock()
+	if flusher != nil {
+		flusher.Add(entries)
+	}
+}
+
+// Close 关闭当前 session。
+func (r *SessionRef) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.flusher != nil {
+		r.flusher.Stop()
+		r.flusher = nil
+	}
+	if r.store != nil {
+		_ = r.store.Close()
+		r.store = nil
+	}
+}
+
+// sessionInfo 描述一个 session 文件。
+type sessionInfo struct {
+	Name     string
+	Path     string
+	Size     int64
+	Modified time.Time
+}
+
+// ListSessions 扫描目录，列出所有 session 文件，按修改时间倒序。
+func ListSessions(dir string) ([]sessionInfo, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]sessionInfo, 0, len(files))
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSuffix(filepath.Base(f), ".jsonl")
+		out = append(out, sessionInfo{
+			Name:     name,
+			Path:     f,
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Modified.After(out[j].Modified)
+	})
+	return out, nil
+}
+
+// LoadSessionMessages 加载指定 session 文件中的所有消息（不打开文件持有）。
+// 用于 :view 命令只读查看。
+func LoadSessionMessages(path string) ([]core.Message, error) {
+	store, err := session.NewJSONLStorage(path)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	entries, err := store.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	var msgs []core.Message
+	for _, e := range entries {
+		if e.Type == session.EntryMessage {
+			if m, ok := e.Message.(core.Message); ok {
+				msgs = append(msgs, m)
+			}
+		}
+	}
+	return msgs, nil
+}
+
 // buildSystemPrompt 拼装最终 system prompt。
 func buildSystemPrompt(skillsText string, mem *memory.Memory) string {
 	var sb strings.Builder
@@ -410,18 +590,16 @@ func hashString(s string) string {
 // runSingleQuery 运行单次查询。
 func runSingleQuery(
 	config agent.AgentLoopConfig,
-	messages []core.Message,
 	query string,
 	verbose bool,
-	sess *session.Session,
+	sessRef *SessionRef,
 	mem *memory.Memory,
 	tokenStats *contextmgr.TokenStats,
 	ctxSettings contextmgr.Settings,
 	model core.Model,
-	apiKey string,
+	keyPool *keypool.Pool,
 	autoCompact bool,
 	promptCache *SystemPromptCache,
-	sessFlusher *SessionFlusher,
 	autoLearn *autolearn.AutoLearner,
 ) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -433,19 +611,27 @@ func runSingleQuery(
 		Content:   query,
 		Timestamp: time.Now(),
 	}
-	messages = append(messages, userMsg)
+	sessRef.Messages = append(sessRef.Messages, userMsg)
 	tokenStats.Add(userMsg)
 
 	// 自动压缩
 	if autoCompact {
 		var compacted bool
-		messages, compacted = maybeCompact(ctx, messages, tokenStats, ctxSettings, model, apiKey, verbose)
+		sessRef.Messages, compacted = maybeCompact(ctx, sessRef.Messages, tokenStats, ctxSettings, model, keyPool, verbose)
 		if compacted {
-			tokenStats.Recompute(messages)
+			tokenStats.Recompute(sessRef.Messages)
 		}
 	}
 
-	stream, detailed := agent.AgentLoopDetailed(ctx, messages, config)
+	// 从 keyPool 取本次请求的 key
+	key, kerr := keyPool.Next()
+	if kerr != nil {
+		fmt.Fprintf(os.Stderr, "❌ %v\n", kerr)
+		return
+	}
+	config.SimpleStreamOptions.APIKey = key
+
+	stream, detailed := agent.AgentLoopDetailed(ctx, sessRef.Messages, config)
 
 	_, err := stream.ForEach(ctx, func(evt agent.AgentEvent) error {
 		return handleEvent(evt, verbose)
@@ -453,20 +639,18 @@ func runSingleQuery(
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		keyPool.MarkFailedByKey(key, keypool.CategorizeError(err))
+	} else {
+		keyPool.MarkSuccessByKey(key)
 	}
 
 	// 流结束后获取最终结果
 	res, derr := detailed()
 	if derr == nil {
-		if len(res.Messages) > len(messages) {
-			newEntries := res.Messages[len(messages):]
-			if sessFlusher != nil {
-				sessFlusher.Add(toTreeEntries(newEntries))
-			} else if sess != nil {
-				if err := sess.Append(toTreeEntries(newEntries)...); err != nil {
-					fmt.Fprintf(os.Stderr, "[session] append error: %v\n", err)
-				}
-			}
+		if len(res.Messages) > len(sessRef.Messages) {
+			newEntries := res.Messages[len(sessRef.Messages):]
+			sessRef.AppendTreeEntries(toTreeEntries(newEntries))
+			sessRef.Messages = append(sessRef.Messages, newEntries...)
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "[summary] error: %v\n", derr)
@@ -479,23 +663,21 @@ func runSingleQuery(
 // runInteractive 交互模式。
 func runInteractive(
 	config agent.AgentLoopConfig,
-	messages []core.Message,
 	verbose bool,
-	sess *session.Session,
+	sessRef *SessionRef,
 	mem *memory.Memory,
 	tokenStats *contextmgr.TokenStats,
 	ctxSettings contextmgr.Settings,
 	model core.Model,
-	apiKey string,
+	keyPool *keypool.Pool,
 	autoCompact bool,
 	promptCache *SystemPromptCache,
-	sessFlusher *SessionFlusher,
 	autoLearn *autolearn.AutoLearner,
 ) {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	fmt.Fprintln(os.Stderr, "\n🤖 Interactive mode")
-	fmt.Fprintln(os.Stderr, "Commands: :history :context :compact :memory :save :load :remember :forget :stats :quit")
+	fmt.Fprintln(os.Stderr, "Commands: :history :context :compact :memory :save :load :sessions :open :view :new :current :remember :forget :stats :keys :quit")
 	fmt.Fprintln(os.Stderr, "Or type a question.")
 
 	for {
@@ -511,7 +693,7 @@ func runInteractive(
 
 		// 命令以 : 开头
 		if strings.HasPrefix(input, ":") {
-			handleCommand(input, messages, sess, mem, tokenStats, ctxSettings, model, apiKey, verbose, promptCache)
+			handleCommand(input, sessRef, mem, tokenStats, ctxSettings, model, keyPool, verbose, promptCache)
 			continue
 		}
 
@@ -521,7 +703,7 @@ func runInteractive(
 			Content:   input,
 			Timestamp: time.Now(),
 		}
-		messages = append(messages, userMsg)
+		sessRef.Messages = append(sessRef.Messages, userMsg)
 		tokenStats.Add(userMsg)
 
 		// 自动学习：从用户输入提取记忆
@@ -533,15 +715,23 @@ func runInteractive(
 		// 自动压缩
 		if autoCompact {
 			var compacted bool
-			messages, compacted = maybeCompact(context.Background(), messages, tokenStats, ctxSettings, model, apiKey, verbose)
+			sessRef.Messages, compacted = maybeCompact(context.Background(), sessRef.Messages, tokenStats, ctxSettings, model, keyPool, verbose)
 			if compacted {
-				tokenStats.Recompute(messages)
+				tokenStats.Recompute(sessRef.Messages)
 			}
 		}
 
+		// 从 keyPool 取本次请求的 key
+		key, kerr := keyPool.Next()
+		if kerr != nil {
+			fmt.Fprintf(os.Stderr, "\n❌ %v\n", kerr)
+			continue
+		}
+		config.SimpleStreamOptions.APIKey = key
+
 		// 运行 agent
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		stream, detailed := agent.AgentLoopDetailed(ctx, messages, config)
+		stream, detailed := agent.AgentLoopDetailed(ctx, sessRef.Messages, config)
 
 		_, err := stream.ForEach(ctx, func(evt agent.AgentEvent) error {
 			return handleEvent(evt, verbose)
@@ -550,25 +740,20 @@ func runInteractive(
 
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+			keyPool.MarkFailedByKey(key, keypool.CategorizeError(err))
 			continue
 		}
 
 		// 获取最终结果
 		res, derr := detailed()
 		if derr == nil {
-			if len(res.Messages) > len(messages) {
-				newEntries := res.Messages[len(messages):]
-				if sessFlusher != nil {
-					sessFlusher.Add(toTreeEntries(newEntries))
-				} else if sess != nil {
-					if err := sess.Append(toTreeEntries(newEntries)...); err != nil {
-						fmt.Fprintf(os.Stderr, "[session] append error: %v\n", err)
-					}
-				}
-				messages = res.Messages
+			if len(res.Messages) > len(sessRef.Messages) {
+				newEntries := res.Messages[len(sessRef.Messages):]
+				sessRef.AppendTreeEntries(toTreeEntries(newEntries))
+				sessRef.Messages = res.Messages
 				// token 统计也用真实使用值更新
-				if last := lastAssistantMessage(messages); last != nil && last.Usage.Input > 0 {
-					tokenStats.Recompute(messages)
+				if last := lastAssistantMessage(sessRef.Messages); last != nil && last.Usage.Input > 0 {
+					tokenStats.Recompute(sessRef.Messages)
 				} else {
 					tokenStats.AddMany(newEntries)
 				}
@@ -594,13 +779,12 @@ func lastAssistantMessage(messages []core.Message) *core.AssistantMessage {
 // handleCommand 处理交互命令。
 func handleCommand(
 	cmd string,
-	messages []core.Message,
-	sess *session.Session,
+	sessRef *SessionRef,
 	mem *memory.Memory,
 	tokenStats *contextmgr.TokenStats,
 	ctxSettings contextmgr.Settings,
 	model core.Model,
-	apiKey string,
+	keyPool *keypool.Pool,
 	verbose bool,
 	promptCache *SystemPromptCache,
 ) {
@@ -615,23 +799,41 @@ func handleCommand(
 		os.Exit(0)
 
 	case ":history":
-		fmt.Fprintf(os.Stderr, "\n📜 对话历史 (%d 条):\n", len(messages))
-		for i, msg := range messages {
+		fmt.Fprintf(os.Stderr, "\n📜 对话历史 [%s] (%d 条):\n", sessRef.Name(), len(sessRef.Messages))
+		for i, msg := range sessRef.Messages {
 			role := "?"
 			content := ""
+			marker := ""
 			switch m := msg.(type) {
 			case core.UserMessage:
 				role = "🧑"
+				if s, ok := m.Content.(string); ok && strings.HasPrefix(s, "[对话历史摘要]") {
+					marker = " [摘要]"
+				}
 				content = truncate(fmt.Sprintf("%v", m.Content), 80)
 			case core.AssistantMessage:
 				role = "🤖"
-				content = extractAssistantText(m)
+				if text := extractAssistantText(m); text == "好的，我已了解之前的对话历史。请继续。" {
+					marker = " [摘要]"
+				}
+				parts := []string{}
+				if text := extractAssistantText(m); text != "" {
+					parts = append(parts, text)
+				}
+				for _, call := range extractToolCalls(m) {
+					parts = append(parts, fmt.Sprintf("🔧 %s(%s)", call.Name, truncate(call.Args, 40)))
+				}
+				content = strings.Join(parts, " | ")
+				if content == "" {
+					content = "(无内容)"
+				}
 				content = truncate(content, 80)
 			case core.ToolResultMessage:
 				role = "🔧"
-				content = m.ToolName
+				result := formatContentBlocks(m.Content)
+				content = fmt.Sprintf("%s: %s", m.ToolName, truncate(result, 60))
 			}
-			fmt.Fprintf(os.Stderr, "  %d. %s %s\n", i+1, role, content)
+			fmt.Fprintf(os.Stderr, "  %d. %s %s%s\n", i+1, role, marker, content)
 		}
 
 	case ":context":
@@ -641,11 +843,13 @@ func handleCommand(
 	case ":compact":
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		newMsgs, err := doCompact(ctx, messages, ctxSettings, model, apiKey, verbose)
+		newMsgs, err := doCompact(ctx, sessRef.Messages, ctxSettings, model, keyPool, verbose)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "压缩失败: %v\n", err)
 		} else {
-			fmt.Fprintf(os.Stderr, "✓ 已压缩: %d → %d 消息\n", len(messages), len(newMsgs))
+			fmt.Fprintf(os.Stderr, "✓ 已压缩: %d → %d 消息\n", len(sessRef.Messages), len(newMsgs))
+			sessRef.Messages = newMsgs
+			tokenStats.Recompute(sessRef.Messages)
 		}
 
 	case ":memory":
@@ -711,7 +915,7 @@ func handleCommand(
 				fmt.Fprintln(os.Stderr, "✓ 记忆已保存")
 			}
 		}
-		fmt.Fprintf(os.Stderr, "✓ Session 当前 %d 条记录\n", sessSize(sess))
+		fmt.Fprintf(os.Stderr, "✓ Session [%s] 当前 %d 条记录\n", sessRef.Name(), len(sessRef.Messages))
 
 	case ":load":
 		if mem != nil {
@@ -722,7 +926,7 @@ func handleCommand(
 				fmt.Fprintf(os.Stderr, "✓ 重新加载 %d 条记忆\n", mem.Size())
 			}
 		}
-		fmt.Fprintf(os.Stderr, "✓ Session 当前 %d 条记录\n", sessSize(sess))
+		fmt.Fprintf(os.Stderr, "✓ Session [%s] 当前 %d 条记录\n", sessRef.Name(), len(sessRef.Messages))
 
 	case ":stats":
 		stats := tokenStats.Get()
@@ -730,11 +934,105 @@ func handleCommand(
 		if mem != nil {
 			fmt.Fprintf(os.Stderr, "🧠 长期记忆: %d 条\n", mem.Size())
 		}
-		fmt.Fprintf(os.Stderr, "💾 Session: %d 条记录\n", sessSize(sess))
+		fmt.Fprintf(os.Stderr, "💾 Session [%s]: %d 条记录\n", sessRef.Name(), len(sessRef.Messages))
+
+	case ":keys":
+		fmt.Fprintln(os.Stderr, "\n🔑 API Key 池:")
+		for _, s := range keyPool.Status() {
+			fmt.Fprintf(os.Stderr, "  %s\n", s.String())
+		}
+
+	case ":sessions", ":list":
+		list, err := ListSessions(sessRef.dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "列出 session 失败: %v\n", err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "\n📁 Sessions (%s) 共 %d 个:\n", sessRef.dir, len(list))
+		current := sessRef.Name()
+		for _, s := range list {
+			marker := ""
+			if s.Name == current {
+				marker = " ← 当前"
+			}
+			fmt.Fprintf(os.Stderr, "  %-30s  %6d 字节  %s%s\n",
+				s.Name, s.Size, s.Modified.Format("2006-01-02 15:04:05"), marker)
+		}
+
+	case ":current":
+		fmt.Fprintf(os.Stderr, "当前 session: %s\n", sessRef.Name())
+		fmt.Fprintf(os.Stderr, "消息数: %d\n", len(sessRef.Messages))
+
+	case ":open":
+		if len(parts) < 2 {
+			fmt.Fprintln(os.Stderr, "用法: :open <session 名>")
+			return
+		}
+		newName := parts[1]
+		if newName == sessRef.Name() {
+			fmt.Fprintf(os.Stderr, "已经在 %s 中\n", newName)
+			return
+		}
+		if err := sessRef.Switch(newName); err != nil {
+			fmt.Fprintf(os.Stderr, "切换失败: %v\n", err)
+			return
+		}
+		newSess := sessRef.Session()
+		if newSess != nil {
+			ctx2 := newSess.BuildContext()
+			sessRef.Messages = ctx2.Messages
+		}
+		tokenStats.Recompute(sessRef.Messages)
+		fmt.Fprintf(os.Stderr, "✓ 已切换到 [%s]，消息数: %d\n", sessRef.Name(), len(sessRef.Messages))
+
+	case ":new":
+		var newName string
+		if len(parts) >= 2 {
+			newName = parts[1]
+		} else {
+			newName = fmt.Sprintf("session-%s", time.Now().Format("20060102-150405"))
+		}
+		if err := sessRef.Switch(newName); err != nil {
+			fmt.Fprintf(os.Stderr, "创建失败: %v\n", err)
+			return
+		}
+		sessRef.Messages = nil
+		tokenStats.Recompute(sessRef.Messages)
+		fmt.Fprintf(os.Stderr, "✓ 新建并切换到 [%s]\n", sessRef.Name())
+
+	case ":view":
+		if len(parts) < 2 {
+			fmt.Fprintln(os.Stderr, "用法: :view <session 名>")
+			return
+		}
+		viewName := parts[1]
+		viewPath := filepath.Join(sessRef.dir, viewName+".jsonl")
+		msgs, err := LoadSessionMessages(viewPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "读取 %s 失败: %v\n", viewName, err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "\n👀 查看 session [%s] (%d 条消息):\n", viewName, len(msgs))
+		for i, msg := range msgs {
+			role := "?"
+			content := ""
+			switch m := msg.(type) {
+			case core.UserMessage:
+				role = "🧑"
+				content = truncate(fmt.Sprintf("%v", m.Content), 80)
+			case core.AssistantMessage:
+				role = "🤖"
+				content = truncate(extractAssistantText(m), 80)
+			case core.ToolResultMessage:
+				role = "🔧"
+				content = m.ToolName
+			}
+			fmt.Fprintf(os.Stderr, "  %d. %s %s\n", i+1, role, content)
+		}
 
 	default:
 		fmt.Fprintf(os.Stderr, "未知命令: %s\n", parts[0])
-		fmt.Fprintln(os.Stderr, "可用: :history :context :compact :memory :remember :forget :save :load :stats :quit")
+		fmt.Fprintln(os.Stderr, "可用: :history :context :compact :memory :remember :forget :save :load :stats :keys :quit")
 	}
 }
 
@@ -795,7 +1093,7 @@ func maybeCompact(
 	tokenStats *contextmgr.TokenStats,
 	settings contextmgr.Settings,
 	model core.Model,
-	apiKey string,
+	keyPool *keypool.Pool,
 	verbose bool,
 ) ([]core.Message, bool) {
 	if !tokenStats.ShouldCompact() {
@@ -806,7 +1104,7 @@ func maybeCompact(
 		fmt.Fprintf(os.Stderr, "\n⚠️  上下文达到 %d tokens, 触发自动压缩...\n", tokenStats.Tokens())
 	}
 
-	newMsgs, err := doCompact(ctx, messages, settings, model, apiKey, verbose)
+	newMsgs, err := doCompact(ctx, messages, settings, model, keyPool, verbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[compact] failed: %v\n", err)
 		return messages, false
@@ -823,15 +1121,21 @@ func doCompact(
 	messages []core.Message,
 	settings contextmgr.Settings,
 	model core.Model,
-	apiKey string,
+	keyPool *keypool.Pool,
 	verbose bool,
 ) ([]core.Message, error) {
+	key, kerr := keyPool.Next()
+	if kerr != nil {
+		return nil, kerr
+	}
 	opts := core.SimpleStreamOptions{}
-	opts.APIKey = apiKey
+	opts.APIKey = key
 	result, err := contextmgr.Compact(ctx, model, messages, settings, opts)
 	if err != nil {
+		keyPool.MarkFailedByKey(key, keypool.CategorizeError(err))
 		return nil, err
 	}
+	keyPool.MarkSuccessByKey(key)
 	return result.NewMessages, nil
 }
 
@@ -856,6 +1160,23 @@ func sessSize(sess *session.Session) int {
 	return len(sess.Entries())
 }
 
+// formatContentBlocks 把任意 []ContentBlock 格式化为可读字符串。
+func formatContentBlocks(blocks []core.ContentBlock) string {
+	if len(blocks) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, b := range blocks {
+		switch c := b.(type) {
+		case core.TextContent:
+			parts = append(parts, c.Text)
+		default:
+			parts = append(parts, fmt.Sprintf("[%T]", b))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 func extractAssistantText(m core.AssistantMessage) string {
 	var parts []string
 	for _, b := range m.Content {
@@ -864,6 +1185,25 @@ func extractAssistantText(m core.AssistantMessage) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+// toolCallInfo 工具调用信息（用于 :history 显示）。
+type toolCallInfo struct {
+	Name string
+	Args string
+}
+
+// extractToolCalls 从 AssistantMessage 中提取工具调用信息。
+func extractToolCalls(m core.AssistantMessage) []toolCallInfo {
+	var calls []toolCallInfo
+	for _, b := range m.Content {
+		if c, ok := b.(core.ToolCall); ok {
+			// c.Arguments 是 json.RawMessage（[]byte）
+			args := string(c.Arguments)
+			calls = append(calls, toolCallInfo{Name: c.Name, Args: args})
+		}
+	}
+	return calls
 }
 
 func truncate(s string, max int) string {
@@ -928,6 +1268,56 @@ func resolveModel(provider, modelID, baseURL string) core.Model {
 		API:      api,
 		BaseURL:  baseURL,
 	}
+}
+
+// collectAPIKeys 收集 API key 列表。
+// 优先级：-api-keys CLI > API_KEYS env > -api-key CLI > API_KEY env > {PROVIDER}_API_KEY env
+// -api-keys 和 API_KEYS 都支持逗号分隔多个 key。
+func collectAPIKeys(apiKeysFlag, apiKeyFlag, provider string, verbose bool) []string {
+	keys := []string{}
+
+	// 1. -api-keys CLI
+	if apiKeysFlag != "" {
+		for _, k := range strings.Split(apiKeysFlag, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) > 0 {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[keypool] loaded %d key(s) from -api-keys\n", len(keys))
+			}
+			return keys
+		}
+	}
+
+	// 2. API_KEYS env
+	if envKeys := os.Getenv("API_KEYS"); envKeys != "" {
+		for _, k := range strings.Split(envKeys, ",") {
+			if k = strings.TrimSpace(k); k != "" {
+				keys = append(keys, k)
+			}
+		}
+		if len(keys) > 0 {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "[keypool] loaded %d key(s) from API_KEYS env\n", len(keys))
+			}
+			return keys
+		}
+	}
+
+	// 3. 兼容单 key：-api-key / API_KEY / {PROVIDER}_API_KEY
+	single := apiKeyFlag
+	if single == "" {
+		single = os.Getenv("API_KEY")
+		if single == "" && provider != "" {
+			single = os.Getenv(strings.ToUpper(provider) + "_API_KEY")
+		}
+	}
+	if single != "" {
+		keys = append(keys, strings.TrimSpace(single))
+	}
+	return keys
 }
 
 func loadEnv() {
