@@ -199,6 +199,17 @@ func main() {
 	if *autoLearnFlag {
 		extractor = newLLMExtractor(model, keyPool, *verbose)
 		wfExtractor = newWorkflowExtractor(model, keyPool, *verbose)
+
+		// 加载 skill-writer/SKILL.md 作为工作流生成的参考规范。
+		// 如果加载成功，wfExtractor 就能直接让 LLM 按 skill-writer 标准输出完整 SKILL.md。
+		if doc, err := loadSkillWriterDoc(*skillsDir); err == nil && doc != "" {
+			wfExtractor.SkillWriterDoc = doc
+			if *verbose {
+				fmt.Fprintf(os.Stderr, "[workflow] 已加载 skill-writer 参考规范（%d 字符）\n", len(doc))
+			}
+		} else if *verbose && err != nil {
+			fmt.Fprintf(os.Stderr, "[workflow] 未找到 skill-writer/SKILL.md，使用回退路径: %v\n", err)
+		}
 	}
 	autoLearn := autolearn.New(mem, autolearn.Settings{
 		AutoLearn:     *autoLearnFlag,
@@ -352,6 +363,26 @@ func (f *SessionFlusher) flushNow() {
 	if err := f.sess.Append(entries...); err != nil {
 		fmt.Fprintf(os.Stderr, "[session] flush error: %v\n", err)
 	}
+}
+
+// loadSkillWriterDoc 加载 skill-writer/SKILL.md 的完整内容。
+// 用于 wfExtractor 作为参考规范让 LLM 按 skill-writer 标准生成 SKILL.md。
+// 找不到时返回空字符串和 nil 错误（不视为错误，使用回退路径）。
+func loadSkillWriterDoc(skillsDir string) (string, error) {
+	if skillsDir == "" {
+		return "", nil
+	}
+	candidates := []string{
+		filepath.Join(skillsDir, "skill-writer", "SKILL.md"),
+		filepath.Join(skillsDir, "skill-writer", "skill.md"),
+	}
+	for _, p := range candidates {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			return string(data), nil
+		}
+	}
+	return "", nil
 }
 
 // loadSkillsText 加载 skills 并格式化为 system prompt 片段。

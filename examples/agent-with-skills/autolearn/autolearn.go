@@ -14,6 +14,8 @@ package autolearn
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -524,13 +526,39 @@ func (a *AutoLearner) MaybeExtract(ctx context.Context, messages []core.Message,
 }
 
 // MaybeExtractWorkflow 异步检查是否需要 LLM 提取工作流。
-// 调用 WorkflowExtractor，把识别出的 Skill 写入 a.WorkflowDir。
+// 优先调用 ExtractSkillMd（按 skill-writer 规范直接生成完整 SKILL.md），
+// 回退到 Extract（结构化提取 → 模板渲染）。
 // 返回实际写入的 skill 数。
 func (a *AutoLearner) MaybeExtractWorkflow(ctx context.Context, messages []core.Message, extractor *WorkflowExtractor) int {
 	if !a.settings.AutoLearn || extractor == nil || a.WorkflowDir == "" {
 		return 0
 	}
 
+	// 路径 1：直接生成符合 skill-writer 规范的完整 SKILL.md
+	if extractor.SkillWriterDoc != "" {
+		contents, err := extractor.ExtractSkillMd(ctx, messages)
+		if err == nil && len(contents) > 0 {
+			count := 0
+			for _, content := range contents {
+				name := ExtractSkillName(content)
+				if name == "" {
+					continue
+				}
+				dir := filepath.Join(a.WorkflowDir, name)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					continue
+				}
+				path := filepath.Join(dir, "SKILL.md")
+				if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+					continue
+				}
+				count++
+			}
+			return count
+		}
+	}
+
+	// 路径 2（回退）：结构化提取 → 模板渲染
 	skills, err := extractor.Extract(ctx, messages)
 	if err != nil || len(skills) == 0 {
 		return 0
