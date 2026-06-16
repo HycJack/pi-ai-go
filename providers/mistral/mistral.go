@@ -300,8 +300,7 @@ func doMistralStream(ctx context.Context, baseURL, apiKey string, model core.Mod
 		req.Header.Set(k, v)
 	}
 
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderMistral, 5*time.Minute, err)

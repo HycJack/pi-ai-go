@@ -26,7 +26,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +61,8 @@ func main() {
 	sessionPath := flag.String("session", os.Getenv("SESSION"), "JSONL session file (empty = memory only)")
 	memoryPath := flag.String("memory", os.Getenv("MEMORY"), "Long-term memory file (empty = no memory)")
 	autoCompact := flag.Bool("auto-compact", true, "Auto compact when context exceeds soft limit")
+	autoLearnFlag := flag.Bool("auto-learn", envBool("AUTO_LEARN", false), "Auto-extract memories from LLM every N turns")
+	extractEveryFlag := flag.Int("extract-every", envInt("EXTRACT_EVERY_N", 5), "Trigger LLM memory extraction every N turns")
 	flag.Parse()
 
 	fmt.Fprintf(os.Stderr, "[config] Provider: %s\n", *provider)
@@ -189,13 +193,28 @@ func main() {
 		}
 	}
 
-	// 自动学习器
-	autoLearn := autolearn.New(mem, autolearn.DefaultSettings())
+	// 自动学习器（含 LLM 提取）
+	var extractor autolearn.Extractor
+	var wfExtractor *autolearn.WorkflowExtractor
+	if *autoLearnFlag {
+		extractor = newLLMExtractor(model, keyPool, *verbose)
+		wfExtractor = newWorkflowExtractor(model, keyPool, *verbose)
+	}
+	autoLearn := autolearn.New(mem, autolearn.Settings{
+		AutoLearn:     *autoLearnFlag,
+		ExtractEveryN: *extractEveryFlag,
+		MinConfidence: 0.7,
+	})
+	// 设置 workflow 输出目录：<skillsDir>/auto-extracted
+	if *skillsDir != "" {
+		autoLearn.WorkflowDir = filepath.Join(*skillsDir, "auto-extracted")
+		_ = os.MkdirAll(autoLearn.WorkflowDir, 0755)
+	}
 
 	if *query != "" {
-		runSingleQuery(config, *query, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn)
+		runSingleQuery(config, *query, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn, extractor)
 	} else {
-		runInteractive(config, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn)
+		runInteractive(config, *verbose, sessRef, mem, tokenStats, ctxSettings, model, keyPool, *autoCompact, promptCache, autoLearn, extractor, wfExtractor)
 	}
 }
 
@@ -336,11 +355,14 @@ func (f *SessionFlusher) flushNow() {
 }
 
 // loadSkillsText 加载 skills 并格式化为 system prompt 片段。
+// 自动合并用户手写 skills（skillsDir）和自动提取的 skills（skillsDir/auto-extracted）。
 func loadSkillsText(skillsDir string, verbose bool) string {
 	if skillsDir == "" {
 		return ""
 	}
-	skills, diags := session.LoadSkills(skillsDir)
+	// 同时加载用户手写和 LLM 自动提取的 skills
+	dirs := []string{skillsDir, filepath.Join(skillsDir, "auto-extracted")}
+	skills, diags := session.LoadSkills(dirs...)
 	for _, d := range diags {
 		fmt.Fprintf(os.Stderr, "[skill] %s: %s\n", d.Path, d.Message)
 	}
@@ -366,7 +388,39 @@ func initMemory(path string, verbose bool) *memory.Memory {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "[memory] Loaded %d entries from %s\n", mem.Size(), path)
 	}
+	recordSystemInfo(mem, verbose)
 	return mem
+}
+
+// recordSystemInfo 记录操作系统信息到长期记忆。
+// 只在首次启动时写入，后续启动不会覆盖用户修改的值。
+func recordSystemInfo(mem *memory.Memory, verbose bool) {
+	if mem == nil {
+		return
+	}
+	const osKey = "system.os"
+	if mem.Has(osKey) {
+		return
+	}
+	goos := runtime.GOOS
+	var osName string
+	switch goos {
+	case "windows":
+		osName = "windows"
+	case "darwin":
+		osName = "mac"
+	case "linux":
+		osName = "linux"
+	default:
+		osName = goos
+	}
+	mem.SetWithCategory(osKey, osName, "system")
+	if err := mem.Save(); err != nil && verbose {
+		fmt.Fprintf(os.Stderr, "[memory] 保存系统信息失败: %v\n", err)
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "[memory] 系统信息: %s = %s\n", osKey, osName)
+	}
 }
 
 // initSession 初始化 session。
@@ -601,6 +655,7 @@ func runSingleQuery(
 	autoCompact bool,
 	promptCache *SystemPromptCache,
 	autoLearn *autolearn.AutoLearner,
+	extractor autolearn.Extractor,
 ) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -612,6 +667,7 @@ func runSingleQuery(
 		Timestamp: time.Now(),
 	}
 	sessRef.Messages = append(sessRef.Messages, userMsg)
+	sessRef.AppendTreeEntries(toTreeEntries([]core.Message{userMsg}))
 	tokenStats.Add(userMsg)
 
 	// 自动压缩
@@ -673,6 +729,8 @@ func runInteractive(
 	autoCompact bool,
 	promptCache *SystemPromptCache,
 	autoLearn *autolearn.AutoLearner,
+	extractor autolearn.Extractor,
+	wfExtractor *autolearn.WorkflowExtractor,
 ) {
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -704,6 +762,7 @@ func runInteractive(
 			Timestamp: time.Now(),
 		}
 		sessRef.Messages = append(sessRef.Messages, userMsg)
+		sessRef.AppendTreeEntries(toTreeEntries([]core.Message{userMsg}))
 		tokenStats.Add(userMsg)
 
 		// 自动学习：从用户输入提取记忆
@@ -760,6 +819,32 @@ func runInteractive(
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "[summary] error: %v\n", derr)
+		}
+
+		// 异步 LLM 提取记忆（不阻塞主循环）
+		if extractor != nil && autoLearn.Settings().AutoLearn {
+			msgsCopy := append([]core.Message(nil), sessRef.Messages...)
+			go func() {
+				bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer bgCancel()
+				if autoLearn.MaybeExtract(bgCtx, msgsCopy, extractor) {
+					promptCache.Invalidate()
+					fmt.Fprintln(os.Stderr, "[memory] LLM 提取了新的记忆")
+				}
+			}()
+		}
+
+		// 异步 LLM 提取工作流 → 自动生成 SKILL.md
+		if wfExtractor != nil && autoLearn.Settings().AutoLearn && autoLearn.WorkflowDir != "" {
+			msgsCopy := append([]core.Message(nil), sessRef.Messages...)
+			go func() {
+				bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer bgCancel()
+				if n := autoLearn.MaybeExtractWorkflow(bgCtx, msgsCopy, wfExtractor); n > 0 {
+					promptCache.Invalidate()
+					fmt.Fprintf(os.Stderr, "[workflow] LLM 提取了 %d 个新 skill\n", n)
+				}
+			}()
 		}
 
 		fmt.Println()
@@ -1044,9 +1129,7 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 		case core.EventTextDelta:
 			fmt.Print(ae.Delta)
 		case core.EventThinkingDelta:
-			if verbose {
-				fmt.Fprintf(os.Stderr, "[thinking] %s", ae.Delta)
-			}
+			fmt.Fprintf(os.Stderr, "[thinking] %s", ae.Delta)
 		case core.EventToolCallStart:
 			fmt.Fprintf(os.Stderr, "\n[tool] %s", ae.Name)
 		case core.EventToolCallDelta:
@@ -1059,8 +1142,12 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", ae.Error)
 		}
 	case agent.EventMessageEnd:
-		if e.Message.ErrorMessage != "" {
-			fmt.Fprintf(os.Stderr, "\nError: %s\n", e.Message.ErrorMessage)
+		if e.Message.StopReason == core.StopError {
+			if e.Message.ErrorMessage != "" {
+				fmt.Fprintf(os.Stderr, "\nError: %s\n", e.Message.ErrorMessage)
+			} else {
+				fmt.Fprintf(os.Stderr, "\nError: 请求失败（未提供错误详情）\n")
+			}
 		}
 	case agent.EventToolExecStart:
 		fmt.Fprintf(os.Stderr, "\n[exec] %s\n", e.ToolName)
@@ -1083,6 +1170,89 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+// newLLMExtractor 创建 LLM 提取器，从 keyPool 拿 key 调用 LLM 同步获取响应。
+func newLLMExtractor(model core.Model, keyPool *keypool.Pool, verbose bool) autolearn.Extractor {
+	return &autolearn.LLMSimpleExtractor{
+		SummarizeFunc: func(ctx context.Context, prompt string) (string, error) {
+			key, err := keyPool.Next()
+			if err != nil {
+				return "", err
+			}
+			opts := core.SimpleStreamOptions{}
+			opts.APIKey = key
+			opts.MaxRetries = 1
+			opts.MaxRetryDelayMs = 5000
+
+			if verbose {
+				fmt.Fprintln(os.Stderr, "[extract] 调用 LLM 提取记忆...")
+			}
+
+			msgs := []core.Message{
+				core.UserMessage{
+					Role:    "user",
+					Content: prompt,
+				},
+			}
+			resp, err := llm.CompleteSimple(ctx, model, msgs, opts)
+			if err != nil {
+				keyPool.MarkFailedByKey(key, keypool.CategorizeError(err))
+				return "", err
+			}
+			keyPool.MarkSuccessByKey(key)
+
+			// 提取文本
+			var text string
+			for _, b := range resp.Content {
+				if c, ok := b.(core.TextContent); ok {
+					text += c.Text
+				}
+			}
+			return text, nil
+		},
+	}
+}
+
+// newWorkflowExtractor 创建工作流提取器，复用与 LLM 提取相同的 LLM 调用通道。
+func newWorkflowExtractor(model core.Model, keyPool *keypool.Pool, verbose bool) *autolearn.WorkflowExtractor {
+	return &autolearn.WorkflowExtractor{
+		SummarizeFunc: func(ctx context.Context, prompt string) (string, error) {
+			key, err := keyPool.Next()
+			if err != nil {
+				return "", err
+			}
+			opts := core.SimpleStreamOptions{}
+			opts.APIKey = key
+			opts.MaxRetries = 1
+			opts.MaxRetryDelayMs = 5000
+
+			if verbose {
+				fmt.Fprintln(os.Stderr, "[workflow] 调用 LLM 提取工作流...")
+			}
+
+			msgs := []core.Message{
+				core.UserMessage{
+					Role:    "user",
+					Content: prompt,
+				},
+			}
+			resp, err := llm.CompleteSimple(ctx, model, msgs, opts)
+			if err != nil {
+				keyPool.MarkFailedByKey(key, keypool.CategorizeError(err))
+				return "", err
+			}
+			keyPool.MarkSuccessByKey(key)
+
+			var text string
+			for _, b := range resp.Content {
+				if c, ok := b.(core.TextContent); ok {
+					text += c.Text
+				}
+			}
+			return text, nil
+		},
+	}
 }
 
 // maybeCompact 在超出软限制时自动压缩。
@@ -1170,6 +1340,8 @@ func formatContentBlocks(blocks []core.ContentBlock) string {
 		switch c := b.(type) {
 		case core.TextContent:
 			parts = append(parts, c.Text)
+		case core.ThinkingContent:
+			parts = append(parts, "[思考]"+c.Thinking)
 		default:
 			parts = append(parts, fmt.Sprintf("[%T]", b))
 		}
@@ -1177,11 +1349,36 @@ func formatContentBlocks(blocks []core.ContentBlock) string {
 	return strings.Join(parts, " ")
 }
 
+// envBool 解析布尔环境变量。
+func envBool(key string, def bool) bool {
+	v := strings.ToLower(os.Getenv(key))
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return def
+}
+
+// envInt 解析整数环境变量。
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 func extractAssistantText(m core.AssistantMessage) string {
 	var parts []string
 	for _, b := range m.Content {
-		if c, ok := b.(core.TextContent); ok {
+		switch c := b.(type) {
+		case core.TextContent:
 			parts = append(parts, c.Text)
+		case core.ThinkingContent:
+			parts = append(parts, "[思考]"+c.Thinking)
 		}
 	}
 	return strings.Join(parts, "")

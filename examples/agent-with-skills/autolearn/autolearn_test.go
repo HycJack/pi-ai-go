@@ -129,7 +129,7 @@ func TestAutoLearnerApply(t *testing.T) {
 
 	// Process more
 	al.ProcessUserInput("[remember:preference.language=zh-CN]")
-	al.ProcessUserInput("REMEMBER:project.name=pi-ai-go")
+	al.ProcessToolResult("REMEMBER:project.name=pi-ai-go")
 
 	if mem.Size() != 3 {
 		t.Errorf("mem.Size = %d, want 3", mem.Size())
@@ -245,5 +245,45 @@ func TestMaybeExtractEnabled(t *testing.T) {
 	al.MaybeExtract(context.Background(), nil, extractor)
 	if mem.Size() != 1 {
 		t.Errorf("after 2nd call, mem.Size = %d, want 1", mem.Size())
+	}
+}
+
+// TestSettingsAccessor 验证 Settings() 返回正确的配置。
+func TestSettingsAccessor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "memory.json")
+	mem, _ := memory.New(path)
+
+	settings := Settings{
+		AutoLearn:     true,
+		ExtractEveryN: 7,
+		MinConfidence: 0.9,
+	}
+	al := New(mem, settings)
+
+	got := al.Settings()
+	if got.AutoLearn != true {
+		t.Error("Settings().AutoLearn mismatch")
+	}
+	if got.ExtractEveryN != 7 {
+		t.Errorf("Settings().ExtractEveryN = %d, want 7", got.ExtractEveryN)
+	}
+	if got.MinConfidence != 0.9 {
+		t.Errorf("Settings().MinConfidence = %f, want 0.9", got.MinConfidence)
+	}
+}
+
+// TestExtractParseMultiple 验证多行 KEY=VALUE 解析。
+func TestExtractParseMultiple(t *testing.T) {
+	input := `user.name=小明
+preference.theme=dark
+# 注释
+project.name=pi-ai-go`
+	got := parseExtractionResult(input, SourceLLMExtract)
+	if len(got) != 3 {
+		t.Errorf("len = %d, want 3", len(got))
+	}
+	if got[0].Source != SourceLLMExtract {
+		t.Errorf("got[0].Source = %s, want %s", got[0].Source, SourceLLMExtract)
 	}
 }
