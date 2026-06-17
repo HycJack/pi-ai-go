@@ -1,1 +1,1 @@
-fix(sw): remove chrome.action.onClicked - undefined in sidePanel-only extensions 
+fix(sw): resolve Service Worker invalid - MemoryStore.all() and SkillStore.all() method names 

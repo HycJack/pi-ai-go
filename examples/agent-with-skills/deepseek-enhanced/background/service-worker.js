@@ -30,7 +30,7 @@ async function handleMessage(message, sender) {
 
     // --- 记忆 CRUD ---
     case 'getMemories':
-      return await MemoryStore.getAll();
+      return await MemoryStore.all();
     case 'saveMemory':
       return await MemoryStore.save(message.memory);
     case 'updateMemory':

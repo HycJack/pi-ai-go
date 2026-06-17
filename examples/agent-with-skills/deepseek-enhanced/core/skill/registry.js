@@ -20,7 +20,7 @@ export function getSkill(name) {
  * @returns {Promise<Array>}
  */
 export async function getAllSkills() {
-  const customSkills = await SkillStore.getAll();
+  const customSkills = await SkillStore.all();
   const builtinList = Object.entries(BUILTIN_SKILLS).map(([id, skill]) => ({
     id,
     name: skill.name,
