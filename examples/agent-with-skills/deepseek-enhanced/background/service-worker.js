@@ -78,10 +78,13 @@ async function handleMessage(message, sender) {
   }
 }
 
-// ==================== 点击图标打开侧边栏 ====================
+// ==================== 侧边栏 ====================
+// manifest 中 side_panel.default_path 已设置，点击扩展图标会自动打开侧边栏
+// 如需编程方式打开: chrome.sidePanel.open({ windowId: tab.windowId })
 
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ windowId: tab.windowId });
+// 扩展安装时统一设置侧边栏行为
+chrome.runtime.onInstalled.addListener(() => {
+  console.log('[DeepSeek Enhanced] v' + chrome.runtime.getManifest().version + ' installed');
 });
 
 console.log('[DeepSeek Enhanced] Service Worker ready');

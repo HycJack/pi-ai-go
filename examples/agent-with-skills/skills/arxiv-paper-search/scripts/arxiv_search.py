@@ -1,164 +1,252 @@
-"""
-arXiv 论文搜索脚本
-==================
-通过 arXiv API 检索论文，解析 XML 并以结构化方式输出。
+#!/usr/bin/env python3
+"""arXiv API search script – zero-dependency, Python 3.7+."""
 
-用法:
-    python arxiv_search.py --query "all:agent AND all:LLM" --max 10 --sort submittedDate
-
-依赖: Python 3.7+（纯标准库，无外部依赖）
-"""
+from __future__ import annotations
 
 import argparse
-import dataclasses
+import html
+import re
+import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
-# ── 数据结构 ──────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
 
-
-@dataclasses.dataclass
+@dataclass
 class Paper:
     title: str
-    published: str       # YYYY-MM-DD
-    authors: List[str]
     summary: str
+    published: str
+    updated: str
+    authors: List[str]
     link: str
+    categories: List[str]
 
-    def short_authors(self, max_n: int = 5) -> str:
-        shown = self.authors[:max_n]
-        suffix = "..." if len(self.authors) > max_n else ""
+    def _date(self, raw: str) -> str:
+        return raw[:10]  # yyyy-mm-dd
+
+    @property
+    def pub_date(self) -> str:
+        return self._date(self.published)
+
+    @property
+    def upd_date(self) -> str:
+        return self._date(self.updated)
+
+    @staticmethod
+    def _clean_title(raw: str) -> str:
+        return " ".join(raw.split())
+
+    @staticmethod
+    def _clean_summary(raw: str) -> str:
+        return " ".join(raw.split())
+
+    def summary_truncated(self, limit: int = 300) -> str:
+        s = self._clean_summary(self.summary)
+        return s[:limit] + ("..." if len(s) > limit else "")
+
+    def authors_str(self) -> str:
+        if not self.authors:
+            return "N/A"
+        shown = self.authors[:5]
+        suffix = "..." if len(self.authors) > 5 else ""
         return ", ".join(shown) + suffix
 
-    def short_summary(self, max_len: int = 300) -> str:
-        if len(self.summary) <= max_len:
-            return self.summary
-        return self.summary[:max_len] + "..."
-
-    def to_markdown(self) -> str:
-        return (
-            f"### {self.title}\n"
-            f"- 📅 {self.published}  |  👥 {self.short_authors()}\n"
-            f"- {self.short_summary()}\n"
-            f"- 🔗 {self.link}\n"
-        )
+    def categories_str(self) -> str:
+        return "，".join(self.categories) if self.categories else "N/A"
 
 
-# ── 核心流程 ──────────────────────────────────────────────
-
+# ---------------------------------------------------------------------------
+# Searcher
+# ---------------------------------------------------------------------------
 
 class ArxivSearcher:
-    """arXiv API 搜索器，封装查询、解析、输出全流程。"""
+    BASE = "https://export.arxiv.org/api/query"
 
-    BASE_URL = "https://export.arxiv.org/api/query"
-    NS = {
-        "atom": "http://www.w3.org/2005/Atom",
-        "arxiv": "http://arxiv.org/schemas/atom",
-    }
-
-    def __init__(self, query: str, max_results: int = 10, sort_by: str = "submittedDate"):
+    def __init__(
+        self,
+        query: str,
+        max_results: int = 10,
+        sort_by: str = "submittedDate",
+        sort_order: str = "descending",
+        start: int = 0,
+    ):
         self.query = query
-        self.max_results = max_results
+        self.max_results = min(max_results, 100)
         self.sort_by = sort_by
+        self.sort_order = sort_order
+        self.start = start
 
-    # ── Step 1: 构建请求 ──
-    def build_url(self, start: int = 0) -> str:
+    def build_url(self) -> str:
         params = {
             "search_query": self.query,
             "sortBy": self.sort_by,
-            "sortOrder": "descending",
-            "start": start,
-            "max_results": self.max_results,
+            "sortOrder": self.sort_order,
+            "start": str(self.start),
+            "max_results": str(self.max_results),
         }
-        return self.BASE_URL + "?" + urllib.parse.urlencode(params)
+        return self.BASE + "?" + urllib.parse.urlencode(params)
 
-    # ── Step 2: 获取并解析 ──
-    def fetch(self, start: int = 0) -> List[Paper]:
-        url = self.build_url(start)
-        print(f"\n[arXiv] 检索: {url}")
+    def fetch(self) -> List[Paper]:
+        url = self.build_url()
+        req = urllib.request.Request(url, headers={"User-Agent": "arxiv-skill/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8")
+        except Exception as exc:
+            print(f"请求失败: {exc}", file=sys.stderr)
+            return []
+        return self._parse(raw)
 
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            content = resp.read().decode("utf-8")
-
-        return self._parse(content)
-
-    def _parse(self, xml_content: str) -> List[Paper]:
-        root = ET.fromstring(xml_content)
+    def _parse(self, xml_text: str) -> List[Paper]:
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "arxiv": "http://arxiv.org/schemas/atom",
+        }
+        root = ET.fromstring(xml_text)
         papers: List[Paper] = []
+        for entry in root.findall("atom:entry", ns):
+            title = self._text(entry, "atom:title", ns)
+            summary = self._text(entry, "atom:summary", ns)
+            published = self._text(entry, "atom:published", ns)
+            updated = self._text(entry, "atom:updated", ns)
 
-        for entry in root.findall("atom:entry", self.NS):
-            title = (entry.find("atom:title", self.NS).text or "").strip().replace("\n", " ")
-            published = (entry.find("atom:published", self.NS).text or "")[:10]
             authors = [
-                (a.find("atom:name", self.NS).text or "")
-                for a in entry.findall("atom:author", self.NS)
+                self._text(a, "atom:name", ns)
+                for a in entry.findall("atom:author", ns)
             ]
-            summary = (entry.find("atom:summary", self.NS).text or "").strip().replace("\n", " ")
-            link = (entry.find("atom:id", self.NS).text or "").strip()
 
-            papers.append(Paper(
-                title=title,
-                published=published,
-                authors=authors,
-                summary=summary,
-                link=link,
-            ))
+            link = ""
+            for l in entry.findall("atom:link", ns):
+                if l.attrib.get("title") == "pdf":
+                    link = l.attrib.get("href", "")
+                    break
+            if not link:
+                link = self._text(entry, "atom:id", ns)
 
+            cats = [c.attrib.get("term", "") for c in entry.findall("atom:category", ns)]
+
+            papers.append(
+                Paper(
+                    title=Paper._clean_title(title),
+                    summary=summary,
+                    published=published,
+                    updated=updated,
+                    authors=authors,
+                    link=link,
+                    categories=cats,
+                )
+            )
         return papers
 
-    # ── Step 3: 输出 ──
     @staticmethod
-    def print_text(papers: List[Paper]):
-        print(f"\n{'='*80}")
-        print(f"[arXiv] 共找到 {len(papers)} 篇论文")
-        print(f"{'='*80}\n")
-        for i, p in enumerate(papers, 1):
-            print(f"【{i}】{p.title}")
-            print(f"    日期: {p.published}  |  作者: {p.short_authors()}")
-            print(f"    摘要: {p.short_summary()}")
-            print(f"    链接: {p.link}")
-            print("-" * 80)
-
-    @staticmethod
-    def print_markdown(papers: List[Paper]):
-        print(f"\n## [arXiv] ArXiv 检索结果（共 {len(papers)} 篇）\n")
-        for p in papers:
-            print(p.to_markdown())
+    def _text(el: ET.Element, tag: str, ns: dict) -> str:
+        child = el.find(tag, ns)
+        return html.unescape(child.text or "").strip() if child is not None else ""
 
 
-# ── 入口 ──────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+
+def print_text(papers: List[Paper]) -> None:
+    if not papers:
+        print("(无结果)")
+        return
+    for i, p in enumerate(papers, 1):
+        print(f"{i}. {p.title}")
+        print(f"   日期: {p.pub_date}  |  分类: {p.categories_str()}")
+        print(f"   作者: {p.authors_str()}")
+        print(f"   摘要: {p.summary_truncated(200)}")
+        print(f"   PDF: {p.link}")
+        print()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="arXiv 论文搜索工作流")
-    parser.add_argument("--query", "-q", default="all:agent AND all:LLM AND all:autonomous",
-                        help="检索关键词（支持 AND / OR 语法）")
-    parser.add_argument("--max", "-n", type=int, default=10,
-                        help="最大返回数量（默认 10）")
-    parser.add_argument("--sort", "-s", default="submittedDate",
-                        choices=["relevance", "lastUpdatedDate", "submittedDate"],
-                        help="排序方式（默认 submittedDate）")
-    parser.add_argument("--markdown", "-m", action="store_true",
-                        help="以 Markdown 格式输出")
-    parser.add_argument("--start", type=int, default=0,
-                        help="分页起始位置")
+def print_markdown(papers: List[Paper]) -> None:
+    if not papers:
+        print("_无结果_")
+        return
+    for i, p in enumerate(papers, 1):
+        print(f"### {i}. {p.title}")
+        print()
+        print(f"- **日期**: {p.pub_date}")
+        print(f"- **分类**: {p.categories_str()}")
+        print(f"- **作者**: {p.authors_str()}")
+        print(f"- **PDF**: [{p.link}]({p.link})")
+        print()
+        print(f"> {p.summary_truncated(300)}")
+        print()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="arXiv 论文搜索",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python arxiv_search.py -q "ti:agent AND ti:self-evolution" -n 10 -m
+  python arxiv_search.py --json '{"query":"ti:agent AND ti:self-evolution","max":10,"markdown":true}'
+        """,
+    )
+    parser.add_argument("-q", "--query", default="ti:agent AND ti:self-evolution")
+    parser.add_argument("-n", "--max", type=int, default=10, dest="max_results")
+    parser.add_argument("-s", "--sort", default="submittedDate", dest="sort")
+    parser.add_argument("-m", "--markdown", action="store_true")
+    parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--json", default=None, help="JSON 配置文件路径或 JSON 字符串，绕过 shell 转义问题")
     args = parser.parse_args()
+
+    # --json 模式：从 JSON 文件或字符串加载参数，完全绕过 shell 转义
+    if args.json is not None:
+        import json
+        json_text = args.json
+        # 先尝试作为文件路径读取
+        try:
+            with open(json_text, "r", encoding="utf-8") as f:
+                json_text = f.read()
+        except (FileNotFoundError, OSError):
+            pass  # 不是文件路径，当作 JSON 字符串处理
+        params = json.loads(json_text)
+        args.query = params.get("query", args.query)
+        args.max_results = params.get("max", params.get("max_results", args.max_results))
+        args.sort = params.get("sort", args.sort)
+        args.markdown = args.markdown or params.get("markdown", False)
+        args.start = params.get("start", args.start)
 
     searcher = ArxivSearcher(
         query=args.query,
-        max_results=args.max,
+        max_results=args.max_results,
         sort_by=args.sort,
+        start=args.start,
     )
 
-    papers = searcher.fetch(start=args.start)
+    papers = searcher.fetch()
+    if not papers:
+        print("未找到匹配论文或请求失败。", file=sys.stderr)
+        sys.exit(1)
+
+    # Windows 编码兼容
+    if hasattr(sys.stdout, "encoding") and sys.stdout.encoding != "utf-8":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
     if args.markdown:
-        ArxivSearcher.print_markdown(papers)
+        print_markdown(papers)
     else:
-        ArxivSearcher.print_text(papers)
+        print_text(papers)
 
 
 if __name__ == "__main__":

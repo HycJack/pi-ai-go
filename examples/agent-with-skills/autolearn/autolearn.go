@@ -501,10 +501,10 @@ func (a *AutoLearner) ProcessToolResult(text string) int {
 }
 
 // MaybeExtract 异步检查是否需要 LLM 提取。
-// 每 ExtractEveryN 轮触发一次。返回是否实际触发了提取。
-func (a *AutoLearner) MaybeExtract(ctx context.Context, messages []core.Message, extractor Extractor) bool {
+// 每 ExtractEveryN 轮触发一次。返回实际提取到并保存的记忆数量。
+func (a *AutoLearner) MaybeExtract(ctx context.Context, messages []core.Message, extractor Extractor) int {
 	if !a.settings.AutoLearn || extractor == nil || a.mem == nil {
-		return false
+		return 0
 	}
 
 	a.mu.Lock()
@@ -513,16 +513,15 @@ func (a *AutoLearner) MaybeExtract(ctx context.Context, messages []core.Message,
 	a.mu.Unlock()
 
 	if !shouldExtract {
-		return false
+		return 0
 	}
 
 	triggers, err := extractor.Extract(ctx, messages)
 	if err != nil {
-		return false
+		return 0
 	}
 
-	a.apply(triggers)
-	return true
+	return a.apply(triggers)
 }
 
 // MaybeExtractWorkflow 异步检查是否需要 LLM 提取工作流。

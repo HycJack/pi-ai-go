@@ -858,9 +858,9 @@ func runInteractive(
 			go func() {
 				bgCtx, bgCancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer bgCancel()
-				if autoLearn.MaybeExtract(bgCtx, msgsCopy, extractor) {
+				if n := autoLearn.MaybeExtract(bgCtx, msgsCopy, extractor); n > 0 {
 					promptCache.Invalidate()
-					fmt.Fprintln(os.Stderr, "[memory] LLM 提取了新的记忆")
+					fmt.Fprintf(os.Stderr, "[memory] LLM 提取了 %d 条新记忆\n", n)
 				}
 			}()
 		}

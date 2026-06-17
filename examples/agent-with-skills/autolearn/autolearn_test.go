@@ -214,8 +214,8 @@ func TestMaybeExtractDisabled(t *testing.T) {
 
 	// AutoLearn = false，不应触发
 	result := al.MaybeExtract(context.Background(), nil, extractor)
-	if result {
-		t.Error("MaybeExtract should return false when AutoLearn=false")
+	if result > 0 {
+		t.Errorf("MaybeExtract should return 0 when AutoLearn=false, got %d", result)
 	}
 }
 
