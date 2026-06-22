@@ -1,109 +1,86 @@
-/**
- * fetch-interceptor.js
- * 注入到页面主世界,拦截 DeepSeek 网页的 fetch 请求
- * 通过 window.postMessage 与 ui-injector(isolated world)通信
- */
-
 (async function () {
   if (window.__deepseekEnhancedInjected) return;
   window.__deepseekEnhancedInjected = true;
 
   const originalFetch = window.fetch;
 
+  const SYSTEM_PROMPT = `你叫小齐，是一位专业的 AI 助手。请始终保持以下行为准则：
+
+1. 回答要专业、准确、简洁
+2. 使用中文回答用户的问题
+3. 遇到不确定的问题时，要明确说明
+4. 优先提供可行的解决方案
+
+你具有长期记忆能力，可以记住用户的身份、偏好和历史对话中的关键信息。`;
+
+  let currentSettings = {
+    prompt: DEFAULT_PROMPT,
+    enabled: true
+  };
+
+  function requestSettings() {
+    return new Promise((resolve) => {
+      const requestId = `settings_${Date.now()}`;
+
+      const handler = (event) => {
+        if (event.source !== window) return;
+        if (!event.data || event.data.type !== '__DEEPSEEK_SETTINGS_RESULT__') return;
+        if (event.data.requestId !== requestId) return;
+
+        window.removeEventListener('message', handler);
+        resolve(event.data.settings || {});
+      };
+
+      window.addEventListener('message', handler);
+
+      window.postMessage(
+        { type: '__DEEPSEEK_GET_SETTINGS__', requestId },
+        '*'
+      );
+
+      setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve({});
+      }, 2000);
+    });
+  }
+
+  const settings = await requestSettings();
+  if (settings.prompt !== undefined) currentSettings.prompt = settings.prompt;
+  if (settings.enabled !== undefined) currentSettings.enabled = settings.enabled;
+
   window.fetch = async function (url, options = {}) {
     const urlStr = typeof url === 'string' ? url : (url.href || url.url || '');
     const bodyStr = typeof options.body === 'string' ? options.body : '';
 
-    // ========== 拦截请求:增强 prompt(通过 postMessage 委托给 isolated world)==========
-    let enhanced = false;
-    if (urlStr.includes('/chat/completions') && bodyStr) {
+    if (!currentSettings.enabled) {
+      return originalFetch.call(this, url, options);
+    }
+
+    if (urlStr.includes('/api/v0/chat/completion') && bodyStr) {
       try {
         const body = JSON.parse(bodyStr);
-        if (body.messages) {
-          const enhancedBody = await augmentViaPostMessage(body);
-          if (enhancedBody) {
-            options.body = JSON.stringify(enhancedBody);
-            enhanced = true;
-          }
+        if (body.prompt) {
+          body.prompt = currentSettings.prompt + '\n\n---\n\n' + body.prompt;
+          options.body = JSON.stringify(body);
         }
       } catch (e) {
         console.warn('[DeepSeek Enhanced] intercept error:', e);
       }
     }
 
-    // ========== 发送请求 ==========
-    const response = await originalFetch.call(this, url, options);
-
-    // ========== 拦截响应:解析工具调用 ==========
-    if (urlStr.includes('/chat/completions') && enhanced) {
-      try {
-        const cloned = response.clone();
-        processResponse(cloned).catch(e =>
-          console.warn('[DeepSeek Enhanced] response process error:', e)
-        );
-      } catch (e) {
-        // clone 失败则忽略
-      }
-    }
-
-    return response;
+    return originalFetch.call(this, url, options);
   };
 
-  /**
-   * 通过 postMessage 委托 ui-injector(isolated world)调用 SW 进行 prompt 增强
-   */
-  function augmentViaPostMessage(body) {
-    return new Promise((resolve) => {
-      const requestId = `augment_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (!event.data || event.data.type !== '__DEEPSEEK_SETTINGS_UPDATED__') return;
 
-      const handler = (event) => {
-        if (event.source !== window) return;
-        if (!event.data || event.data.type !== '__DEEPSEEK_AUGMENT_RESULT__') return;
-        if (event.data.requestId !== requestId) return;
-
-        window.removeEventListener('message', handler);
-        resolve(event.data.body || null);
-      };
-
-      window.addEventListener('message', handler);
-
-      window.postMessage(
-        { type: '__DEEPSEEK_AUGMENT_REQUEST__', requestId, body },
-        '*'
-      );
-
-      // 超时兜底
-      setTimeout(() => {
-        window.removeEventListener('message', handler);
-        resolve(null);
-      }, 3000);
-    });
-  }
-
-  /**
-   * 处理响应:解析工具调用并通知 UI 层
-   */
-  async function processResponse(response) {
-    try {
-      const data = await response.json();
-      const choices = data.choices || [];
-      for (const choice of choices) {
-        const content = choice.message?.content || '';
-        if (!content) continue;
-
-        window.postMessage(
-          {
-            type: '__DEEPSEEK_ENHANCED_RESPONSE__',
-            content,
-            choiceIndex: choice.index,
-          },
-          '*'
-        );
-      }
-    } catch (e) {
-      // 忽略 JSON 解析错误
-    }
-  }
+    const { prompt, enabled } = event.data;
+    if (prompt !== undefined) currentSettings.prompt = prompt;
+    if (enabled !== undefined) currentSettings.enabled = enabled;
+    console.log('[DeepSeek Enhanced] Settings updated');
+  });
 
   console.log('[DeepSeek Enhanced] Fetch interceptor injected');
 })();
