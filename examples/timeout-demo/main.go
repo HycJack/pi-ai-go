@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 超时错误日志区分示例 ===\n")
+	fmt.Println("=== 超时错误日志区分示例 ===")
 
 	// 1. Agent 运行超时
 	agentTimeout := core.WrapTimeout(core.TimeoutSourceAgent, 3*time.Minute, nil)

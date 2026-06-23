@@ -15,16 +15,19 @@ import (
 type ErrorCode string
 
 const (
-	ErrAborted         ErrorCode = "aborted"
-	ErrNotFound        ErrorCode = "not_found"
-	ErrPermission      ErrorCode = "permission_denied"
-	ErrInvalid         ErrorCode = "invalid"
-	ErrTimeout         ErrorCode = "timeout"
-	ErrStorage         ErrorCode = "storage"
-	ErrSummarization   ErrorCode = "summarization_failed"
-	ErrInvalidSession  ErrorCode = "invalid_session"
-	ErrInvalidEntry    ErrorCode = "invalid_entry"
-	ErrUnknown         ErrorCode = "unknown"
+	ErrAborted        ErrorCode = "aborted"
+	ErrNotFound       ErrorCode = "not_found"
+	ErrPermission     ErrorCode = "permission_denied"
+	ErrInvalid        ErrorCode = "invalid"
+	ErrTimeout        ErrorCode = "timeout"
+	ErrStorage        ErrorCode = "storage"
+	ErrSummarization  ErrorCode = "summarization_failed"
+	ErrInvalidSession ErrorCode = "invalid_session"
+	ErrInvalidEntry   ErrorCode = "invalid_entry"
+	ErrUnknown        ErrorCode = "unknown"
+	ErrBusy           ErrorCode = "busy"
+	ErrInvalidRef     ErrorCode = "invalid_ref"
+	ErrInvalidRebase  ErrorCode = "invalid_rebase"
 )
 
 // SessionError is the base error type for session operations.
@@ -48,11 +51,11 @@ func (e *SessionError) Unwrap() error { return e.Err }
 
 // Skill represents a skill loaded from a SKILL.md file or provided by an application.
 type Skill struct {
-	Name                 string // Stable skill name
-	Description          string // Short model-visible description
-	Content              string // Full skill instructions
-	FilePath             string // Absolute path to the skill file
-	DisableModelInvocation bool // Exclude from model-visible skill lists
+	Name                   string // Stable skill name
+	Description            string // Short model-visible description
+	Content                string // Full skill instructions
+	FilePath               string // Absolute path to the skill file
+	DisableModelInvocation bool   // Exclude from model-visible skill lists
 }
 
 // --- PromptTemplate ---
@@ -128,6 +131,9 @@ const (
 	EntryThinkingChange  EntryType = "thinking_level_change"
 	EntrySessionInfo     EntryType = "session_info"
 	EntryLabel           EntryType = "label"
+	EntrySessionRef      EntryType = "session/ref"
+	EntrySessionCheckout EntryType = "session/checkout"
+	EntryEvent           EntryType = "event"
 )
 
 // SessionTreeEntry is a single entry in the session tree.
@@ -135,6 +141,7 @@ type SessionTreeEntry struct {
 	ID        string    `json:"id"`
 	Type      EntryType `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
+	ParentID  EntryID   `json:"parentId,omitempty"`
 
 	// For EntryMessage
 	Message core.Message `json:"message,omitempty"`
@@ -164,13 +171,27 @@ type SessionTreeEntry struct {
 	// For EntrySessionInfo
 	SessionID   string `json:"sessionId,omitempty"`
 	Description string `json:"description,omitempty"`
+
+	// For EntrySessionRef
+	RefName     RefName `json:"refName,omitempty"`
+	RefTargetID EntryID `json:"refTargetId,omitempty"`
+
+	// For EntrySessionCheckout
+	CheckoutTarget struct {
+		Type string  `json:"type"`
+		Name RefName `json:"name,omitempty"`
+		ID   EntryID `json:"id,omitempty"`
+	} `json:"checkoutTarget,omitempty"`
+
+	// For EntryEvent
+	EventData any `json:"eventData,omitempty"`
 }
 
 // SessionContext is the rebuilt context from session entries.
 type SessionContext struct {
-	Messages     []core.Message
+	Messages      []core.Message
 	ThinkingLevel string
-	Model        *SessionModel
+	Model         *SessionModel
 }
 
 // SessionModel represents the active model in a session.
@@ -208,9 +229,9 @@ type CompactionSettings struct {
 // DefaultCompactionSettings returns sensible defaults.
 func DefaultCompactionSettings() CompactionSettings {
 	return CompactionSettings{
-		MaxTokensBeforeCompaction:  100000,
+		MaxTokensBeforeCompaction:   100000,
 		TargetTokensAfterCompaction: 50000,
-		MinMessagesToKeep:          10,
+		MinMessagesToKeep:           10,
 		SummaryPrompt: `Summarize the following conversation history concisely, preserving:
 - Key decisions and conclusions
 - Important facts and context
@@ -221,4 +242,80 @@ func DefaultCompactionSettings() CompactionSettings {
 Conversation:
 %s`,
 	}
+}
+
+// --- Branch types ---
+
+// EntryID is a unique identifier for a session entry.
+type EntryID = string
+
+// RefName is a name for a branch reference.
+type RefName = string
+
+// Head represents the current HEAD of the session.
+type Head struct {
+	Type     string  // "ref" or "detached"
+	Name     RefName // for "ref" type
+	TargetID EntryID // for "detached" type, optional
+}
+
+// SessionCheckoutEntryData is the data for a session/checkout entry.
+type SessionCheckoutEntryData struct {
+	Target struct {
+		Type string  `json:"type"`
+		Name RefName `json:"name,omitempty"`
+		ID   EntryID `json:"id,omitempty"`
+	} `json:"target"`
+}
+
+// SessionRefEntryData is the data for a session/ref entry.
+type SessionRefEntryData struct {
+	Name     RefName `json:"name"`
+	TargetID EntryID `json:"targetId,omitempty"`
+}
+
+// SessionSnapshot represents the result of replaying the session log.
+type SessionSnapshot struct {
+	Entries      []SessionTreeEntry
+	EntryByID    map[EntryID]SessionTreeEntry
+	Head         Head
+	HeadTargetID EntryID
+	Refs         map[RefName]EntryID
+}
+
+// RebaseResult holds the result of a rebase operation.
+type RebaseResult struct {
+	Entries []struct {
+		NewID EntryID `json:"newId"`
+		OldID EntryID `json:"oldId"`
+	}
+	Name      RefName `json:"name"`
+	NewBaseID EntryID `json:"newBaseId,omitempty"`
+	NewHeadID EntryID `json:"newHeadId,omitempty"`
+	OldBaseID EntryID `json:"oldBaseId,omitempty"`
+	OldHeadID EntryID `json:"oldHeadId,omitempty"`
+}
+
+// SessionCloneOptions provides options for cloning a session.
+type SessionCloneOptions struct {
+	Checkout       EntryID `json:"checkout,omitempty"`
+	From           EntryID `json:"from,omitempty"`
+	Refs           string  `json:"refs,omitempty"` // "active", "all", or comma-separated list
+	SessionStorage SessionStorage
+}
+
+// SessionForkOptions provides options for forking a session.
+type SessionForkOptions struct {
+	Checkout bool    `json:"checkout,omitempty"`
+	From     EntryID `json:"from,omitempty"`
+}
+
+// BranchChangeHandler is a callback for branch change events.
+type BranchChangeHandler func(payload BranchChangePayload)
+
+// BranchChangePayload is the payload for branch change events.
+type BranchChangePayload struct {
+	Type     string  `json:"type"` // "checkout", "fork", "rebase"
+	Ref      RefName `json:"ref,omitempty"`
+	TargetID EntryID `json:"targetId,omitempty"`
 }

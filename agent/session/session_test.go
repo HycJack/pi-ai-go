@@ -9,7 +9,7 @@ import (
 
 func TestSessionMemoryStorage(t *testing.T) {
 	store := NewMemoryStorage()
-	session, err := NewSession(store)
+	session, err := NewSession(NewSessionOptions{Storage: store})
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
@@ -130,5 +130,154 @@ func TestConvertEntriesToLlm(t *testing.T) {
 	msgs := ConvertEntriesToLlm(entries)
 	if len(msgs) != 4 {
 		t.Fatalf("expected 4 messages, got %d", len(msgs))
+	}
+}
+
+func TestSessionCheckoutAndFork(t *testing.T) {
+	store := NewMemoryStorage()
+	sess, err := NewSession(NewSessionOptions{Storage: store})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer sess.Close()
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e1", Type: EntrySessionInfo, SessionID: "test-sess", Timestamp: time.Now()},
+		SessionTreeEntry{ID: "e2", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "base message"}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	err = sess.Fork("feature", nil)
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e3", Type: EntryMessage, Message: core.AssistantMessage{Role: "assistant", Content: []core.ContentBlock{core.TextContent{Text: "feature reply"}}}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append to feature: %v", err)
+	}
+
+	err = sess.Checkout("main")
+	if err != nil {
+		t.Fatalf("Checkout main: %v", err)
+	}
+
+	entries := sess.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries on main, got %d", len(entries))
+	}
+}
+
+func TestSessionSemanticPath(t *testing.T) {
+	store := NewMemoryStorage()
+	sess, err := NewSession(NewSessionOptions{Storage: store})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer sess.Close()
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e1", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "q1"}, Timestamp: time.Now()},
+		SessionTreeEntry{ID: "e2", Type: EntryMessage, Message: core.AssistantMessage{Role: "assistant", Content: []core.ContentBlock{core.TextContent{Text: "a1"}}}, Timestamp: time.Now()},
+		SessionTreeEntry{ID: "e3", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "q2"}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	snapshot := sess.Read()
+	path := semanticPath(snapshot, "e3")
+	if len(path) != 3 {
+		t.Fatalf("expected semantic path length 3, got %d", len(path))
+	}
+}
+
+func TestSessionClone(t *testing.T) {
+	store := NewMemoryStorage()
+	sess, err := NewSession(NewSessionOptions{Storage: store})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer sess.Close()
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e1", Type: EntrySessionInfo, SessionID: "test-clone", Timestamp: time.Now()},
+		SessionTreeEntry{ID: "e2", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "hello"}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	err = sess.Fork("feature", nil)
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+
+	cloneStore := NewMemoryStorage()
+	cloned, err := sess.Clone(SessionCloneOptions{
+		SessionStorage: cloneStore,
+		Refs:           "all",
+	})
+	if err != nil {
+		t.Fatalf("Clone: %v", err)
+	}
+	defer cloned.Close()
+
+	if cloned.ID() != "test-clone" {
+		t.Errorf("expected cloned session ID test-clone, got %q", cloned.ID())
+	}
+}
+
+func TestSessionRebase(t *testing.T) {
+	store := NewMemoryStorage()
+	sess, err := NewSession(NewSessionOptions{Storage: store})
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	defer sess.Close()
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e1", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "base"}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	err = sess.Fork("topic", nil)
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e2", Type: EntryMessage, Message: core.AssistantMessage{Role: "assistant", Content: []core.ContentBlock{core.TextContent{Text: "topic reply"}}}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append to topic: %v", err)
+	}
+
+	err = sess.Checkout("main")
+	if err != nil {
+		t.Fatalf("Checkout main: %v", err)
+	}
+
+	err = sess.Append(
+		SessionTreeEntry{ID: "e3", Type: EntryMessage, Message: core.UserMessage{Role: "user", Content: "update"}, Timestamp: time.Now()},
+	)
+	if err != nil {
+		t.Fatalf("Append to main: %v", err)
+	}
+
+	_, err = sess.Rebase("topic", "main")
+	if err != nil {
+		t.Fatalf("Rebase: %v", err)
+	}
+
+	entries := sess.Entries()
+	if len(entries) < 5 {
+		t.Fatalf("expected at least 5 entries after rebase, got %d", len(entries))
 	}
 }

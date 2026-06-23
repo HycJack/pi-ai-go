@@ -1,12 +1,12 @@
 // Demo: Agent 上下文管理与记忆存储
 //
 // 展示功能:
-//   1. 会话管理 (MemoryStorage / JSONLStorage)
-//   2. 多轮对话与上下文保持
-//   3. 上下文压缩 (Compaction)
-//   4. 分支摘要 (Branch Summary)
-//   5. 自定义消息与会话条目
-//   6. 从会话历史重建上下文
+//  1. 会话管理 (MemoryStorage / JSONLStorage)
+//  2. 多轮对话与上下文保持
+//  3. 上下文压缩 (Compaction)
+//  4. 分支摘要 (Branch Summary)
+//  5. 自定义消息与会话条目
+//  6. 从会话历史重建上下文
 //
 // Usage:
 //
@@ -16,7 +16,7 @@ package main
 import (
 	"bufio"
 	"context"
-	
+
 	"flag"
 	"fmt"
 	"os"
@@ -75,7 +75,7 @@ func main() {
 	// ──────────────────────────────────────────────
 	// 2. 创建会话
 	// ──────────────────────────────────────────────
-	sess, err := session.NewSession(storage)
+	sess, err := session.NewSession(session.NewSessionOptions{Storage: storage})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -84,10 +84,10 @@ func main() {
 
 	// 写入会话元信息
 	_ = sess.Append(session.SessionTreeEntry{
-		ID:        session.GenerateID(),
-		Type:      session.EntrySessionInfo,
-		Timestamp: time.Now(),
-		SessionID: "demo-" + time.Now().Format("20060102-150405"),
+		ID:          session.GenerateID(),
+		Type:        session.EntrySessionInfo,
+		Timestamp:   time.Now(),
+		SessionID:   "demo-" + time.Now().Format("20060102-150405"),
 		Description: "Agent 上下文管理演示",
 	})
 	fmt.Fprintf(os.Stderr, "[session] 会话 ID: %s\n", sess.ID())
@@ -115,11 +115,11 @@ func main() {
 				e.Strategy, e.TriggeredBy, e.Dropped, e.TokensBefore, e.TokensAfter)
 			// 记录压缩事件到会话
 			_ = sess.Append(session.SessionTreeEntry{
-				ID:        session.GenerateID(),
-				Type:      session.EntryCompaction,
-				Timestamp: time.Now(),
+				ID:                session.GenerateID(),
+				Type:              session.EntryCompaction,
+				Timestamp:         time.Now(),
 				CompactionSummary: fmt.Sprintf("压缩了 %d 条消息, token %d→%d", e.Dropped, e.TokensBefore, e.TokensAfter),
-				TokensBefore: e.TokensBefore,
+				TokensBefore:      e.TokensBefore,
 			})
 		},
 	}

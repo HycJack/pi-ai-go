@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 重试进度回调示例 ===\n")
+	fmt.Println("=== 重试进度回调示例 ===")
 
 	// 示例 1: 带进度显示的重试
 	fmt.Println("示例 1: 带进度显示的重试")

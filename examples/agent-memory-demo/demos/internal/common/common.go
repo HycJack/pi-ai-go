@@ -90,7 +90,7 @@ func PrintResult(format string, args ...any) {
 
 // NewSession creates a new session with the given storage backend.
 func NewSession(storage session.SessionStorage, description string) (*session.Session, error) {
-	sess, err := session.NewSession(storage)
+	sess, err := session.NewSession(session.NewSessionOptions{Storage: storage})
 	if err != nil {
 		return nil, err
 	}

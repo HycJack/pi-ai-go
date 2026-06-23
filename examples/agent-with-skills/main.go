@@ -458,14 +458,14 @@ func recordSystemInfo(mem *memory.Memory, verbose bool) {
 func initSession(path string) (*session.Session, *session.JSONLStorage, error) {
 	if path == "" {
 		storage := session.NewMemoryStorage()
-		sess, err := session.NewSession(storage)
+		sess, err := session.NewSession(session.NewSessionOptions{Storage: storage})
 		return sess, nil, err
 	}
 	storage, err := session.NewJSONLStorage(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	sess, err := session.NewSession(storage)
+	sess, err := session.NewSession(session.NewSessionOptions{Storage: storage})
 	if err != nil {
 		storage.Close()
 		return nil, nil, err
@@ -511,7 +511,7 @@ func (r *SessionRef) openLocked(name string) error {
 	if err != nil {
 		return err
 	}
-	sess, err := session.NewSession(store)
+	sess, err := session.NewSession(session.NewSessionOptions{Storage: store})
 	if err != nil {
 		store.Close()
 		return err

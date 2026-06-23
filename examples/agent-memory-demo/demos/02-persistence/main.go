@@ -69,7 +69,7 @@ func main() {
 	// ── 阶段 2: 重新打开会话 ──
 	common.PrintStep("阶段 2: 重新打开会话")
 	storage2, _ := session.NewJSONLStorage(persistFile)
-	sess2, err := session.NewSession(storage2)
+	sess2, err := session.NewSession(session.NewSessionOptions{Storage: storage2})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

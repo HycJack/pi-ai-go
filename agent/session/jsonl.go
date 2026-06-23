@@ -3,77 +3,252 @@ package session
 import (
 	"encoding/json"
 	"os"
-	"sync"
-
+	"path/filepath"
 	core "pi-ai-go/core"
+	"sync"
+	"time"
 )
 
-// JSONLStorage persists session entries as newline-delimited JSON.
 type JSONLStorage struct {
-	mu   sync.Mutex
-	file *os.File
-	path string
+	mu          sync.Mutex
+	path        string
+	entries     []SessionTreeEntry
+	initialized bool
+	queue       *keyedQueue
 }
 
-// NewJSONLStorage opens or creates a JSONL file for session persistence.
 func NewJSONLStorage(path string) (*JSONLStorage, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return nil, &SessionError{Code: ErrStorage, Message: "failed to open file", Path: path, Err: err}
-	}
-	return &JSONLStorage{file: f, path: path}, nil
+	return &JSONLStorage{
+		path:  path,
+		queue: newKeyedQueue(),
+	}, nil
 }
 
 func (j *JSONLStorage) Append(entries []SessionTreeEntry) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+	return j.queue.enqueue(j.path, func() error {
+		j.mu.Lock()
+		defer j.mu.Unlock()
 
-	if _, err := j.file.Seek(0, 2); err != nil {
-		return &SessionError{Code: ErrStorage, Message: "seek failed", Err: err}
-	}
-
-	enc := json.NewEncoder(j.file)
-	for _, entry := range entries {
-		raw := entryToRaw(entry)
-		if err := enc.Encode(raw); err != nil {
-			return &SessionError{Code: ErrStorage, Message: "write failed", Err: err}
+		if !j.initialized {
+			if err := j.loadEntries(); err != nil {
+				return err
+			}
 		}
-	}
-	return j.file.Sync()
+
+		j.entries = append(j.entries, entries...)
+
+		if len(j.entries) == len(entries) {
+			return j.writeFileAtomic(j.encodeAll())
+		}
+
+		content := j.appendEncode(entries)
+		if content != "" {
+			f, err := os.OpenFile(j.path, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return &SessionError{Code: ErrStorage, Message: "failed to open file", Path: j.path, Err: err}
+			}
+			defer f.Close()
+
+			if _, err := f.WriteString(content); err != nil {
+				return &SessionError{Code: ErrStorage, Message: "write failed", Err: err}
+			}
+
+			if err := f.Sync(); err != nil {
+				return &SessionError{Code: ErrStorage, Message: "sync failed", Err: err}
+			}
+		}
+
+		return nil
+	})
 }
 
 func (j *JSONLStorage) ReadAll() ([]SessionTreeEntry, error) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+	var result []SessionTreeEntry
 
-	if _, err := j.file.Seek(0, 0); err != nil {
-		return nil, &SessionError{Code: ErrStorage, Message: "seek failed", Err: err}
-	}
+	err := j.queue.enqueue(j.path, func() error {
+		j.mu.Lock()
+		defer j.mu.Unlock()
 
-	var entries []SessionTreeEntry
-	dec := json.NewDecoder(j.file)
-	for dec.More() {
-		var raw map[string]json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			continue
+		if !j.initialized {
+			if err := j.loadEntries(); err != nil {
+				return err
+			}
 		}
-		entry, err := rawToEntry(raw)
-		if err != nil {
-			continue
-		}
-		entries = append(entries, entry)
-	}
-	return entries, nil
+
+		result = make([]SessionTreeEntry, len(j.entries))
+		copy(result, j.entries)
+		return nil
+	})
+
+	return result, err
 }
 
 func (j *JSONLStorage) Close() error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.file.Close()
+	return nil
 }
 
-// --- JSON serialization helpers ---
-// Use a raw map to handle the Message interface field properly.
+func (j *JSONLStorage) loadEntries() error {
+	raw, err := readFileSafe(j.path)
+	if err != nil {
+		return err
+	}
+
+	if raw == "" {
+		j.entries = []SessionTreeEntry{}
+		j.initialized = true
+		return nil
+	}
+
+	j.entries = j.decode(raw)
+	j.initialized = true
+	return nil
+}
+
+func readFileSafe(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", &SessionError{Code: ErrStorage, Message: "failed to read file", Path: path, Err: err}
+	}
+	return string(data), nil
+}
+
+func (j *JSONLStorage) writeFileAtomic(content string) error {
+	tmpPath := filepath.Join(filepath.Dir(j.path), ".tmp-"+time.Now().Format("20060102150405")+"-"+randomString(8)+".jsonl")
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return &SessionError{Code: ErrStorage, Message: "failed to create temp file", Err: err}
+	}
+
+	if _, err := f.WriteString(content); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return &SessionError{Code: ErrStorage, Message: "write failed", Err: err}
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return &SessionError{Code: ErrStorage, Message: "sync failed", Err: err}
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return &SessionError{Code: ErrStorage, Message: "close failed", Err: err}
+	}
+
+	if err := os.Rename(tmpPath, j.path); err != nil {
+		os.Remove(tmpPath)
+		return &SessionError{Code: ErrStorage, Message: "rename failed", Err: err}
+	}
+
+	return nil
+}
+
+func randomString(n int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	result := make([]byte, n)
+	for i := range result {
+		result[i] = chars[time.Now().UnixNano()%int64(len(chars))]
+	}
+	return string(result)
+}
+
+func (j *JSONLStorage) encodeAll() string {
+	var lines []string
+	for _, entry := range j.entries {
+		raw := entryToRaw(entry)
+		if jsonData, err := json.Marshal(raw); err == nil {
+			lines = append(lines, string(jsonData))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return joinLines(lines) + "\n"
+}
+
+func (j *JSONLStorage) appendEncode(entries []SessionTreeEntry) string {
+	var lines []string
+	for _, entry := range entries {
+		raw := entryToRaw(entry)
+		if jsonData, err := json.Marshal(raw); err == nil {
+			lines = append(lines, string(jsonData))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n" + joinLines(lines) + "\n"
+}
+
+func joinLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	result := lines[0]
+	for _, line := range lines[1:] {
+		result += "\n" + line
+	}
+	return result
+}
+
+func (j *JSONLStorage) decode(raw string) []SessionTreeEntry {
+	var entries []SessionTreeEntry
+	dec := json.NewDecoder(&countingReader{Reader: bytesReader(raw)})
+
+	for {
+		var rawEntry map[string]json.RawMessage
+		if err := dec.Decode(&rawEntry); err != nil {
+			break
+		}
+
+		if len(rawEntry) == 0 {
+			continue
+		}
+
+		entry, err := rawToEntry(rawEntry)
+		if err == nil {
+			entries = append(entries, entry)
+		}
+	}
+
+	return entries
+}
+
+type countingReader struct {
+	Reader interface {
+		Read([]byte) (int, error)
+	}
+	count int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	r.count += n
+	return n, err
+}
+
+func bytesReader(s string) *stringReader {
+	return &stringReader{s: s, i: 0}
+}
+
+type stringReader struct {
+	s string
+	i int
+}
+
+func (r *stringReader) Read(p []byte) (int, error) {
+	if r.i >= len(r.s) {
+		return 0, os.ErrClosed
+	}
+	n := copy(p, r.s[r.i:])
+	r.i += n
+	return n, nil
+}
 
 func entryToRaw(entry SessionTreeEntry) map[string]any {
 	m := map[string]any{
@@ -81,6 +256,10 @@ func entryToRaw(entry SessionTreeEntry) map[string]any {
 		"type":      entry.Type,
 		"timestamp": entry.Timestamp,
 	}
+	if entry.ParentID != "" {
+		m["parentId"] = entry.ParentID
+	}
+
 	switch entry.Type {
 	case EntryMessage:
 		if entry.Message != nil {
@@ -107,6 +286,23 @@ func entryToRaw(entry SessionTreeEntry) map[string]any {
 	case EntrySessionInfo:
 		m["sessionId"] = entry.SessionID
 		m["description"] = entry.Description
+	case EntrySessionRef:
+		m["refName"] = entry.RefName
+		if entry.RefTargetID != "" {
+			m["refTargetId"] = entry.RefTargetID
+		}
+	case EntrySessionCheckout:
+		m["checkoutTarget"] = map[string]any{
+			"type": entry.CheckoutTarget.Type,
+		}
+		if entry.CheckoutTarget.Name != "" {
+			m["checkoutTarget"].(map[string]any)["name"] = entry.CheckoutTarget.Name
+		}
+		if entry.CheckoutTarget.ID != "" {
+			m["checkoutTarget"].(map[string]any)["id"] = entry.CheckoutTarget.ID
+		}
+	case EntryEvent:
+		m["eventData"] = entry.EventData
 	case EntryLabel:
 		m["summary"] = entry.Summary
 	}
@@ -137,6 +333,9 @@ func rawToEntry(raw map[string]json.RawMessage) (SessionTreeEntry, error) {
 	}
 	if v, ok := raw["timestamp"]; ok {
 		json.Unmarshal(v, &entry.Timestamp)
+	}
+	if v, ok := raw["parentId"]; ok {
+		json.Unmarshal(v, &entry.ParentID)
 	}
 
 	switch entry.Type {
@@ -209,6 +408,35 @@ func rawToEntry(raw map[string]json.RawMessage) (SessionTreeEntry, error) {
 		}
 		if v, ok := raw["description"]; ok {
 			json.Unmarshal(v, &entry.Description)
+		}
+	case EntrySessionRef:
+		if v, ok := raw["refName"]; ok {
+			json.Unmarshal(v, &entry.RefName)
+		}
+		if v, ok := raw["refTargetId"]; ok {
+			json.Unmarshal(v, &entry.RefTargetID)
+		}
+	case EntrySessionCheckout:
+		if v, ok := raw["checkoutTarget"]; ok {
+			var target struct {
+				Type string  `json:"type"`
+				Name RefName `json:"name,omitempty"`
+				ID   EntryID `json:"id,omitempty"`
+			}
+			json.Unmarshal(v, &target)
+			entry.CheckoutTarget.Type = target.Type
+			entry.CheckoutTarget.Name = target.Name
+			entry.CheckoutTarget.ID = target.ID
+		}
+	case EntryEvent:
+		if v, ok := raw["eventData"]; ok {
+			var data any
+			json.Unmarshal(v, &data)
+			entry.EventData = data
+		}
+	case EntryLabel:
+		if v, ok := raw["summary"]; ok {
+			json.Unmarshal(v, &entry.Summary)
 		}
 	}
 
