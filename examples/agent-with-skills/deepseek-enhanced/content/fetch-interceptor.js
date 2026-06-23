@@ -26,24 +26,22 @@
         try {
           const body = JSON.parse(bodyStr);
 
-          if (body.prompt && typeof body.prompt === 'string') {
-            body.prompt = SYSTEM_PROMPT + '\n\n---\n\n' + body.prompt;
-            options.body = JSON.stringify(body);
-            return originalFetch.call(this, url, options);
-          }
-
-          if (body.messages && Array.isArray(body.messages)) {
-            const systemIdx = body.messages.findIndex(m => m.role === 'system');
-            if (systemIdx === -1) {
-              body.messages.unshift({
-                role: 'system',
-                content: SYSTEM_PROMPT
-              });
-            } else {
-              body.messages[systemIdx].content = SYSTEM_PROMPT + '\n\n---\n\n' + body.messages[systemIdx].content;
+          if (body.message && typeof body.message === 'string') {
+            const messages = JSON.parse(body.message);
+            if (Array.isArray(messages)) {
+              const systemIdx = messages.findIndex(m => m.role === 'system');
+              if (systemIdx === -1) {
+                messages.unshift({
+                  role: 'system',
+                  content: SYSTEM_PROMPT
+                });
+              } else {
+                messages[systemIdx].content = SYSTEM_PROMPT + '\n\n---\n\n' + messages[systemIdx].content;
+              }
+              body.message = JSON.stringify(messages);
+              options.body = JSON.stringify(body);
+              return originalFetch.call(this, url, options);
             }
-            options.body = JSON.stringify(body);
-            return originalFetch.call(this, url, options);
           }
         } catch (e) {
         }
