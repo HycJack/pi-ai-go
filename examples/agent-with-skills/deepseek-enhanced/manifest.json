@@ -10,6 +10,9 @@
   },
   "permissions": ["storage", "sidePanel"],
   "host_permissions": ["https://lanz.hikvision.com/*"],
+  "background": {
+    "service_worker": "background/background.js"
+  },
   "side_panel": {
     "default_path": "sidepanel/index.html"
   },
