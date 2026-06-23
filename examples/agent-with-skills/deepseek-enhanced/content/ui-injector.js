@@ -10,31 +10,40 @@
 
 你具有长期记忆能力，可以记住用户的身份、偏好和历史对话中的关键信息。`;
 
-  async function syncSettingsToMainWorld() {
-    try {
-      const result = await chrome.storage.local.get(STORAGE_KEY);
-      const settings = result[STORAGE_KEY] || {};
-      const prompt = settings.prompt || DEFAULT_PROMPT;
-      const enabled = settings.enabled !== false;
-
-      window.__deepseekEnhancedPrompt__ = prompt;
-      window.__deepseekEnhancedEnabled__ = enabled;
-    } catch (e) {
-    }
+  // 立即设置默认值（防止 undefined）
+  if (typeof window.__deepseekEnhancedPrompt__ === 'undefined') {
+    window.__deepseekEnhancedPrompt__ = DEFAULT_PROMPT;
+  }
+  if (typeof window.__deepseekEnhancedEnabled__ === 'undefined') {
+    window.__deepseekEnhancedEnabled__ = true;
   }
 
   function injectInterceptorToMainWorld() {
-    syncSettingsToMainWorld().then(() => {
-      const script = document.createElement('script');
-      script.src = chrome.runtime.getURL('content/fetch-interceptor.js');
-      script.onload = function () {
-        script.remove();
-      };
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('content/fetch-interceptor.js');
+    script.onload = function () {
+      script.remove();
+    };
 
-      (document.head || document.documentElement).prepend(script);
+    (document.head || document.documentElement).prepend(script);
+  }
+
+  // 先注入拦截器（使用默认值），然后异步更新设置
+  function syncSettingsAndInject() {
+    // 先注入
+    injectInterceptorToMainWorld();
+
+    // 再异步加载 storage 中的设置并更新全局变量
+    chrome.storage.local.get(STORAGE_KEY, (result) => {
+      const settings = result[STORAGE_KEY] || {};
+      const prompt = settings.prompt || DEFAULT_PROMPT;
+      const enabled = settings.enabled !== false;
+      window.__deepseekEnhancedPrompt__ = prompt;
+      window.__deepseekEnhancedEnabled__ = enabled;
     });
   }
 
+  // 监听设置变化
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
     if (changes[STORAGE_KEY]) {
@@ -45,8 +54,8 @@
   });
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectInterceptorToMainWorld);
+    document.addEventListener('DOMContentLoaded', syncSettingsAndInject);
   } else {
-    injectInterceptorToMainWorld();
+    syncSettingsAndInject();
   }
 })();
