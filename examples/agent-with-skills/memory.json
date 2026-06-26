@@ -4,5 +4,11 @@
     "createdAt": "2026-06-26T13:52:04.3654825+08:00",
     "updatedAt": "2026-06-26T13:52:04.3654825+08:00",
     "category": "system"
+  },
+  "user.location": {
+    "value": "比crux",
+    "createdAt": "2026-06-26T14:45:59.9187991+08:00",
+    "updatedAt": "2026-06-26T14:45:59.9187991+08:00",
+    "category": "user"
   }
 }

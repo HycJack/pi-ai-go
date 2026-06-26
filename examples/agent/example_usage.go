@@ -109,7 +109,7 @@ func ExampleMultipleTurns() {
 
 	// 记忆工具 - 存储和检索信息
 	memory := map[string]string{}
-	
+
 	tools := []agent.AgentTool{
 		{
 			Name:        "save_memory",
@@ -257,7 +257,7 @@ func ExampleToolWithHooks() {
 			// BeforeToolCall 钩子 - 在工具执行前验证
 			BeforeToolCall: func(ctx agent.BeforeToolCallContext) *agent.ToolCallBlock {
 				log.Printf("即将执行工具: %s", ctx.ToolCall.Name)
-				
+
 				// 示例：阻止敏感操作
 				if ctx.ToolCall.Name == "sensitive_operation" {
 					// 可以在这里添加权限检查逻辑
@@ -267,18 +267,18 @@ func ExampleToolWithHooks() {
 						Reason: "敏感操作需要管理员权限",
 					}
 				}
-				
+
 				return nil // 允许执行
 			},
 			// AfterToolCall 钩子 - 在工具执行后处理
 			AfterToolCall: func(ctx agent.AfterToolCallContext) *agent.ToolCallOverride {
 				log.Printf("工具 %s 执行完成", ctx.ToolCall.Name)
-				
+
 				// 可以在这里修改工具结果
 				if ctx.IsError {
 					log.Printf("工具执行失败: %v", ctx.Result.Content)
 				}
-				
+
 				return nil // 不修改结果
 			},
 			SimpleStreamOptions: piai.SimpleStreamOptions{
@@ -327,7 +327,7 @@ func ExampleStreamingEvents() {
 				// 模拟长时间运行的任务，定期发送更新
 				for i := 0; i < 5; i++ {
 					time.Sleep(500 * time.Millisecond)
-					
+
 					// 发送进度更新
 					progress := map[string]interface{}{
 						"progress": (i + 1) * 20,

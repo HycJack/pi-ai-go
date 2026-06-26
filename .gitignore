@@ -34,3 +34,5 @@ Thumbs.db
 vendor/
 __pycache__deepseek-pp/  
 *.pyc
+*/**/skills/auto-extracted/
+session.jsonl
