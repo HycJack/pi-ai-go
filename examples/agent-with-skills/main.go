@@ -65,6 +65,7 @@ func main() {
 	autoCompact := flag.Bool("auto-compact", true, "Auto compact when context exceeds soft limit")
 	autoLearnFlag := flag.Bool("auto-learn", envBool("AUTO_LEARN", false), "Auto-extract memories from LLM every N turns")
 	extractEveryFlag := flag.Int("extract-every", envInt("EXTRACT_EVERY_N", 5), "Trigger LLM memory extraction every N turns")
+	reasoningFlag := flag.String("reasoning", envFirst("LLM_REASONING", "REASONING"), "Reasoning level: off|minimal|low|medium|high|xhigh (default medium)")
 	flag.Parse()
 
 	fmt.Fprintf(os.Stderr, "[config] Provider: %s\n", *provider)
@@ -74,6 +75,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "[config] Session: %s\n", *sessionPath)
 	fmt.Fprintf(os.Stderr, "[config] Memory: %s\n", *memoryPath)
 	fmt.Fprintf(os.Stderr, "[config] Auto-compact: %v\n", *autoCompact)
+	reasoningLevel := resolveReasoning(*reasoningFlag)
+	fmt.Fprintf(os.Stderr, "[config] Reasoning: %s\n", reasoningLevel)
 
 	if *modelID == "" {
 		fmt.Fprintln(os.Stderr, "Error: LLM_MODEL (or MODEL) not configured")
@@ -182,6 +185,7 @@ func main() {
 	}
 	config.SimpleStreamOptions.MaxRetries = 3
 	config.SimpleStreamOptions.MaxRetryDelayMs = 30000
+	config.SimpleStreamOptions.Reasoning = reasoningLevel
 
 	// 从 session 加载历史消息（增量统计 token）
 	tokenStats := contextmgr.NewTokenStats(ctxSettings)
@@ -1453,6 +1457,29 @@ func envFirst(keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// resolveReasoning 解析 reasoning 级别。
+// 输入：off / minimal / low / medium / high / xhigh（大小写、空格不敏感）；空值默认为 medium。
+func resolveReasoning(raw string) core.ThinkingLevel {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	switch v {
+	case "", "medium", "med":
+		return core.ThinkingMedium
+	case "off", "none", "disable", "disabled", "false", "0":
+		return ""
+	case "minimal", "min":
+		return core.ThinkingMinimal
+	case "low":
+		return core.ThinkingLow
+	case "high":
+		return core.ThinkingHigh
+	case "xhigh", "max":
+		return core.ThinkingXHigh
+	default:
+		fmt.Fprintf(os.Stderr, "[warn] unknown reasoning level %q, fallback to medium\n", raw)
+		return core.ThinkingMedium
+	}
 }
 
 func extractAssistantText(m core.AssistantMessage) string {
