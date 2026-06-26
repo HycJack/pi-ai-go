@@ -90,6 +90,33 @@ func EstimateTokens(messages []core.Message) int {
 	return total
 }
 
+// truncateMessagesByTokens 从头部开始丢弃消息直到总 token 数 <= maxTokens。
+// 用于压缩时防止 LLM prompt 超限，保留最近的消息（更相关的上下文）。
+// 至少保留最后一条消息，避免返回空切片。
+func truncateMessagesByTokens(messages []core.Message, maxTokens int) []core.Message {
+	if maxTokens <= 0 || len(messages) == 0 {
+		return messages
+	}
+	total := 0
+	start := len(messages)
+	for i := len(messages) - 1; i >= 0; i-- {
+		t := estimateMessageTokens(messages[i])
+		if total+t > maxTokens {
+			break
+		}
+		total += t
+		start = i
+	}
+	if start == len(messages) {
+		// 即便最后一条单条消息也超限，仍返回它（至少让 LLM 看到一些内容）
+		return messages[len(messages)-1:]
+	}
+	if start == 0 {
+		return messages
+	}
+	return messages[start:]
+}
+
 // TokenStats 增量跟踪 token 使用情况。
 //
 // 用法：
@@ -362,6 +389,18 @@ func Compact(
 
 	toSummarize := messages[:splitIdx]
 	toKeep := messages[splitIdx:]
+
+	// 防止 LLM 摘要本身超过上下文窗口：
+	// 限制送入 LLM 的消息 token 数（保留 prompt 模板 + response 余量）。
+	// 使用上下文窗口的 50% 作为安全上界，确保 prompt 不会爆。
+	maxSummarizeTokens := settings.MaxContextTokens / 2
+	if maxSummarizeTokens <= 0 {
+		maxSummarizeTokens = 60000
+	}
+	if maxSummarizeTokens > 100000 {
+		maxSummarizeTokens = 100000
+	}
+	toSummarize = truncateMessagesByTokens(toSummarize, maxSummarizeTokens)
 
 	// 串行化在另一个 goroutine 中做（与构造保留消息并发）
 	type result struct {

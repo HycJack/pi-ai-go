@@ -7,21 +7,21 @@
       margin: 0;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      min-width: 300px;
+      min-width: 280px;
     }
-    .header {
+    h2 {
+      margin: 16px 0 12px 0;
       font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 12px;
       color: #333;
     }
+    h2:first-child { margin-top: 0; }
     textarea {
       width: 100%;
-      height: 150px;
+      height: 200px;
       padding: 10px;
       border: 1px solid #ddd;
       border-radius: 6px;
-      font-family: monospace;
+      font-family: ui-monospace, 'SF Mono', monospace;
       font-size: 12px;
       resize: vertical;
       box-sizing: border-box;
@@ -31,40 +31,203 @@
       outline: none;
       border-color: #4f46e5;
     }
-    .button {
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    button {
+      flex: 1;
       background: #4f46e5;
       color: white;
       border: none;
-      padding: 8px 16px;
+      padding: 8px 10px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 14px;
-      width: 100%;
+      font-size: 12px;
+      white-space: nowrap;
     }
-    .button:hover {
-      background: #4338ca;
+    button:hover { background: #4338ca; }
+    button:disabled { background: #d1d5db; cursor: not-allowed; }
+    button.secondary { background: #f3f4f6; color: #374151; }
+    button.secondary:hover { background: #e5e7eb; }
+    button.danger { background: #fee2e2; color: #b91c1c; }
+    button.danger:hover { background: #fecaca; }
+    .dir-info {
+      font-size: 11px;
+      color: #6b7280;
+      padding: 6px 10px;
+      background: #f9fafb;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      word-break: break-all;
     }
-    .button.secondary {
-      background: #f3f4f6;
-      color: #374151;
-      margin-top: 8px;
-    }
-    .button.secondary:hover {
-      background: #e5e7eb;
+    .dir-info.active { background: #ecfdf5; color: #047857; }
+    .file-list {
+      max-height: 140px;
+      overflow-y: auto;
+      font-size: 11px;
+      font-family: ui-monospace, 'SF Mono', monospace;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 8px;
+      white-space: pre;
     }
     .status {
       font-size: 12px;
       color: #6b7280;
-      margin-top: 8px;
       text-align: center;
+      min-height: 18px;
+      margin-top: 8px;
     }
+    .status.error { color: #b91c1c; }
+    .status.success { color: #047857; }
+
+    .session-list {
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+    .mcp-list {
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fff;
+      margin-bottom: 8px;
+    }
+    .mcp-list .session-item code {
+      background: #f3f4f6;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      margin-right: 2px;
+    }
+    .session-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid #f3f4f6;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .session-item:hover { background: #f3f4f6; }
+    .session-item:last-child { border-bottom: none; }
+    .session-title { font-weight: 500; color: #111827; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-meta { color: #9ca3af; font-size: 11px; }
+    .session-empty { padding: 16px; text-align: center; color: #9ca3af; font-size: 12px; }
+
+    .dialog-mask {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .dialog {
+      background: white; border-radius: 8px;
+      width: calc(100vw - 32px); max-width: 720px; max-height: 85vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .dialog-head {
+      padding: 10px 12px; border-bottom: 1px solid #e5e7eb;
+      display: flex; align-items: center; justify-content: space-between;
+      font-weight: 600; font-size: 13px;
+    }
+    .dialog-head button { flex: 0 0 auto; width: auto; padding: 4px 10px; }
+    .dialog-body {
+      padding: 12px; overflow-y: auto; flex: 1;
+      font-size: 12px; line-height: 1.5;
+    }
+    .dialog-foot {
+      padding: 10px 12px; border-top: 1px solid #e5e7eb;
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .dialog-foot button { flex: 1; min-width: 80px; }
+
+    .dlg-msg {
+      border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+      border: 1px solid #e5e7eb;
+    }
+    .dlg-msg.user { background: #eff6ff; border-color: #bfdbfe; }
+    .dlg-msg.assistant { background: #f0fdf4; border-color: #bbf7d0; }
+    .dlg-msg.tool-call { background: #fffbeb; border-color: #fde68a; }
+    .dlg-msg.tool-result { background: #f5f3ff; border-color: #ddd6fe; }
+    .dlg-msg.tool-result.err { background: #fef2f2; border-color: #fecaca; }
+    .dlg-head { font-weight: 600; font-size: 11px; margin-bottom: 4px; }
+    .dlg-body { white-space: pre-wrap; word-break: break-word; }
+    .dlg-body pre { background: #1f2937; color: #f9fafb; padding: 6px 8px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin: 4px 0 0 0; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <div class="header">系统提示词配置</div>
-  <textarea id="prompt-input" placeholder="输入自定义系统提示词..."></textarea>
-  <button class="button" id="save-btn">保存设置</button>
-  <button class="button secondary" id="reset-btn">恢复默认</button>
+  <h2>系统提示词配置</h2>
+  <textarea id="prompt" placeholder="输入自定义系统提示词..."></textarea>
+  <div class="row">
+    <button id="save">保存</button>
+    <button id="reset" class="secondary">恢复默认</button>
+  </div>
+
+  <h2>文件读写工具</h2>
+  <div class="row">
+    <button id="import-prompt" class="secondary">📥 导入 prompt</button>
+    <button id="export-prompt" class="secondary">📤 导出 prompt</button>
+  </div>
+  <div class="row">
+    <button id="pick-dir" class="secondary">📁 选择工作目录</button>
+    <button id="clear-dir" class="danger" disabled>✕ 清除</button>
+  </div>
+  <div class="dir-info" id="dir-info">未选择工作目录</div>
+  <div class="row">
+    <button id="save-to-dir" disabled>💾 保存 prompt 到目录</button>
+    <button id="read-from-dir" class="secondary" disabled>📂 从目录读 prompt</button>
+  </div>
+  <div class="row">
+    <button id="list-dir" class="secondary" disabled>📋 列出文件</button>
+    <button id="write-log" class="secondary" disabled>📝 追加日志</button>
+  </div>
+  <div class="file-list" id="file-list" style="display:none"></div>
+
+  <h2>历史会话</h2>
+  <div class="row">
+    <button id="refresh-history" class="secondary">🔄 刷新</button>
+    <button id="clear-history" class="danger">🗑 清空</button>
+  </div>
+  <div class="session-list" id="session-list"></div>
+
+  <h2>MCP 服务器</h2>
+  <div class="row">
+    <input id="mcp-name" type="text" placeholder="名称（可选）" style="flex:1;min-width:80px">
+    <input id="mcp-url" type="text" placeholder="https://mcp.example.com" style="flex:2;min-width:140px">
+  </div>
+  <div class="row">
+    <select id="mcp-type" style="flex:1">
+      <option value="http">HTTP / JSON-RPC</option>
+      <option value="sse">SSE</option>
+    </select>
+    <button id="mcp-add">➕ 添加并连接</button>
+  </div>
+  <div class="row">
+    <button id="mcp-refresh-all" class="secondary">🔄 全部刷新</button>
+  </div>
+  <div class="mcp-list" id="mcp-list"></div>
+
+  <div class="dialog-mask" id="session-mask" style="display:none">
+    <div class="dialog">
+      <div class="dialog-head">
+        <span id="dialog-title">会话详情</span>
+        <button id="dialog-close" class="secondary">✕</button>
+      </div>
+      <div class="dialog-body" id="dialog-body"></div>
+      <div class="dialog-foot">
+        <button id="export-md" class="secondary">导出 MD</button>
+        <button id="export-html">导出 HTML</button>
+        <button id="export-json" class="secondary">导出 JSON</button>
+        <button id="delete-session" class="danger">删除</button>
+      </div>
+    </div>
+  </div>
+
   <div class="status" id="status"></div>
   <script src="sidepanel.js"></script>
 </body>

@@ -234,7 +234,7 @@ func doResponsesStream(ctx context.Context, baseURL, apiKey string, model core.M
 	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderOpenAI, 5*time.Minute, err)
+			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, core.ProviderOpenAI, err)
 		}
 		return core.AssistantMessage{}, err
 	}

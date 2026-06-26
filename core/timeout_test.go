@@ -140,3 +140,58 @@ func TestIsRetryableErrorWithTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestWrapHTTPTimeoutFromContext(t *testing.T) {
+	// Test with context that has deadline
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := WrapHTTPTimeoutFromContext(ctx, ProviderOpenAI, nil)
+
+	var timeoutErr *TimeoutError
+	if !errors.As(err, &timeoutErr) {
+		t.Fatal("errors.As failed")
+	}
+
+	if timeoutErr.Source != TimeoutSourceHTTP {
+		t.Errorf("Source = %s, want %s", timeoutErr.Source, TimeoutSourceHTTP)
+	}
+	if timeoutErr.Provider != ProviderOpenAI {
+		t.Errorf("Provider = %s, want %s", timeoutErr.Provider, ProviderOpenAI)
+	}
+	// Duration should be approximately 30s (allow some tolerance for test execution time)
+	if timeoutErr.Duration > 35*time.Second || timeoutErr.Duration < 25*time.Second {
+		t.Errorf("Duration = %v, want approximately 30s", timeoutErr.Duration)
+	}
+
+	// Test errors.Is
+	if !errors.Is(err, ErrTimeout) {
+		t.Errorf("errors.Is(err, ErrTimeout) = false, want true")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("errors.Is(err, context.DeadlineExceeded) = false, want true")
+	}
+}
+
+func TestWrapHTTPTimeoutFromContextNoDeadline(t *testing.T) {
+	// Test with context that has no deadline
+	ctx := context.Background()
+
+	err := WrapHTTPTimeoutFromContext(ctx, ProviderAnthropic, nil)
+
+	var timeoutErr *TimeoutError
+	if !errors.As(err, &timeoutErr) {
+		t.Fatal("errors.As failed")
+	}
+
+	if timeoutErr.Source != TimeoutSourceHTTP {
+		t.Errorf("Source = %s, want %s", timeoutErr.Source, TimeoutSourceHTTP)
+	}
+	if timeoutErr.Provider != ProviderAnthropic {
+		t.Errorf("Provider = %s, want %s", timeoutErr.Provider, ProviderAnthropic)
+	}
+	// Duration should be 0 when no deadline
+	if timeoutErr.Duration != 0 {
+		t.Errorf("Duration = %v, want 0", timeoutErr.Duration)
+	}
+}

@@ -33,3 +33,4 @@ Thumbs.db
 # 依赖目录
 vendor/
 __pycache__deepseek-pp/  
+*.pyc

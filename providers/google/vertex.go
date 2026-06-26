@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"time"
 
 	core "pi-ai-go/core"
 )
@@ -135,7 +134,7 @@ func doVertexStream(ctx context.Context, baseURL, apiKey, project, location stri
 	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderGoogleVertex, 5*time.Minute, err)
+			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, core.ProviderGoogleVertex, err)
 		}
 		return core.AssistantMessage{}, err
 	}

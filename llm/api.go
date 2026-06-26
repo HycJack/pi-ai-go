@@ -9,23 +9,23 @@ import (
 )
 
 // Stream starts a streaming completion request.
-func Stream(ctx context.Context, model core.Model, msgs []core.Message, opts ...core.StreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
+func Stream(ctx context.Context, model core.Model, msgs []core.Message, opts ...core.SimpleStreamOptions) (*core.EventStream[core.AssistantMessageEvent, core.AssistantMessage], error) {
 	provider, err := core.GetProvider(model.API)
 	if err != nil {
 		return nil, err
 	}
 
-	var opt core.StreamOptions
+	var opt core.SimpleStreamOptions
 	if len(opts) > 0 {
 		opt = opts[0]
 	}
 
 	c := core.Context{Messages: msgs}
-	return provider.Stream(ctx, model, c, opt)
+	return provider.StreamSimple(ctx, model, c, opt)
 }
 
 // Complete calls Stream and waits for the final result.
-func Complete(ctx context.Context, model core.Model, msgs []core.Message, opts ...core.StreamOptions) (core.AssistantMessage, error) {
+func Complete(ctx context.Context, model core.Model, msgs []core.Message, opts ...core.SimpleStreamOptions) (core.AssistantMessage, error) {
 	s, err := Stream(ctx, model, msgs, opts...)
 	if err != nil {
 		return core.AssistantMessage{}, err

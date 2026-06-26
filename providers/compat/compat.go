@@ -200,7 +200,7 @@ func doRequest(
 	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return core.AssistantMessage{}, core.WrapHTTPTimeout(model.Provider, 5*time.Minute, err)
+			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, model.Provider, err)
 		}
 		return core.AssistantMessage{}, err
 	}

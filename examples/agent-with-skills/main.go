@@ -22,6 +22,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -49,12 +50,13 @@ import (
 func main() {
 	loadEnv()
 
+	// 统一环境变量（优先 LLM_*，兼容旧的 PROVIDER/MODEL/BASE_URL/API_KEY/API_KEYS）
 	skillsDir := flag.String("skills", os.Getenv("SKILLS"), "Directory containing SKILL.md files")
-	modelID := flag.String("model", os.Getenv("MODEL"), "Model ID")
-	provider := flag.String("provider", os.Getenv("PROVIDER"), "Provider name")
-	baseURL := flag.String("base-url", os.Getenv("BASE_URL"), "Base URL")
+	modelID := flag.String("model", envFirst("LLM_MODEL", "MODEL"), "Model ID")
+	provider := flag.String("provider", envFirst("LLM_PROVIDER", "PROVIDER"), "Provider name")
+	baseURL := flag.String("base-url", envFirst("LLM_BASE_URL", "BASE_URL"), "Base URL")
 	apiKeyFlag := flag.String("api-key", "", "API key (single, or use -api-keys for rotation)")
-	apiKeysFlag := flag.String("api-keys", os.Getenv("API_KEYS"), "Comma-separated API keys for rotation (highest priority)")
+	apiKeysFlag := flag.String("api-keys", envFirst("LLM_API_KEYS", "API_KEYS"), "Comma-separated API keys for rotation (highest priority)")
 	query := flag.String("query", "", "Query to run (interactive if empty)")
 	verbose := flag.Bool("v", false, "Verbose mode")
 
@@ -74,14 +76,14 @@ func main() {
 	fmt.Fprintf(os.Stderr, "[config] Auto-compact: %v\n", *autoCompact)
 
 	if *modelID == "" {
-		fmt.Fprintln(os.Stderr, "Error: MODEL not configured")
+		fmt.Fprintln(os.Stderr, "Error: LLM_MODEL (or MODEL) not configured")
 		os.Exit(1)
 	}
 
 	// 收集 API key 列表（多 key 轮询）
 	keys := collectAPIKeys(*apiKeysFlag, *apiKeyFlag, *provider, *verbose)
 	if len(keys) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: API key(s) not configured (use -api-keys or API_KEYS env)")
+		fmt.Fprintln(os.Stderr, "Error: API key(s) not configured (use -api-keys / LLM_API_KEYS / LLM_API_KEY env)")
 		os.Exit(1)
 	}
 
@@ -767,7 +769,7 @@ func runInteractive(
 
 	fmt.Fprintln(os.Stderr, "\n🤖 Interactive mode")
 	fmt.Fprintln(os.Stderr, "Commands: :history :context :compact :memory :save :load :sessions :open :view :new :current :remember :forget :stats :keys :quit")
-	fmt.Fprintln(os.Stderr, "Or type a question.")
+	fmt.Fprintln(os.Stderr, "Or type a question. Press ESC to cancel the current turn.")
 
 	for {
 		fmt.Fprint(os.Stderr, "\nquery> ")
@@ -1173,6 +1175,14 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 			fmt.Fprintf(os.Stderr, "\nError: %v\n", ae.Error)
 		}
 	case agent.EventMessageEnd:
+		// 消息结束时如有未打印的思考内容，补打一次
+		if len(e.Message.Content) > 0 {
+			for _, b := range e.Message.Content {
+				if tc, ok := b.(core.ThinkingContent); ok && tc.Thinking != "" {
+					fmt.Fprintf(os.Stderr, "\n[thinking] %s\n", strings.TrimSpace(tc.Thinking))
+				}
+			}
+		}
 		if e.Message.StopReason == core.StopError {
 			if e.Message.ErrorMessage != "" {
 				fmt.Fprintf(os.Stderr, "\nError: %s\n", e.Message.ErrorMessage)
@@ -1191,6 +1201,17 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 			status = "error"
 		}
 		fmt.Fprintf(os.Stderr, "[exec done] %s (%s)\n", e.ToolName, status)
+		// 打印工具返回结果
+		if len(e.Result) > 0 {
+			var res core.AgentToolResult
+			if err := json.Unmarshal(e.Result, &res); err == nil {
+				if text := formatToolResultContent(res.Content); text != "" {
+					fmt.Fprintf(os.Stderr, "[result]\n%s\n", text)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[result] %s\n", string(e.Result))
+			}
+		}
 	case agent.EventTurnEnd:
 		if verbose {
 			fmt.Fprintf(os.Stderr, "[turn end] ToolResults: %d\n", len(e.ToolResults))
@@ -1201,6 +1222,27 @@ func handleEvent(evt agent.AgentEvent, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+// formatToolResultContent 将 []ContentBlock 拼接成可读字符串。
+func formatToolResultContent(blocks []core.ContentBlock) string {
+	if len(blocks) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, b := range blocks {
+		switch c := b.(type) {
+		case core.TextContent:
+			if c.Text != "" {
+				parts = append(parts, c.Text)
+			}
+		default:
+			if data, err := json.Marshal(b); err == nil {
+				parts = append(parts, string(data))
+			}
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
 // newLLMExtractor 创建 LLM 提取器，从 keyPool 拿 key 调用 LLM 同步获取响应。
@@ -1402,6 +1444,17 @@ func envInt(key string, def int) int {
 	return def
 }
 
+// envFirst 按顺序返回第一个非空环境变量。
+// 用法：envFirst("LLM_API_KEY", "API_KEY") 优先 LLM_API_KEY，回退 API_KEY。
+func envFirst(keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 func extractAssistantText(m core.AssistantMessage) string {
 	var parts []string
 	for _, b := range m.Content {
@@ -1499,8 +1552,8 @@ func resolveModel(provider, modelID, baseURL string) core.Model {
 }
 
 // collectAPIKeys 收集 API key 列表。
-// 优先级：-api-keys CLI > API_KEYS env > -api-key CLI > API_KEY env > {PROVIDER}_API_KEY env
-// -api-keys 和 API_KEYS 都支持逗号分隔多个 key。
+// 优先级：-api-keys CLI > LLM_API_KEYS env > API_KEYS env > -api-key CLI > LLM_API_KEY env > API_KEY env > {PROVIDER}_API_KEY env
+// -api-keys 和 LLM_API_KEYS/API_KEYS 都支持逗号分隔多个 key。
 func collectAPIKeys(apiKeysFlag, apiKeyFlag, provider string, verbose bool) []string {
 	keys := []string{}
 
@@ -1519,8 +1572,9 @@ func collectAPIKeys(apiKeysFlag, apiKeyFlag, provider string, verbose bool) []st
 		}
 	}
 
-	// 2. API_KEYS env
-	if envKeys := os.Getenv("API_KEYS"); envKeys != "" {
+	// 2. LLM_API_KEYS env / API_KEYS env（逗号分隔多 key）
+	envKeys := envFirst("LLM_API_KEYS", "API_KEYS")
+	if envKeys != "" {
 		for _, k := range strings.Split(envKeys, ",") {
 			if k = strings.TrimSpace(k); k != "" {
 				keys = append(keys, k)
@@ -1528,16 +1582,16 @@ func collectAPIKeys(apiKeysFlag, apiKeyFlag, provider string, verbose bool) []st
 		}
 		if len(keys) > 0 {
 			if verbose {
-				fmt.Fprintf(os.Stderr, "[keypool] loaded %d key(s) from API_KEYS env\n", len(keys))
+				fmt.Fprintf(os.Stderr, "[keypool] loaded %d key(s) from LLM_API_KEYS env\n", len(keys))
 			}
 			return keys
 		}
 	}
 
-	// 3. 兼容单 key：-api-key / API_KEY / {PROVIDER}_API_KEY
+	// 3. 兼容单 key：-api-key / LLM_API_KEY / API_KEY / {PROVIDER}_API_KEY
 	single := apiKeyFlag
 	if single == "" {
-		single = os.Getenv("API_KEY")
+		single = envFirst("LLM_API_KEY", "API_KEY")
 		if single == "" && provider != "" {
 			single = os.Getenv(strings.ToUpper(provider) + "_API_KEY")
 		}

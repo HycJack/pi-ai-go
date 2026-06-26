@@ -194,7 +194,7 @@ func doGoogleStream(ctx context.Context, baseURL, apiKey string, model core.Mode
 	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderGoogle, 5*time.Minute, err)
+			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, core.ProviderGoogle, err)
 		}
 		return core.AssistantMessage{}, err
 	}

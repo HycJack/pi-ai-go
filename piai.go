@@ -241,11 +241,11 @@ func GetImageModels(provider KnownProvider) []ImagesModel {
 
 // --- Public API (ai) ---
 
-func Stream(ctx context.Context, model Model, msgs []Message, opts ...StreamOptions) (*core.EventStream[AssistantMessageEvent, AssistantMessage], error) {
+func Stream(ctx context.Context, model Model, msgs []Message, opts ...SimpleStreamOptions) (*core.EventStream[AssistantMessageEvent, AssistantMessage], error) {
 	return llm.Stream(ctx, model, msgs, opts...)
 }
 
-func Complete(ctx context.Context, model Model, msgs []Message, opts ...StreamOptions) (AssistantMessage, error) {
+func Complete(ctx context.Context, model Model, msgs []Message, opts ...SimpleStreamOptions) (AssistantMessage, error) {
 	return llm.Complete(ctx, model, msgs, opts...)
 }
 

@@ -388,6 +388,28 @@ func WrapHTTPTimeout(provider KnownProvider, duration time.Duration, cause error
 	}
 }
 
+// WrapHTTPTimeoutFromContext wraps an HTTP request timeout with provider information
+// and calculates the actual timeout duration from the context's deadline.
+// || 包装 HTTP 请求超时错误，从 context 计算实际超时时长
+func WrapHTTPTimeoutFromContext(ctx context.Context, provider KnownProvider, cause error) error {
+	if cause == nil {
+		cause = context.DeadlineExceeded
+	}
+	var duration time.Duration
+	if deadline, ok := ctx.Deadline(); ok {
+		duration = time.Until(deadline)
+		if duration < 0 {
+			duration = 0 // Already expired
+		}
+	}
+	return &TimeoutError{
+		Source:   TimeoutSourceHTTP,
+		Duration: duration,
+		Provider: provider,
+		Cause:    cause,
+	}
+}
+
 // WrapToolTimeout wraps a tool execution timeout with tool name.
 // || 包装工具执行超时错误
 func WrapToolTimeout(toolName string, duration time.Duration, cause error) error {

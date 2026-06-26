@@ -154,7 +154,7 @@ tools := []piai.Tool{
 
 stream, _ := piai.Stream(ctx, model, []piai.Message{
     piai.UserMessage{Content: "北京天气怎么样？"},
-}, piai.StreamOptions{})
+}, piai.SimpleStreamOptions{})
 
 stream.ForEach(ctx, func(evt piai.AssistantMessageEvent) error {
     if e, ok := evt.(piai.EventToolCallEnd); ok {

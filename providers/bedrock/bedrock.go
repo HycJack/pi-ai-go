@@ -328,7 +328,7 @@ func doBedrockStream(ctx context.Context, region, apiKey string, model core.Mode
 	resp, err := core.SSEClient.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return core.AssistantMessage{}, core.WrapHTTPTimeout(core.ProviderAmazonBedrock, 5*time.Minute, err)
+			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, core.ProviderAmazonBedrock, err)
 		}
 		return core.AssistantMessage{}, err
 	}
