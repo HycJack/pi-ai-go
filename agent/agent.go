@@ -2,29 +2,46 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
+	session "pi-ai-go/agent/session"
 	core "pi-ai-go/core"
 )
 
 // AgentState holds the agent's mutable state.
 type AgentState struct {
-	Model        core.Model
-	SystemPrompt string
-	Messages     []core.Message
-	Tools        []AgentTool
+	Model         core.Model
+	SystemPrompt  string
+	Messages      []core.Message
+	Tools         []AgentTool
 	ToolExecution ToolExecutionMode
 
 	// Options forwarded to AgentLoopConfig
-	ConvertToLlm       func([]core.Message) []core.Message
+	ConvertToLlm        func([]core.Message) []core.Message
 	TransformContext    func([]core.Message) []core.Message
-	GetApiKey          func() string
+	GetApiKey           func() string
 	ShouldStopAfterTurn func(core.AssistantMessage, []core.ToolResultMessage) bool
 	PrepareNextTurn     func(*AgentLoopConfig, core.AssistantMessage, []core.ToolResultMessage, []core.Message)
 	BeforeToolCall      func(BeforeToolCallContext) *ToolCallBlock
 	AfterToolCall       func(AfterToolCallContext) *ToolCallOverride
 	StreamFn            StreamFn
 	SimpleStreamOptions core.SimpleStreamOptions
+
+	// --- Skills and Prompt Templates ---
+
+	// Skills are loaded from SKILL.md files and automatically formatted
+	// into the system prompt.
+	Skills []session.Skill
+
+	// PromptTemplates are templates with variable placeholders that can be
+	// invoked during agent execution.
+	PromptTemplates []session.PromptTemplate
+
+	// --- Execution Environment ---
+
+	// ExecEnv is the execution environment for tool execution.
+	ExecEnv core.ExecutionEnv
 }
 
 // AgentOptions configures a new Agent.
@@ -41,6 +58,7 @@ type Agent struct {
 	followUp    []core.Message
 	cancel      context.CancelFunc
 	streamWg    sync.WaitGroup // tracks processStream goroutine completion
+	running     bool           // guards against concurrent Run calls
 }
 
 // New creates a new Agent.
@@ -124,6 +142,12 @@ func (a *Agent) Abort() {
 // Run starts a new agent run with the given prompts.
 func (a *Agent) Run(ctx context.Context, prompts ...core.Message) ([]core.Message, error) {
 	a.mu.Lock()
+	if a.running {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("agent is already running")
+	}
+	a.running = true
+
 	// Append prompts to messages
 	a.state.Messages = append(a.state.Messages, prompts...)
 
@@ -162,15 +186,15 @@ func (a *Agent) Run(ctx context.Context, prompts ...core.Message) ([]core.Messag
 	a.processStream(runCtx, stream)
 
 	result, err := stream.Result()
-	if err != nil {
-		a.streamWg.Wait()
-		return nil, err
-	}
-
-	// Wait for processStream to finish updating state before overwriting
 	a.streamWg.Wait()
 
 	a.mu.Lock()
+	a.running = false
+	if err != nil {
+		a.mu.Unlock()
+		return nil, err
+	}
+
 	a.state.Messages = result
 	a.cancel = nil
 	a.mu.Unlock()
@@ -181,6 +205,11 @@ func (a *Agent) Run(ctx context.Context, prompts ...core.Message) ([]core.Messag
 // RunContinue resumes the agent from its current message history.
 func (a *Agent) RunContinue(ctx context.Context) ([]core.Message, error) {
 	a.mu.Lock()
+	if a.running {
+		a.mu.Unlock()
+		return nil, fmt.Errorf("agent is already running")
+	}
+	a.running = true
 
 	runCtx, cancel := context.WithCancel(ctx)
 	a.cancel = cancel
@@ -215,15 +244,15 @@ func (a *Agent) RunContinue(ctx context.Context) ([]core.Message, error) {
 	a.processStream(runCtx, stream)
 
 	result, err := stream.Result()
-	if err != nil {
-		a.streamWg.Wait()
-		return nil, err
-	}
-
-	// Wait for processStream to finish updating state before overwriting
 	a.streamWg.Wait()
 
 	a.mu.Lock()
+	a.running = false
+	if err != nil {
+		a.mu.Unlock()
+		return nil, err
+	}
+
 	a.state.Messages = result
 	a.cancel = nil
 	a.mu.Unlock()
@@ -240,13 +269,16 @@ func (a *Agent) buildConfig() AgentLoopConfig {
 		Tools:               a.state.Tools,
 		ToolExecution:       a.state.ToolExecution,
 		ConvertToLlm:        a.state.ConvertToLlm,
-		TransformContext:     a.state.TransformContext,
+		TransformContext:    a.state.TransformContext,
 		GetApiKey:           a.state.GetApiKey,
 		ShouldStopAfterTurn: a.state.ShouldStopAfterTurn,
 		PrepareNextTurn:     a.state.PrepareNextTurn,
 		BeforeToolCall:      a.state.BeforeToolCall,
 		AfterToolCall:       a.state.AfterToolCall,
 		StreamFn:            a.state.StreamFn,
+		Skills:              a.state.Skills,
+		PromptTemplates:     a.state.PromptTemplates,
+		ExecEnv:             a.state.ExecEnv,
 	}
 }
 

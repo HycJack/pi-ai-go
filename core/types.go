@@ -284,6 +284,17 @@ type ToolResultMessage struct {
 func (ToolResultMessage) messageTag()               {}
 func (m ToolResultMessage) GetTimestamp() time.Time { return m.Timestamp }
 
+// SystemMessage represents a system prompt message.
+// || 表示系统提示消息
+type SystemMessage struct {
+	Role      string    `json:"role"`      // 角色：system
+	Content   string    `json:"content"`   // 系统提示内容
+	Timestamp time.Time `json:"timestamp"` // 时间戳
+}
+
+func (SystemMessage) messageTag()               {}
+func (m SystemMessage) GetTimestamp() time.Time { return m.Timestamp }
+
 // Usage represents token usage statistics.
 // || 表示 token 使用统计
 type Usage struct {
@@ -408,6 +419,43 @@ type ImageOptions struct {
 // implementations. They live in core so that tool packages can import
 // them without depending on the agent package.
 
+// --- Execution Environment ---
+
+// ExecutionEnv defines the interface for a sandboxed execution environment.
+// Tools can use this interface to interact with the filesystem and shell
+// in a controlled manner.
+type ExecutionEnv interface {
+	// ReadFile reads the contents of a file.
+	ReadFile(path string) ([]byte, error)
+
+	// WriteFile writes content to a file.
+	WriteFile(path string, content []byte, perm uint32) error
+
+	// AppendFile appends content to a file.
+	AppendFile(path string, content []byte) error
+
+	// ListDir lists files in a directory.
+	ListDir(path string) ([]string, error)
+
+	// Mkdir creates a directory.
+	Mkdir(path string, perm uint32) error
+
+	// Remove removes a file or directory.
+	Remove(path string) error
+
+	// Exec runs a shell command and returns the output.
+	Exec(cmd string, args []string, workingDir string) (string, string, error)
+
+	// GetWorkingDir returns the current working directory.
+	GetWorkingDir() string
+
+	// SetWorkingDir sets the current working directory.
+	SetWorkingDir(path string) error
+
+	// ExpandPath resolves a path relative to the working directory.
+	ExpandPath(path string) string
+}
+
 // ToolExecutionMode controls how tools are executed.
 // || 控制工具执行模式
 type ToolExecutionMode string
@@ -440,3 +488,4 @@ type AgentToolResult struct {
 	IsError   bool              `json:"isError,omitempty"`   // 是否错误
 	Terminate bool              `json:"terminate,omitempty"` // 是否终止 Agent
 }
+

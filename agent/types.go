@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	session "pi-ai-go/agent/session"
 	core "pi-ai-go/core"
 )
 
@@ -253,6 +254,23 @@ type AgentLoopConfig struct {
 	// It is purely observational; the loop continues with the
 	// compacted slice regardless of the return value.
 	OnCompaction func(CompactionEvent)
+
+	// --- Skills and Prompt Templates ---
+
+	// Skills are loaded from SKILL.md files and automatically formatted
+	// into the system prompt.
+	Skills []session.Skill
+
+	// PromptTemplates are templates with variable placeholders that can be
+	// invoked during agent execution.
+	PromptTemplates []session.PromptTemplate
+
+	// --- Execution Environment ---
+
+	// ExecEnv is the execution environment for tool execution.
+	// It provides sandboxed access to the filesystem and shell.
+	// If nil, tools that require an execution environment will fail.
+	ExecEnv core.ExecutionEnv
 }
 
 // CompactionEvent is the payload passed to AgentLoopConfig.OnCompaction.

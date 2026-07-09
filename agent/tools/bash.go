@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"syscall"
 	"time"
 
 	core "pi-ai-go/core"
@@ -59,33 +60,50 @@ func executeBash(ctx context.Context, toolCallID string, params json.RawMessage,
 	}
 
 	shell, shellArgs := pickShell(args.Shell, runtime.GOOS)
+	fullArgs := append(shellArgs, args.Command)
 
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	execEnv := core.GetExecutionEnv(ctx)
 
-	cmd := exec.CommandContext(runCtx, shell, shellArgs...)
-	cmd.Args = append(cmd.Args, args.Command)
+	var stdoutStr, stderrStr string
+	var err error
+	var exitCode int
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	if execEnv != nil {
+		stdoutStr, stderrStr, err = execEnv.Exec(shell, fullArgs, "")
+	} else {
+		runCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
 
-	err := cmd.Run()
-	exitCode := 0
+		cmd := exec.CommandContext(runCtx, shell, shellArgs...)
+		cmd.Args = append(cmd.Args, args.Command)
+
+		// 在 Windows 上隐藏控制台窗口（避免 cmd.exe 弹窗）
+		if runtime.GOOS == "windows" {
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				HideWindow: true,
+			}
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err = cmd.Run()
+		stdoutStr = stdout.String()
+		stderrStr = stderr.String()
+	}
+
+	exitCode = 0
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			exitCode = ee.ExitCode()
 		} else if errors.Is(err, context.DeadlineExceeded) {
-			// Timeout is handled via the timedOut flag, not as an error
-			exitCode = 124 // Standard timeout exit code
+			exitCode = 124
 		} else {
 			return errResult(fmt.Sprintf("bash: %v", err)), nil
 		}
 	}
-
-	stdoutStr := stdout.String()
-	stderrStr := stderr.String()
 	combined := stdoutStr
 	if stderrStr != "" {
 		if combined != "" {
@@ -107,7 +125,7 @@ func executeBash(ctx context.Context, toolCallID string, params json.RawMessage,
 		"exitCode":  exitCode,
 		"shell":     shell,
 		"truncated": truncated,
-		"timedOut":  runCtx.Err() == context.DeadlineExceeded,
+		"timedOut":  errors.Is(err, context.DeadlineExceeded) || exitCode == 124,
 	})
 	return core.AgentToolResult{
 		Content: textBlock(combined),

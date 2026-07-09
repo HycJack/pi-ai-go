@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	session "pi-ai-go/agent/session"
 	core "pi-ai-go/core"
 	"pi-ai-go/llm"
 )
@@ -274,8 +275,11 @@ func streamAssistantResponse(ctx context.Context, config AgentLoopConfig, messag
 	opts := config.SimpleStreamOptions
 	opts.APIKey = apiKey
 
+	// Build system prompt with skills and templates
+	systemPrompt := buildSystemPromptWithSkills(config)
+
 	// Build context
-	llmCtx := toContextMessages(llmMessages, config.SystemPrompt, config.Tools)
+	llmCtx := toContextMessages(llmMessages, systemPrompt, config.Tools)
 
 	// Stream response
 	streamFn := config.StreamFn
@@ -630,6 +634,11 @@ func prepareAndExecuteToolCall(ctx context.Context, config AgentLoopConfig, assi
 		})
 	}
 
+	// Inject ExecutionEnv into context if available
+	if config.ExecEnv != nil {
+		ctx = core.WithExecutionEnv(ctx, config.ExecEnv)
+	}
+
 	result, err := tool.Execute(ctx, tc.ID, tc.Arguments, onUpdate)
 	if err != nil {
 		return AgentToolResult{
@@ -773,4 +782,13 @@ func msgSlice(msgs []core.ToolResultMessage) []core.Message {
 		result[i] = m
 	}
 	return result
+}
+
+// buildSystemPromptWithSkills constructs the system prompt with skills and templates.
+func buildSystemPromptWithSkills(config AgentLoopConfig) string {
+	return session.BuildSystemPrompt(session.SystemPromptConfig{
+		BasePrompt:      config.SystemPrompt,
+		Skills:          config.Skills,
+		PromptTemplates: config.PromptTemplates,
+	})
 }

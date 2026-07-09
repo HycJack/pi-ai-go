@@ -55,7 +55,13 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
 	}
 
-	data, err := os.ReadFile(safePath)
+	execEnv := core.GetExecutionEnv(ctx)
+	var data []byte
+	if execEnv != nil {
+		data, err = execEnv.ReadFile(safePath)
+	} else {
+		data, err = os.ReadFile(safePath)
+	}
 	if err != nil {
 		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
 	}
@@ -77,8 +83,14 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		out = strings.Replace(src, args.OldText, args.NewText, 1)
 	}
 
-	if err := os.WriteFile(safePath, []byte(out), 0o644); err != nil {
-		return errResult(fmt.Sprintf("edit_file: %v", err)), nil
+	if execEnv != nil {
+		if err := execEnv.WriteFile(safePath, []byte(out), 0o644); err != nil {
+			return errResult(fmt.Sprintf("edit_file: %v", err)), nil
+		}
+	} else {
+		if err := os.WriteFile(safePath, []byte(out), 0o644); err != nil {
+			return errResult(fmt.Sprintf("edit_file: %v", err)), nil
+		}
 	}
 
 	details, _ := json.Marshal(map[string]any{

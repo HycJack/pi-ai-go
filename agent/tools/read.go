@@ -53,7 +53,13 @@ func executeRead(ctx context.Context, toolCallID string, params json.RawMessage,
 		return errResult(fmt.Sprintf("read_file: %v", err)), nil
 	}
 
-	data, err := os.ReadFile(safePath)
+	var data []byte
+	execEnv := core.GetExecutionEnv(ctx)
+	if execEnv != nil {
+		data, err = execEnv.ReadFile(safePath)
+	} else {
+		data, err = os.ReadFile(safePath)
+	}
 	if err != nil {
 		return errResult(fmt.Sprintf("read_file: %v", err)), nil
 	}

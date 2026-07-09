@@ -15,11 +15,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	piai "pi-ai-go"
 	"pi-ai-go/agent"
+	"pi-ai-go/agent/session"
 	_ "pi-ai-go/providers"
 )
 
@@ -37,6 +39,10 @@ func main() {
 	reasoningFlag := flag.String("reasoning", envFirst("LLM_REASONING", "REASONING"),
 		"Reasoning level: off|minimal|low|medium|high|xhigh (default medium)")
 	timeoutFlag := flag.Int("timeout", 60, "Per-turn timeout in seconds")
+	builtinFlag := flag.Bool("builtin", envBool("AGENT_BUILTIN_TOOLS", false),
+		"Enable pi-ai-go/agent/tools built-in toolset (read/write/edit/bash/glob/grep)")
+	skillsDir := flag.String("skills", envFirst("AGENT_SKILLS_DIR", "skills"),
+		"Directory containing SKILL.md files (set empty to disable)")
 	flag.Parse()
 
 	cfg := resolveAppConfig(*verbose)
@@ -50,15 +56,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 工具列表
+	// 工具列表：自定义工具 +（可选）内置工具
 	tools := defaultTools()
+	if *builtinFlag {
+		tools = append(tools, builtinTools()...)
+	}
+
+	// Skills 加载
+	skills, skillDiags := loadSkillsOrEmpty(*skillsDir)
+	for _, d := range skillDiags {
+		fmt.Fprintf(os.Stderr, "[skill] %s: %s\n", d.Path, d.Message)
+	}
+	fmt.Printf("🔧 工具: %d 个 | 🧠 Skills: %d 个\n", len(tools), len(skills))
 
 	// 构建 Agent
 	aiAgent := agent.New(agent.AgentOptions{
 		InitialState: &agent.AgentState{
 			Model:        cfg.Model,
-			SystemPrompt: defaultSystemPrompt,
+			SystemPrompt: buildSystemPrompt(skills, *builtinFlag),
 			Tools:        tools,
+			Skills:       skills,
 			SimpleStreamOptions: piai.SimpleStreamOptions{
 				StreamOptions: piai.StreamOptions{
 					APIKey:          cfg.APIKey,
@@ -73,6 +90,63 @@ func main() {
 
 	// REPL
 	runREPL(aiAgent, *timeoutFlag)
+}
+
+// loadSkillsOrEmpty 从指定目录加载 SKILL.md，目录为空或不存在则返回空列表。
+// 同时按相对路径尝试常见位置（./skills、../skills、../../skills）以方便从子目录运行。
+func loadSkillsOrEmpty(dir string) ([]session.Skill, []session.SkillDiagnostic) {
+	if strings.TrimSpace(dir) == "" {
+		return nil, nil
+	}
+	// 收集所有候选路径
+	candidates := []string{dir}
+	if abs, err := filepath.Abs(dir); err == nil {
+		candidates = append(candidates, abs)
+	}
+	// 同时兼容 ../skills、../../skills
+	if !filepath.IsAbs(dir) {
+		candidates = append(candidates,
+			filepath.Join("..", dir),
+			filepath.Join("..", "..", dir),
+		)
+	}
+
+	var allSkills []session.Skill
+	var allDiags []session.SkillDiagnostic
+	seen := make(map[string]bool)
+	for _, d := range candidates {
+		abs, _ := filepath.Abs(d)
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		skills, diags := session.LoadSkills(d)
+		allSkills = append(allSkills, skills...)
+		allDiags = append(allDiags, diags...)
+	}
+	return allSkills, allDiags
+}
+
+// buildSystemPrompt 拼接系统提示，附加已加载 skills 摘要。
+func buildSystemPrompt(skills []session.Skill, builtinEnabled bool) string {
+	var sb strings.Builder
+	sb.WriteString(defaultSystemPrompt)
+	if builtinEnabled {
+		sb.WriteString("\n\n已启用内置文件/命令工具：read_file / write_file / edit_file / bash / glob / grep。\n")
+	}
+	if len(skills) > 0 {
+		sb.WriteString("\n## 已加载 Skills\n")
+		for _, s := range skills {
+			if s.Name != "" {
+				fmt.Fprintf(&sb, "- %s", s.Name)
+				if s.Description != "" {
+					fmt.Fprintf(&sb, ": %s", oneLine(s.Description))
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+	return sb.String()
 }
 
 // runREPL 简单的 read-eval-print loop。
@@ -108,9 +182,18 @@ func runREPL(aiAgent *agent.Agent, timeoutSec int) {
 			return
 		case "tools":
 			fmt.Println("🔧 可用工具:")
-			for _, t := range defaultTools() {
+			for _, t := range aiAgent.State().Tools {
 				fmt.Printf("   - %s: %s\n", t.Name, oneLine(t.Description))
 			}
+			continue
+		case "skills":
+			fmt.Printf("🧠 Skills: %d 个\n", len(aiAgent.State().Skills))
+			for _, s := range aiAgent.State().Skills {
+				fmt.Printf("   - %s\n", s.Name)
+			}
+			continue
+		case "history":
+			fmt.Printf("📝 历史: %d 条\n", len(aiAgent.Messages()))
 			continue
 		}
 

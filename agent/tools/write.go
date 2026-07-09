@@ -50,18 +50,32 @@ func executeWrite(ctx context.Context, toolCallID string, params json.RawMessage
 		return errResult(fmt.Sprintf("write_file: %v", err)), nil
 	}
 
+	execEnv := core.GetExecutionEnv(ctx)
+
 	// Create parent directories.
 	dir := filepath.Dir(safePath)
 	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return errResult(fmt.Sprintf("write_file: mkdir: %v", err)), nil
+		if execEnv != nil {
+			if err := execEnv.Mkdir(dir, 0o755); err != nil {
+				return errResult(fmt.Sprintf("write_file: mkdir: %v", err)), nil
+			}
+		} else {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return errResult(fmt.Sprintf("write_file: mkdir: %v", err)), nil
+			}
 		}
 	}
 
 	// Write atomically: write to a temp file, then rename.
 	tmp := safePath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(args.Content), 0o644); err != nil {
-		return errResult(fmt.Sprintf("write_file: %v", err)), nil
+	if execEnv != nil {
+		if err := execEnv.WriteFile(tmp, []byte(args.Content), 0o644); err != nil {
+			return errResult(fmt.Sprintf("write_file: %v", err)), nil
+		}
+	} else {
+		if err := os.WriteFile(tmp, []byte(args.Content), 0o644); err != nil {
+			return errResult(fmt.Sprintf("write_file: %v", err)), nil
+		}
 	}
 	if err := os.Rename(tmp, safePath); err != nil {
 		_ = os.Remove(tmp)

@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	core "pi-ai-go/core"
@@ -79,6 +80,7 @@ const (
 // ContextWindow is a snapshot of the agent's context budget. It is
 // thread-safe and is meant to be re-created per-turn (cheap).
 type ContextWindow struct {
+	mu         sync.RWMutex
 	Model      core.Model
 	Policy     ContextPolicy
 	Used       int  // Estimated input tokens.
@@ -114,7 +116,9 @@ func (c *ContextWindow) Add(usage int) {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
 	c.Used += usage
+	c.mu.Unlock()
 }
 
 // NeedsCompaction returns true if usage has crossed the soft limit.
@@ -122,6 +126,8 @@ func (c *ContextWindow) NeedsCompaction() bool {
 	if c == nil || c.Effective == 0 {
 		return false
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.Used >= c.SoftTokens
 }
 
@@ -131,6 +137,8 @@ func (c *ContextWindow) MustCompact() bool {
 	if c == nil || c.Effective == 0 {
 		return false
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.Used >= c.HardTokens
 }
 
@@ -139,6 +147,8 @@ func (c *ContextWindow) Utilization() float64 {
 	if c == nil || c.Effective == 0 {
 		return 0
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return float64(c.Used) / float64(c.Effective)
 }
 

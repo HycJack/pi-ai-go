@@ -23,6 +23,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 )
@@ -30,13 +31,14 @@ import (
 // EventStream is an async event stream for streaming LLM responses.
 // || 异步事件流，用于流式传输 LLM 响应
 type EventStream[T any, R any] struct {
-	ch     chan streamEvt[T] // 事件 channel，缓冲大小 64
-	done   chan struct{}     // 完成信号 channel
-	stop   chan struct{}     // 停止信号 channel
-	result R                 // 最终结果
-	err    error              // 错误信息
-	closed bool              // 是否已关闭
-	mu     sync.Mutex        // 保护并发访问
+	ch          chan streamEvt[T] // 事件 channel，缓冲大小 64
+	done        chan struct{}     // 完成信号 channel
+	stop        chan struct{}     // 停止信号 channel
+	result      R                 // 最终结果
+	err         error              // 错误信息
+	closed      bool              // 是否已关闭
+	mu          sync.Mutex        // 保护并发访问
+	droppedCount int              // 丢弃的事件计数
 }
 
 // streamEvt is the internal event type used by EventStream.
@@ -77,6 +79,10 @@ func (s *EventStream[T, R]) Push(event T) bool {
 		s.mu.Unlock()
 		return true
 	default:
+		s.droppedCount++
+		if s.droppedCount == 1 || s.droppedCount%10 == 0 {
+			log.Printf("EventStream: dropped %d events due to full buffer", s.droppedCount)
+		}
 		s.mu.Unlock()
 		return false
 	}

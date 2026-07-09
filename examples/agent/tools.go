@@ -9,6 +9,7 @@ import (
 
 	piai "pi-ai-go"
 	"pi-ai-go/agent"
+	piaiTools "pi-ai-go/agent/tools"
 )
 
 // errJSON 工具错误响应的辅助函数。
@@ -247,7 +248,7 @@ func searchTool() agent.AgentTool {
 	}
 }
 
-// defaultTools 返回所有内置工具。
+// defaultTools 返回所有内置的自定义工具（calculator/weather/db/search）。
 func defaultTools() []agent.AgentTool {
 	return []agent.AgentTool{
 		calculatorTool(),
@@ -255,6 +256,12 @@ func defaultTools() []agent.AgentTool {
 		databaseQueryTool(),
 		searchTool(),
 	}
+}
+
+// builtinTools 返回 pi-ai-go/agent/tools 提供的内置工具集（read/write/edit/bash/glob/grep）。
+// 通过 -builtin 启用；默认关闭以保持 demo 简单。
+func builtinTools() []agent.AgentTool {
+	return piaiTools.All()
 }
 
 // 默认系统提示。
@@ -265,6 +272,7 @@ const defaultSystemPrompt = `你是一个智能助手，可以使用各种工具
 2. weather - 查询天气信息
 3. database_query - 查询数据库信息
 4. search - 搜索网络信息
+5. (可选) read_file / write_file / edit_file / bash / glob / grep —— 文件与命令操作
 
 注意事项：
 - 使用工具时，请确保参数正确
