@@ -1,10 +1,9 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { InlineMath, BlockMath } from 'react-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check } from 'lucide-react';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface MarkdownRendererProps {
   content: string;
@@ -13,7 +12,7 @@ interface MarkdownRendererProps {
 function MathNode({ value }: { value: string }) {
   if (value.startsWith('$$') && value.endsWith('$$')) {
     return (
-      <div className="math-display my-2">
+      <div className="math-display">
         <BlockMath math={value.slice(2, -2)} />
       </div>
     );
@@ -42,48 +41,6 @@ function extractMathContent(text: string): { content: string; isMath: boolean }[
   return result;
 }
 
-function CodeBlock({ language, value }: { language: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div className="code-block">
-      <div className="code-block-header">
-        <span className="code-block-lang">{language}</span>
-        <button
-          onClick={handleCopy}
-          className="code-block-copy"
-          title="复制代码"
-        >
-          {copied ? (
-            <><Check className="w-3.5 h-3.5 text-green-400" /><span className="text-green-400">已复制</span></>
-          ) : (
-            <><Copy className="w-3.5 h-3.5" /><span>复制</span></>
-          )}
-        </button>
-      </div>
-      <SyntaxHighlighter
-        style={vscDarkPlus}
-        language={language}
-        PreTag="pre"
-        customStyle={{
-          margin: 0,
-          padding: '1rem',
-          background: 'rgb(2 6 23)',
-          fontSize: '0.8125rem',
-          borderBottomLeftRadius: '0.5rem',
-          borderBottomRightRadius: '0.5rem',
-        }}
-      >
-        {value}
-      </SyntaxHighlighter>
-    </div>
-  );
-}
-
 export default memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return <MarkdownRendererInner content={content} />;
 });
@@ -105,7 +62,6 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
                 const match = /language-(\w+)/.exec(className || '');
                 const text = String(children).replace(/\n$/, '');
 
-                // 判断行内 vs 代码块（与 ref 项目一致）
                 const parentTag = node?.parent?.tagName;
                 const isInParagraph = parentTag === 'p' || parentTag === 'li' || parentTag === 'td' || parentTag === 'th';
                 const isShortNoNewline = !text.includes('\n') && text.length < 80;
@@ -128,45 +84,46 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
 
                 const language = match ? match[1] : 'text';
                 return (
-                  <CodeBlock language={language} value={text} />
-                );
-              },
-              hr() {
-                return <hr className="border-t border-slate-700 my-3" />;
-              },
-              table({ children }: any) {
-                return (
-                  <div className="overflow-x-auto rounded-lg border border-slate-700 my-2">
-                    <table className="w-full">{children}</table>
+                  <div className="code-block">
+                    <div className="code-block-header">
+                      <span>{language}</span>
+                    </div>
+                    <SyntaxHighlighter
+                      style={oneLight}
+                      language={language}
+                      PreTag="pre"
+                      customStyle={{
+                        margin: 0,
+                        padding: '1rem',
+                        background: 'transparent',
+                        fontSize: '0.875rem',
+                        borderBottomLeftRadius: 'var(--radius-md)',
+                        borderBottomRightRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      {text}
+                    </SyntaxHighlighter>
                   </div>
                 );
               },
-              th({ children }: any) {
-                return (
-                  <th className="bg-slate-800 px-4 py-2 text-left font-semibold border-b border-slate-700">
-                    {children}
-                  </th>
-                );
+              hr() { return <hr />; },
+              table({ children }: any) {
+                return <div className="md-table-wrap"><table>{children}</table></div>;
               },
-              td({ children }: any) {
-                return (
-                  <td className="px-4 py-2 border-b border-slate-700">{children}</td>
-                );
-              },
-              blockquote({ children }: any) {
-                return (
-                  <blockquote className="border-l-4 border-blue-500 pl-4 italic text-slate-400 my-2">
-                    {children}
-                  </blockquote>
-                );
-              },
+              th({ children }: any) { return <th>{children}</th>; },
+              td({ children }: any) { return <td>{children}</td>; },
+              blockquote({ children }: any) { return <blockquote>{children}</blockquote>; },
               a({ href, children }: any) {
-                return (
-                  <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                );
+                return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
               },
+              p({ children }: any) { return <p>{children}</p>; },
+              ul({ children }: any) { return <ul>{children}</ul>; },
+              ol({ children }: any) { return <ol>{children}</ol>; },
+              li({ children }: any) { return <li>{children}</li>; },
+              h1({ children }: any) { return <h1>{children}</h1>; },
+              h2({ children }: any) { return <h2>{children}</h2>; },
+              h3({ children }: any) { return <h3>{children}</h3>; },
+              h4({ children }: any) { return <h4>{children}</h4>; },
             }}
           >
             {part.content}

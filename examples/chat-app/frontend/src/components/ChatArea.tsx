@@ -1,142 +1,224 @@
-import { Bot, Sparkles } from 'lucide-react';
-import ChatMessage from './ChatMessage';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bot, ChevronDownOutlined, CodeOutlined, WrenchOutlined, Sparkles } from '../icons';
 import ChatInput from './ChatInput';
-import { useRef, useEffect } from 'react';
+import ChatMessage from './ChatMessage';
+import type { Message } from '../types';
 
-interface ToolCall {
+interface ModelInfo {
   id: string;
   name: string;
-  arguments: string;
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: string;
-  thinking?: string;
-  toolCalls?: ToolCall[];
+  reasoning?: boolean;
+  thinkingLevelMap?: Record<string, string>;
 }
 
 interface ChatAreaProps {
   messages: Message[];
   isLoading: boolean;
-  onSendMessage: (message: string) => void;
+  workingDir: string;
+  onSendMessage: (message: string, model?: string, thinkingLevel?: string) => void;
+  onStop: () => void;
   onSpeak: (text: string, messageId: string) => void;
   onStopSpeak: () => void;
   speakingMessageId: string | null;
-  onCancel?: () => void;
-  onRegenerate?: (message: string) => void;
-  onDeleteMessage?: (messageId: string) => void;
-  models?: { id: string; name: string; reasoning?: boolean }[];
+  models?: ModelInfo[];
   currentModel?: string;
   currentThinkingLevel?: string;
   onModelChange?: (model: string) => void;
   onThinkingLevelChange?: (level: string) => void;
 }
 
-export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, onStopSpeak, speakingMessageId, onCancel, onRegenerate, onDeleteMessage, models, currentModel, currentThinkingLevel, onModelChange, onThinkingLevelChange }: ChatAreaProps) {
+const suggestions = [
+  'Explain quantum computing',
+  'Write a poem',
+  'Help with coding',
+  'Plan a trip',
+  'Learn something new',
+  'Generate ideas',
+];
+
+const NEAR_BOTTOM_PX = 120;
+
+function scrollToBottom(container: HTMLDivElement | null, end: HTMLDivElement | null) {
+  if (!container || !end) return;
+  container.scrollTop = container.scrollHeight;
+  end.scrollIntoView({ block: 'end' });
+}
+
+export default function ChatArea({
+  messages,
+  isLoading,
+  workingDir,
+  onSendMessage,
+  onStop,
+  onSpeak,
+  onStopSpeak,
+  speakingMessageId,
+  models,
+  currentModel,
+  currentThinkingLevel,
+  onModelChange,
+  onThinkingLevelChange,
+}: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [stuckToBottom, setStuckToBottom] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+  const lastMsgCountRef = useRef(0);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.style.overflowY = 'auto';
-      container.style.overflowX = 'hidden';
-    }
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const near = distanceFromBottom < NEAR_BOTTOM_PX;
+      setStuckToBottom(near);
+      if (near) setPendingCount(0);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  // 找到最后一条用户消息的内容（用于重新生成）
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
+  const conversationKey = messages[0]?.id ?? null;
+  useEffect(() => {
+    lastMsgCountRef.current = messages.length;
+    setPendingCount(0);
+    setStuckToBottom(true);
+    requestAnimationFrame(() => {
+      scrollToBottom(containerRef.current, messagesEndRef.current);
+    });
+  }, [conversationKey]);
+
+  useEffect(() => {
+    const prevCount = lastMsgCountRef.current;
+    const newCount = messages.length;
+    lastMsgCountRef.current = newCount;
+    if (newCount > prevCount) {
+      setStuckToBottom(true);
+      requestAnimationFrame(() => {
+        scrollToBottom(containerRef.current, messagesEndRef.current);
+      });
+      return;
+    }
+    if (!stuckToBottom) {
+      setPendingCount((c) => c + 1);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const el = messagesEndRef.current;
+      const container = containerRef.current;
+      if (!el || !container) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    });
+  }, [messages, stuckToBottom]);
+
+  const jumpToBottom = useCallback(() => {
+    setStuckToBottom(true);
+    setPendingCount(0);
+    requestAnimationFrame(() => {
+      scrollToBottom(containerRef.current, messagesEndRef.current);
+    });
+  }, []);
+
+  const handleLocalSend = useCallback(
+    (message: string, modelOverride?: string, thinkingLevel?: string) => {
+      onSendMessage(message, modelOverride, thinkingLevel);
+      requestAnimationFrame(() => {
+        scrollToBottom(containerRef.current, messagesEndRef.current);
+      });
+    },
+    [onSendMessage],
+  );
 
   if (messages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col bg-slate-900">
-        <div className="flex-1 flex flex-col items-center justify-center px-8">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6">
-            <Bot className="w-10 h-10 text-white" />
+      <section className="stage stage-empty">
+        <div className="stage-inner">
+          <div className="hero-mark">
+            <Bot size={32} />
           </div>
-          
-          <h1 className="text-2xl font-bold text-white mb-2">
-            AI Assistant
-          </h1>
-          
-          <p className="text-slate-400 text-center max-w-md mb-8">
+          <h1 className="hero-title">Hi, I'm Pi-AI.</h1>
+          <p className="hero-subtitle">
             How can I help you today?
           </p>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-w-lg">
-            {[
-              { title: 'Explain quantum computing', icon: Sparkles },
-              { title: 'Write a poem', icon: Sparkles },
-              { title: 'Help with coding', icon: Sparkles },
-              { title: 'Plan a trip', icon: Sparkles },
-              { title: 'Learn something new', icon: Sparkles },
-              { title: 'Generate ideas', icon: Sparkles },
-            ].map((item, index) => (
-              <button
-                key={index}
-                onClick={() => onSendMessage(item.title)}
-                className="flex items-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-left"
-              >
-                <item.icon className="w-4 h-4 text-blue-400" />
-                <span className="text-sm text-slate-300">{item.title}</span>
+          <div className="suggestion-grid">
+            {suggestions.map((title) => (
+              <button key={title} className="suggestion-card" onClick={() => handleLocalSend(title)}>
+                <span className="suggestion-icon">
+                  <Sparkles size={16} />
+                </span>
+                <span className="suggestion-text">{title}</span>
               </button>
             ))}
           </div>
         </div>
-
-        <ChatInput onSend={onSendMessage} isLoading={isLoading} onCancel={onCancel}
+        <ChatInput
+          onSend={handleLocalSend}
+          onStop={onStop}
+          disabled={isLoading}
+          placeholder="Message Pi-AI…"
           models={models}
           currentModel={currentModel}
           currentThinkingLevel={currentThinkingLevel}
           onModelChange={onModelChange}
           onThinkingLevelChange={onThinkingLevelChange}
         />
-      </div>
+      </section>
     );
   }
 
+  const lastId = messages[messages.length - 1]?.id;
+
   return (
-    <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden">
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
-        style={{
-          height: 'calc(100vh - 8rem)',
-        }}
-      >
-        {messages.map((msg, index) => (
-          <ChatMessage
-            key={msg.id}
-            role={msg.role}
-            content={msg.content}
-            timestamp={msg.timestamp}
-            isLoading={msg.role === 'assistant' && isLoading && index === messages.length - 1 && msg.content === ''}
-            thinking={msg.thinking}
-            toolCalls={msg.toolCalls}
-            onSpeak={msg.role === 'assistant' && msg.content && speakingMessageId !== msg.id ? () => onSpeak(msg.content, msg.id) : undefined}
-            onStopSpeak={msg.role === 'assistant' && msg.content && speakingMessageId === msg.id ? onStopSpeak : undefined}
-            isSpeaking={speakingMessageId === msg.id}
-            onRegenerate={msg.role === 'user' ? () => onRegenerate?.(msg.content) : undefined}
-            onDelete={onDeleteMessage ? () => onDeleteMessage(msg.id) : undefined}
-          />
-        ))}
-        <div ref={messagesEndRef} />
+    <section className="stage">
+      <div ref={containerRef} className="stage-scroll">
+        <div className="stage-inner stage-inner-wide">
+          {messages.map((msg) => (
+            <ChatMessage
+              key={msg.id}
+              role={msg.role}
+              content={msg.content}
+              timestamp={msg.timestamp}
+              isLoading={msg.role === 'assistant' && isLoading && msg.id === lastId}
+              thinking={msg.thinking}
+              toolCalls={msg.toolCalls}
+              onSpeak={
+                msg.role === 'assistant' && msg.content && speakingMessageId !== msg.id
+                  ? () => onSpeak(msg.content, msg.id)
+                  : undefined
+              }
+              onStopSpeak={
+                msg.role === 'assistant' && msg.content && speakingMessageId === msg.id ? onStopSpeak : undefined
+              }
+              isSpeaking={speakingMessageId === msg.id}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {!stuckToBottom && (
+          <button className="scroll-to-bottom-pill" onClick={jumpToBottom} title="Jump to latest">
+            <ChevronDownOutlined size={14} />
+            <span>
+              {pendingCount > 0
+                ? `${pendingCount} new ${pendingCount === 1 ? 'update' : 'updates'}`
+                : 'Jump to latest'}
+            </span>
+          </button>
+        )}
       </div>
 
-      <ChatInput onSend={onSendMessage} isLoading={isLoading} onCancel={onCancel}
+      <ChatInput
+        onSend={handleLocalSend}
+        onStop={onStop}
+        disabled={isLoading}
+        placeholder="Message Pi-AI…"
         models={models}
         currentModel={currentModel}
         currentThinkingLevel={currentThinkingLevel}
         onModelChange={onModelChange}
         onThinkingLevelChange={onThinkingLevelChange}
       />
-    </div>
+    </section>
   );
 }

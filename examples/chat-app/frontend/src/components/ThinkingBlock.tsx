@@ -1,5 +1,5 @@
-import { Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
+import { Brain, ChevronDownOutlined, ChevronUpOutlined } from '../icons';
 import MarkdownRenderer from './MarkdownRenderer';
 
 interface ThinkingBlockProps {
@@ -10,28 +10,22 @@ interface ThinkingBlockProps {
 export default function ThinkingBlock({ content, defaultExpanded = true }: ThinkingBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
-  if (!content || content.trim() === '') {
-    return null;
-  }
+  if (!content || content.trim() === '') return null;
 
   return (
-    <div className="bg-amber-900/30 border border-amber-700/50 rounded-lg overflow-hidden">
+    <div className="think-block">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-3 hover:bg-amber-900/40 transition-colors"
+        className="think-header"
       >
-        <div className="flex items-center gap-2">
-          <Brain className="w-4 h-4 text-amber-500" />
-          <span className="text-sm font-medium text-amber-400">思考</span>
-        </div>
-        {expanded ? (
-          <ChevronUp className="w-4 h-4 text-amber-400" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-amber-400" />
-        )}
+        <span className="think-title">
+          <span className="think-dot" />
+          <span>Thinking</span>
+        </span>
+        {expanded ? <ChevronUpOutlined size={14} /> : <ChevronDownOutlined size={14} />}
       </button>
       {expanded && (
-        <div className="px-3 pb-3">
+        <div className="think-body">
           <MarkdownRenderer content={content} />
         </div>
       )}

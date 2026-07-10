@@ -1,5 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Save, Brain, Settings2, Wrench, Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import {
+  CloseOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  RefreshOutlined,
+  SaveOutlined,
+  Brain,
+  Settings2,
+  CodeOutlined,
+  WrenchOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  ChevronDownOutlined,
+  ChevronUpOutlined,
+  FolderOpenOutlined,
+} from '../icons';
 import { GetModels } from '../../wailsjs/go/main/App';
 import type { Settings, ProviderConfig } from '../types';
 import { PROVIDER_TYPES, getProviderTypeName } from '../types';
@@ -18,12 +33,11 @@ interface ModelInfo {
   thinkingLevelMap?: Record<string, string>;
 }
 
-type TabId = 'general' | 'agent' | 'system';
+type TabId = 'general' | 'system';
 
 const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'general', label: 'General', icon: <Settings2 size={14} /> },
-  { id: 'agent', label: 'Agent', icon: <Brain size={14} /> },
-  { id: 'system', label: 'System', icon: <Wrench size={14} /> },
+  { id: 'system', label: 'System', icon: <WrenchOutlined size={14} /> },
 ];
 
 export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave }: SettingsPanelProps) {
@@ -40,7 +54,6 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
   const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
   const [secretKeys, setSecretKeys] = useState<Record<number, boolean>>({});
 
-  // 获取当前 provider
   const currentProvider = settings.providers[settings.currentProviderIndex] || settings.providers[0];
 
   useEffect(() => {
@@ -49,7 +62,6 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     setSaved(false);
   }, [currentSettings, isOpen]);
 
-  // 当前 provider 变化时拉取模型
   useEffect(() => {
     if (!isOpen) return;
     const cp = settings.providers[settings.currentProviderIndex];
@@ -64,7 +76,6 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     }).catch(() => {}).finally(() => setIsLoading(false));
   }, [isOpen, settings.currentProviderIndex, settings.providers]);
 
-  // Auto-save on panel close
   useEffect(() => {
     if (isOpen) return;
     if (JSON.stringify(settings) === JSON.stringify(currentSettings)) return;
@@ -121,26 +132,20 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-white">Settings</h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-slate-400" />
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card settings-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Settings</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close">
+            <CloseOutlined size={16} />
           </button>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 px-6 pt-3 pb-0 border-b border-slate-700 bg-slate-800/50">
+        <div className="settings-tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-t-lg transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-slate-700 text-white border border-b-0 border-slate-600'
-                  : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
-              }`}
+              className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
               {tab.icon}
@@ -149,38 +154,30 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
           ))}
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* ═══ General ═══ */}
+        <div className="modal-body">
           {activeTab === 'general' && (
             <>
-              {/* Providers list */}
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-slate-300">Providers</label>
+              <section className="settings-section">
+                <div className="settings-section-header">
+                  <label className="settings-label">Providers</label>
                   <button
                     onClick={() => setShowNewForm(!showNewForm)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+                    className="btn-sm"
                   >
-                    <Plus size={12} />
+                    <PlusOutlined size={12} />
                     Add Provider
                   </button>
                 </div>
 
-                {/* Add new provider form */}
                 {showNewForm && (
-                  <div className="mb-4 p-4 bg-slate-700/50 rounded-lg border border-slate-600 space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Type</label>
-                      <div className="flex flex-wrap gap-1.5">
+                  <div className="add-provider-form">
+                    <div className="provider-field">
+                      <label className="provider-field-label">Type</label>
+                      <div className="provider-type-grid">
                         {PROVIDER_TYPES.map((pt) => (
                           <button
                             key={pt.type}
-                            className={`px-2.5 py-1 text-xs rounded border transition-colors ${
-                              newProviderType === pt.type
-                                ? 'bg-blue-600 border-blue-500 text-white'
-                                : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
-                            }`}
+                            className={`provider-type-btn ${newProviderType === pt.type ? 'active' : ''}`}
                             onClick={() => { setNewProviderType(pt.type); setNewProviderName(''); }}
                           >
                             {pt.name}
@@ -188,45 +185,45 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Display Name (optional)</label>
+                    <div className="provider-field">
+                      <label className="provider-field-label">Display Name (optional)</label>
                       <input
                         type="text"
                         value={newProviderName}
                         onChange={(e) => setNewProviderName(e.target.value)}
                         placeholder={getProviderTypeName(newProviderType)}
-                        className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                        className="text-input"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">API Key</label>
-                      <div className="relative">
+                    <div className="provider-field">
+                      <label className="provider-field-label">API Key</label>
+                      <div className="input-with-adornment">
                         <input
                           type={showNewKey ? 'text' : 'password'}
                           value={newProviderKey}
                           onChange={(e) => setNewProviderKey(e.target.value)}
                           placeholder="sk-..."
-                          className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 pr-8"
+                          className="text-input"
                         />
                         <button
                           type="button"
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-blue-400"
+                          className="input-adornment"
                           onClick={() => setShowNewKey(v => !v)}
                         >
-                          {showNewKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                          {showNewKey ? <EyeInvisibleOutlined size={14} /> : <EyeOutlined size={14} />}
                         </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                       <button
                         onClick={() => setShowNewForm(false)}
-                        className="px-3 py-1.5 text-xs bg-slate-600 text-slate-300 rounded hover:bg-slate-500 transition-colors"
+                        className="btn-sm"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={addProvider}
-                        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+                        className="btn-sm btn-primary-sm"
                       >
                         Add
                       </button>
@@ -234,98 +231,125 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                   </div>
                 )}
 
-                {/* Provider cards */}
                 {settings.providers.length === 0 ? (
-                  <p className="text-sm text-slate-500">No providers configured. Click "Add Provider" to get started.</p>
+                  <div className="settings-empty">No providers configured. Click "Add Provider" to get started.</div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="provider-list">
                     {settings.providers.map((p, idx) => (
                       <div
                         key={idx}
-                        className={`rounded-lg border transition-colors ${
-                          idx === settings.currentProviderIndex
-                            ? 'border-blue-500 bg-slate-700/80'
-                            : 'border-slate-600 bg-slate-700/40'
-                        }`}
+                        className={`provider-card ${idx === settings.currentProviderIndex ? 'active' : ''}`}
                       >
-                        {/* Card header */}
                         <div
-                          className="flex items-center justify-between px-4 py-3 cursor-pointer"
+                          className="provider-card-header"
                           onClick={() => selectProvider(idx)}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium text-white truncate">{p.name}</span>
-                            <span className="text-xs text-slate-400">{getProviderTypeName(p.type)}</span>
+                          <div className="provider-card-info">
+                            <span className="provider-card-name">{p.name}</span>
+                            <span className="provider-card-type">{getProviderTypeName(p.type)}</span>
                             {idx === settings.currentProviderIndex && (
-                              <span className="text-xs text-blue-400 font-medium">Active</span>
+                              <span className="provider-card-active-badge">Active</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="provider-card-actions">
                             <button
                               onClick={(e) => { e.stopPropagation(); removeProvider(idx); }}
-                              className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                              className="icon-btn"
                               title="Remove provider"
+                              style={{ width: 24, height: 24 }}
                             >
-                              <Trash2 size={14} />
+                              <DeleteOutlined size={14} />
                             </button>
-                            {expandedIdx === idx ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                            {expandedIdx === idx ? <ChevronUpOutlined size={14} /> : <ChevronDownOutlined size={14} />}
                           </div>
                         </div>
 
-                        {/* Expanded config */}
                         {expandedIdx === idx && (
-                          <div className="px-4 pb-4 space-y-3 border-t border-slate-600 pt-3">
-                            <div>
-                              <label className="block text-xs text-slate-400 mb-1">Display Name</label>
+                          <div className="provider-card-body">
+                            <div className="provider-field">
+                              <label className="provider-field-label">Display Name</label>
                               <input
                                 type="text"
                                 value={p.name}
                                 onChange={(e) => updateProvider(idx, (pv) => ({ ...pv, name: e.target.value }))}
-                                className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                                className="text-input"
                               />
                             </div>
-                            <div>
-                              <label className="block text-xs text-slate-400 mb-1">API Key</label>
-                              <div className="relative">
+                            <div className="provider-field">
+                              <label className="provider-field-label">API Key</label>
+                              <div className="input-with-adornment">
                                 <input
                                   type={secretKeys[idx] ? 'text' : 'password'}
                                   value={p.apiKey}
                                   onChange={(e) => updateProvider(idx, (pv) => ({ ...pv, apiKey: e.target.value }))}
                                   placeholder="sk-..."
-                                  className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 pr-8"
+                                  className="text-input"
                                 />
                                 <button
                                   type="button"
-                                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-blue-400"
+                                  className="input-adornment"
                                   onClick={() => setSecretKeys(prev => ({ ...prev, [idx]: !prev[idx] }))}
                                 >
-                                  {secretKeys[idx] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                  {secretKeys[idx] ? <EyeInvisibleOutlined size={14} /> : <EyeOutlined size={14} />}
                                 </button>
                               </div>
                             </div>
-                            <div>
-                              <label className="block text-xs text-slate-400 mb-1">Base URL</label>
+                            <div className="provider-field">
+                              <label className="provider-field-label">Base URL</label>
                               <input
                                 type="text"
                                 value={p.baseUrl}
                                 onChange={(e) => updateProvider(idx, (pv) => ({ ...pv, baseUrl: e.target.value }))}
-                                className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
+                                className="text-input"
                               />
                             </div>
-                            <div>
-                              <label className="block text-xs text-slate-400 mb-1">
+                            <div className="provider-field">
+                              <label className="provider-field-label">
                                 API Keys Pool
-                                <span className="text-xs text-slate-500 ml-1">(one per line)</span>
+                                <span style={{ color: 'var(--n-stone)', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>
+                                  (add one by one)
+                                </span>
                               </label>
-                              <textarea
-                                value={p.apiKeys.join('\n')}
-                                onChange={(e) => updateProvider(idx, (pv) => ({ ...pv, apiKeys: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) }))}
-                                rows={2}
-                                className="w-full px-3 py-1.5 text-sm bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500 font-mono"
-                                placeholder="sk-xxx1&#10;sk-xxx2"
-                              />
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                {p.apiKeys.length > 0 ? `${p.apiKeys.length} keys configured` : 'Leave empty to use single API key above'}
+                              <div className="api-key-rows">
+                                {(p.apiKeys || []).map((key, kidx) => (
+                                  <div key={kidx} className="input-with-adornment" style={{ marginBottom: 4 }}>
+                                    <input
+                                      type="password"
+                                      value={key}
+                                      onChange={(e) => updateProvider(idx, (pv) => ({
+                                        ...pv,
+                                        apiKeys: (pv.apiKeys || []).map((k, i) => i === kidx ? e.target.value : k),
+                                      }))}
+                                      className="text-input"
+                                      placeholder="sk-..."
+                                    />
+                                    <button
+                                      type="button"
+                                      className="input-adornment"
+                                      onClick={() => updateProvider(idx, (pv) => ({
+                                        ...pv,
+                                        apiKeys: (pv.apiKeys || []).filter((_, i) => i !== kidx),
+                                      }))}
+                                      title="Remove key"
+                                    >
+                                      <DeleteOutlined size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  className="btn-sm"
+                                  onClick={() => updateProvider(idx, (pv) => ({
+                                    ...pv,
+                                    apiKeys: [...(pv.apiKeys || []), ''],
+                                  }))}
+                                >
+                                  <PlusOutlined size={12} />
+                                  Add Key
+                                </button>
+                              </div>
+                              <p className="settings-hint" style={{ marginTop: 4 }}>
+                                {(p.apiKeys || []).length > 0 ? `${p.apiKeys.length} keys configured` : 'Leave empty to use single API key above'}
                               </p>
                             </div>
                           </div>
@@ -336,15 +360,14 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                 )}
               </section>
 
-              {/* Model selector */}
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Model</label>
-                <div className="flex gap-2">
+              <section className="settings-section">
+                <label className="settings-label">Model</label>
+                <div className="input-with-adornment">
                   <select
                     value={settings.model}
                     onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))}
                     disabled={isLoading}
-                    className="flex-1 px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white appearance-none focus:outline-none focus:border-blue-500 cursor-pointer"
+                    className="text-input select-input"
                   >
                     <option value="" disabled>Select a model</option>
                     {models.map((m) => (
@@ -352,6 +375,8 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                     ))}
                   </select>
                   <button
+                    type="button"
+                    className="input-adornment"
                     onClick={() => {
                       const cp = settings.providers[settings.currentProviderIndex];
                       if (!cp) return;
@@ -362,19 +387,17 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                         .finally(() => setIsLoading(false));
                     }}
                     disabled={isLoading}
-                    className="px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50"
                     title="Refresh models"
                   >
-                    <RefreshCw className={`w-4 h-4 text-slate-400 ${isLoading ? 'animate-spin' : ''}`} />
+                    <RefreshOutlined size={16} style={{ animation: isLoading ? 'status-spin 900ms linear infinite' : undefined }} />
                   </button>
                 </div>
               </section>
 
-              {/* Max Tokens + Temperature */}
-              <div className="grid grid-cols-2 gap-4">
-                <section>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Max Tokens <span className="text-xs text-slate-500">({settings.maxTokens})</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <section className="settings-section" style={{ marginBottom: 0 }}>
+                  <label className="settings-label">
+                    Max Tokens <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.maxTokens})</span>
                   </label>
                   <input
                     type="range"
@@ -383,12 +406,12 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                     step="256"
                     value={settings.maxTokens}
                     onChange={(e) => setSettings((prev) => ({ ...prev, maxTokens: parseInt(e.target.value) }))}
-                    className="w-full accent-blue-500"
+                    style={{ width: '100%', accentColor: 'var(--n-primary)' }}
                   />
                 </section>
-                <section>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Temperature <span className="text-xs text-slate-500">({settings.temperature.toFixed(1)})</span>
+                <section className="settings-section" style={{ marginBottom: 0 }}>
+                  <label className="settings-label">
+                    Temperature <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.temperature.toFixed(1)})</span>
                   </label>
                   <input
                     type="range"
@@ -397,146 +420,106 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                     step="0.1"
                     value={settings.temperature}
                     onChange={(e) => setSettings((prev) => ({ ...prev, temperature: parseFloat(e.target.value) }))}
-                    className="w-full accent-blue-500"
+                    style={{ width: '100%', accentColor: 'var(--n-primary)' }}
                   />
                 </section>
               </div>
 
-              {/* TTS */}
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Text-to-Speech</label>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-400">Enable TTS</span>
+              <section className="settings-section">
+                <label className="settings-label">Text-to-Speech</label>
+                <div className="switch-row" style={{ marginBottom: 8 }}>
+                  <span>Enable TTS</span>
                   <button
+                    className={`switch ${settings.ttsEnabled ? 'on' : ''}`}
                     onClick={() => setSettings((prev) => ({ ...prev, ttsEnabled: !prev.ttsEnabled }))}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${settings.ttsEnabled ? 'bg-blue-600' : 'bg-slate-600'}`}
+                    aria-pressed={settings.ttsEnabled}
                   >
-                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.ttsEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                    <span className="switch-knob" />
                   </button>
                 </div>
                 {settings.ttsEnabled && (
                   <select
                     value={settings.ttsVoice}
                     onChange={(e) => setSettings((prev) => ({ ...prev, ttsVoice: e.target.value }))}
-                    className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                    className="text-input select-input"
                   >
-                    <option value="zh-CN">Chinese (Mandarin)</option>
+                    <option value="zh-CN">中文（普通话）</option>
                     <option value="en-US">English (US)</option>
                     <option value="en-GB">English (UK)</option>
-                    <option value="ja-JP">Japanese</option>
-                    <option value="ko-KR">Korean</option>
+                    <option value="ja-JP">日本語</option>
+                    <option value="ko-KR">한국어</option>
                   </select>
                 )}
               </section>
-            </>
-          )}
 
-          {/* ═══ Agent ═══ */}
-          {activeTab === 'agent' && (
-            <>
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-3">Agent Behavior</label>
-
-                <div className="space-y-3">
-                  {/* Auto-compact context */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm text-slate-300">Auto-compact context</span>
-                      <p className="text-xs text-slate-500">Automatically summarize old messages when context window is near limit</p>
-                    </div>
-                    <button
-                      onClick={() => setSettings((prev) => ({
-                        ...prev,
-                        agentSettings: { ...prev.agentSettings, autoCompact: !prev.agentSettings.autoCompact },
-                      }))}
-                      className={`relative w-12 h-6 rounded-full transition-colors ${settings.agentSettings.autoCompact ? 'bg-blue-600' : 'bg-slate-600'}`}
-                    >
-                      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.agentSettings.autoCompact ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-
-                  {/* Auto-learn memory */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm text-slate-300">Auto-learn memory</span>
-                      <p className="text-xs text-slate-500">Learn facts (name, preferences, etc.) from conversations</p>
-                    </div>
-                    <button
-                      onClick={() => setSettings((prev) => ({
-                        ...prev,
-                        agentSettings: { ...prev.agentSettings, autoLearn: !prev.agentSettings.autoLearn },
-                      }))}
-                      className={`relative w-12 h-6 rounded-full transition-colors ${settings.agentSettings.autoLearn ? 'bg-blue-600' : 'bg-slate-600'}`}
-                    >
-                      <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.agentSettings.autoLearn ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
+              <section className="settings-section">
+                <label className="settings-label">Agent Mode</label>
+                <div className="switch-row">
+                  <span>Enable agent mode</span>
+                  <button
+                    className={`switch ${settings.agentMode ? 'on' : ''}`}
+                    onClick={() => setSettings((prev) => ({ ...prev, agentMode: !prev.agentMode }))}
+                    aria-pressed={settings.agentMode}
+                  >
+                    <span className="switch-knob" />
+                  </button>
                 </div>
               </section>
 
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Thinking Depth</label>
-                <select
-                  value={settings.reasoning}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, reasoning: e.target.value }))}
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500 cursor-pointer capitalize"
-                >
-                  <option value="minimal">Minimal</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="xhigh">X-High</option>
-                </select>
-              </section>
-
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Skills Directory</label>
-                <input
-                  type="text"
-                  value={settings.agentSettings.skillsDir}
-                  onChange={(e) => setSettings((prev) => ({
-                    ...prev,
-                    agentSettings: { ...prev.agentSettings, skillsDir: e.target.value },
-                  }))}
-                  placeholder="Leave empty for default (~/.pi-chat-app/skills)"
-                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  Loads SKILL.md files recursively from this directory
-                </p>
-              </section>
+              {settings.agentMode && (
+                <>
+                  <section className="settings-section">
+                    <label className="settings-label">Auto-learn</label>
+                    <div className="switch-row">
+                      <span>Automatically learn from conversations</span>
+                      <button
+                        className={`switch ${settings.agentSettings.autoLearn ? 'on' : ''}`}
+                        onClick={() => setSettings((prev) => ({
+                          ...prev,
+                          agentSettings: { ...prev.agentSettings, autoLearn: !prev.agentSettings.autoLearn },
+                        }))}
+                        aria-pressed={settings.agentSettings.autoLearn}
+                      >
+                        <span className="switch-knob" />
+                      </button>
+                    </div>
+                  </section>
+                  <section className="settings-section">
+                    <label className="settings-label">Auto-compact</label>
+                    <div className="switch-row">
+                      <span>Automatically compact context</span>
+                      <button
+                        className={`switch ${settings.agentSettings.autoCompact ? 'on' : ''}`}
+                        onClick={() => setSettings((prev) => ({
+                          ...prev,
+                          agentSettings: { ...prev.agentSettings, autoCompact: !prev.agentSettings.autoCompact },
+                        }))}
+                        aria-pressed={settings.agentSettings.autoCompact}
+                      >
+                        <span className="switch-knob" />
+                      </button>
+                    </div>
+                  </section>
+                </>
+              )}
             </>
           )}
 
-          {/* ═══ System ═══ */}
           {activeTab === 'system' && (
             <>
-              <section>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Context Statistics</label>
-                <p className="text-xs text-slate-500">
-                  The Auto-compact toggle in the Agent tab controls automatic context summarization.
-                  Token usage stats appear here when available.
+              <section className="settings-section">
+                <label className="settings-label">About</label>
+                <p className="settings-hint">
+                  Pi-AI Chat v0.1.0 — Multi-provider AI chat interface built with Go + React.
                 </p>
               </section>
             </>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-slate-700 bg-slate-800/50">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 px-4 bg-slate-700 text-slate-300 rounded-lg font-medium hover:bg-slate-600 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className={`flex-1 py-2.5 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-              saved ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-500'
-            }`}
-          >
-            <Save className="w-4 h-4" />
+        <div className="modal-footer">
+          <button className="btn-primary" onClick={handleSave}>
+            <SaveOutlined size={14} />
             {saved ? 'Saved!' : 'Save'}
           </button>
         </div>

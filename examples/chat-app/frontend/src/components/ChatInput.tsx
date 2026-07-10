@@ -1,5 +1,5 @@
-import { Send, Square, Settings2, Brain } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
+import { KeyboardEvent, useMemo, useState, useRef, useEffect } from 'react';
+import { SendOutlined, StopOutlined, Settings2, Brain } from '../icons';
 
 interface ModelInfo {
   id: string;
@@ -10,9 +10,8 @@ interface ModelInfo {
 
 interface ChatInputProps {
   onSend: (message: string, model?: string, thinkingLevel?: string) => void;
-  onCancel?: () => void;
+  onStop?: () => void;
   disabled?: boolean;
-  isLoading?: boolean;
   placeholder?: string;
   models?: ModelInfo[];
   currentModel?: string;
@@ -30,9 +29,8 @@ const THINKING_LEVELS = [
 
 export default function ChatInput({
   onSend,
-  onCancel,
+  onStop,
   disabled,
-  isLoading,
   placeholder,
   models,
   currentModel,
@@ -46,7 +44,6 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -55,7 +52,6 @@ export default function ChatInput({
     el.style.height = Math.min(scrollH, 160) + 'px';
   }, [value]);
 
-  // Close model picker on outside click
   useEffect(() => {
     if (!showModelPicker) return;
     const handler = (e: MouseEvent) => {
@@ -67,16 +63,16 @@ export default function ChatInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [showModelPicker]);
 
-  const submit = useCallback(() => {
-    if (isLoading) {
-      onCancel?.();
+  const submit = () => {
+    if (disabled) {
+      onStop?.();
       return;
     }
     const text = value.trim();
     if (!text) return;
     setValue('');
     onSend(text, currentModel, currentThinkingLevel);
-  }, [value, isLoading, onSend, onCancel, currentModel, currentThinkingLevel]);
+  };
 
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -89,42 +85,36 @@ export default function ChatInput({
   const currentModelInfo = models?.find((m) => m.id === currentModel);
   const supportsReasoning = currentModelInfo?.reasoning;
 
-  const availableLevels = (() => {
+  const availableLevels = useMemo(() => {
     if (!currentModelInfo?.thinkingLevelMap) return THINKING_LEVELS;
     const map = currentModelInfo.thinkingLevelMap;
     return THINKING_LEVELS.filter((l) => l.value === '' || map[l.value]);
-  })();
+  }, [currentModelInfo]);
 
   const showThinking = supportsReasoning && onThinkingLevelChange && availableLevels.length > 1;
 
   return (
-    <div className="pi-composer">
-      <div className={`pi-composer-card ${isLoading ? 'is-loading' : ''}`}>
-        <div className="pi-composer-card-inner">
-
-        {/* Textarea */}
+    <div className="composer">
+      <div className={`composer-card ${disabled ? 'is-disabled' : ''}`}>
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={placeholder ?? 'Message AI Assistant…'}
-          disabled={isLoading}
+          placeholder={placeholder ?? 'Message Pi-AI…'}
+          disabled={disabled}
           rows={1}
-          className="pi-composer-input"
+          className="composer-input"
         />
 
-        {/* Toolbar */}
-        <div className="pi-composer-toolbar">
-          <div className="pi-composer-toolbar-left">
-            {/* Model selector */}
+        <div className="composer-toolbar">
+          <div className="composer-toolbar-left">
             {models && models.length > 0 && (
-              <div className="pi-model-picker-wrap" ref={modelPickerRef}>
+              <div className="model-picker-wrap" ref={modelPickerRef}>
                 <button
                   type="button"
-                  className="pi-model-picker-btn"
+                  className="model-picker-btn"
                   onClick={() => {
-                    // 检测可用空间，决定 dropdown 展开方向
                     if (modelPickerRef.current) {
                       const rect = modelPickerRef.current.getBoundingClientRect();
                       const spaceAbove = rect.top;
@@ -139,20 +129,20 @@ export default function ChatInput({
                 </button>
                 {showModelPicker && (
                   <>
-                    <div className="pi-model-picker-overlay" onClick={() => setShowModelPicker(false)} />
-                    <div className={`pi-model-picker-dropdown ${pickerDropdown === 'bottom' ? 'bottom' : ''}`}>
-                      <div className="pi-model-picker-header">Switch model</div>
+                    <div className="model-picker-overlay" onClick={() => setShowModelPicker(false)} />
+                    <div className={`model-picker-dropdown ${pickerDropdown === 'bottom' ? 'bottom' : ''}`}>
+                      <div className="model-picker-header">Switch model</div>
                       {models.map((m) => (
                         <button
                           key={m.id}
-                          className={`pi-model-picker-item ${currentModel === m.id ? 'active' : ''}`}
+                          className={`model-picker-item ${currentModel === m.id ? 'active' : ''}`}
                           onClick={() => {
                             onModelChange?.(m.id);
                             setShowModelPicker(false);
                           }}
                         >
-                          <span className="pi-model-picker-name">{m.name}</span>
-                          <span className="pi-model-picker-id">{m.id}</span>
+                          <span className="model-picker-name">{m.name}</span>
+                          <span className="model-picker-id">{m.id}</span>
                         </button>
                       ))}
                     </div>
@@ -161,16 +151,15 @@ export default function ChatInput({
               </div>
             )}
 
-            {/* Thinking level */}
             {showThinking && (
-              <div className="pi-thinking-control" title="Thinking depth">
+              <div className="thinking-control" title="Thinking depth">
                 <Brain size={13} />
-                <div className="pi-thinking-levels">
+                <div className="thinking-levels">
                   {availableLevels.map((lvl) => (
                     <button
                       key={lvl.value}
                       type="button"
-                      className={`pi-thinking-level-btn ${currentThinkingLevel === lvl.value ? 'active' : ''}`}
+                      className={`thinking-level-btn ${currentThinkingLevel === lvl.value ? 'active' : ''}`}
                       onClick={() => onThinkingLevelChange?.(lvl.value)}
                     >
                       {lvl.label}
@@ -181,26 +170,20 @@ export default function ChatInput({
             )}
           </div>
 
-          <div className="pi-composer-toolbar-right">
+          <div className="composer-toolbar-right">
             <button
               type="button"
-              className={`pi-send-btn ${isLoading ? 'is-loading' : ''}`}
+              className={`send-btn ${disabled ? 'is-loading' : ''}`}
               onClick={submit}
-              disabled={!value.trim() && !isLoading}
-              aria-label={isLoading ? 'Stop' : 'Send'}
-              title={isLoading ? 'Stop generating' : 'Send'}
+              disabled={!value.trim() && !disabled}
+              aria-label={disabled ? 'Stop' : 'Send'}
+              title={disabled ? 'Generating…' : 'Send'}
             >
-              {isLoading ? <Square size={14} /> : <Send size={14} />}
+              {disabled ? <StopOutlined size={14} /> : <SendOutlined size={14} />}
             </button>
           </div>
         </div>
-
-        </div>
       </div>
-
-      <p className="pi-composer-footer-text">
-        AI Assistant can make mistakes. Consider checking important information.
-      </p>
     </div>
   );
 }
