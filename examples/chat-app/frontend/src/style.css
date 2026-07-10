@@ -144,3 +144,299 @@ body {
   text-align: center;
   margin: 1em 0;
 }
+
+/* ─── Inline code ──────────────────────── */
+.md-inline-code {
+  background: rgba(148, 163, 184, 0.15);
+  color: #7dd3fc;
+  padding: 0.125em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  word-break: break-word;
+}
+
+/* ─── Code blocks ──────────────────────── */
+.code-block {
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  margin: 0.75em 0;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem;
+  background: #0f172a;
+  border-bottom: 1px solid #334155;
+}
+.code-block-lang {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.code-block-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.code-block-copy:hover {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.1);
+}
+.code-block-raw {
+  padding: 1rem !important;
+  font-size: 0.8125rem;
+}
+.code-block-raw code {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* ─── Composer (ChatInput) ─── */
+.pi-composer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #334155;
+  background: #0f172a;
+}
+
+.pi-composer-card {
+  max-width: 48rem;
+  margin: 0 auto;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 0.75rem;
+  transition: border-color 0.15s;
+}
+
+/* 内部容器负责圆角裁剪 */
+.pi-composer-card-inner {
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.pi-composer-card:focus-within {
+  border-color: #3b82f6;
+}
+
+.pi-composer-card.is-loading {
+  border-color: #64748b;
+  opacity: 0.8;
+}
+
+.pi-composer-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 0.75rem 1rem;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  max-height: 10rem;
+  font-family: inherit;
+}
+
+.pi-composer-input::placeholder {
+  color: #64748b;
+}
+
+.pi-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem 0.5rem 0.75rem;
+  border-top: 1px solid #334155;
+}
+
+.pi-composer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pi-composer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.pi-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.pi-send-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.pi-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pi-send-btn.is-loading {
+  background: #dc2626;
+}
+
+.pi-send-btn.is-loading:hover {
+  background: #b91c1c;
+}
+
+/* ─── Model picker ─── */
+.pi-model-picker-wrap {
+  position: relative;
+}
+
+.pi-model-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  background: transparent;
+  border: 1px solid #475569;
+  border-radius: 0.375rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.pi-model-picker-btn:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.pi-model-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+}
+
+.pi-model-picker-dropdown {
+  position: absolute;
+  bottom: calc(100% + 0.375rem);
+  left: 0;
+  right: 0;
+  min-width: 16rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+}
+
+/* 当 dropdown 超出视口顶部时，改为向下展开 */
+.pi-model-picker-dropdown.bottom {
+  bottom: auto;
+  top: calc(100% + 0.375rem);
+}
+
+.pi-model-picker-header {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #334155;
+}
+
+.pi-model-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.pi-model-picker-item:hover {
+  background: #334155;
+}
+
+.pi-model-picker-item.active {
+  background: #1e3a5f;
+  color: #60a5fa;
+}
+
+.pi-model-picker-name {
+  font-weight: 500;
+}
+
+.pi-model-picker-id {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
+/* ─── Thinking level selector ─── */
+.pi-thinking-control {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: #94a3b8;
+}
+
+.pi-thinking-levels {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.pi-thinking-level-btn {
+  padding: 0.125rem 0.375rem;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 0.6875rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.pi-thinking-level-btn:hover {
+  color: #94a3b8;
+  background: #334155;
+}
+
+.pi-thinking-level-btn.active {
+  color: #60a5fa;
+  background: #1e3a5f;
+}
+
+.pi-composer-footer-text {
+  max-width: 48rem;
+  margin: 0.5rem auto 0;
+  font-size: 0.6875rem;
+  color: #64748b;
+  text-align: center;
+}

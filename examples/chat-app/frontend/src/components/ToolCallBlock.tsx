@@ -9,11 +9,10 @@ interface ToolCall {
 
 interface ToolCallBlockProps {
   toolCalls: ToolCall[];
-  defaultExpanded?: boolean;
 }
 
-export default function ToolCallBlock({ toolCalls, defaultExpanded = true }: ToolCallBlockProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+export default function ToolCallBlock({ toolCalls }: ToolCallBlockProps) {
+  const [expanded, setExpanded] = useState(false);
 
   if (!toolCalls || toolCalls.length === 0) {
     return null;

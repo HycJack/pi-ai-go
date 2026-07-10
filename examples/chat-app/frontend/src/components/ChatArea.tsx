@@ -25,9 +25,17 @@ interface ChatAreaProps {
   onSpeak: (text: string, messageId: string) => void;
   onStopSpeak: () => void;
   speakingMessageId: string | null;
+  onCancel?: () => void;
+  onRegenerate?: (message: string) => void;
+  onDeleteMessage?: (messageId: string) => void;
+  models?: { id: string; name: string; reasoning?: boolean }[];
+  currentModel?: string;
+  currentThinkingLevel?: string;
+  onModelChange?: (model: string) => void;
+  onThinkingLevelChange?: (level: string) => void;
 }
 
-export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, onStopSpeak, speakingMessageId }: ChatAreaProps) {
+export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, onStopSpeak, speakingMessageId, onCancel, onRegenerate, onDeleteMessage, models, currentModel, currentThinkingLevel, onModelChange, onThinkingLevelChange }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +50,9 @@ export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, 
       container.style.overflowX = 'hidden';
     }
   }, []);
+
+  // 找到最后一条用户消息的内容（用于重新生成）
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
 
   if (messages.length === 0) {
     return (
@@ -80,7 +91,13 @@ export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, 
           </div>
         </div>
 
-        <ChatInput onSend={onSendMessage} disabled={isLoading} />
+        <ChatInput onSend={onSendMessage} isLoading={isLoading} onCancel={onCancel}
+          models={models}
+          currentModel={currentModel}
+          currentThinkingLevel={currentThinkingLevel}
+          onModelChange={onModelChange}
+          onThinkingLevelChange={onThinkingLevelChange}
+        />
       </div>
     );
   }
@@ -94,24 +111,32 @@ export default function ChatArea({ messages, isLoading, onSendMessage, onSpeak, 
           height: 'calc(100vh - 8rem)',
         }}
       >
-        {messages.map((msg) => (
+        {messages.map((msg, index) => (
           <ChatMessage
             key={msg.id}
             role={msg.role}
             content={msg.content}
             timestamp={msg.timestamp}
-            isLoading={msg.role === 'assistant' && isLoading && msg.id === messages[messages.length - 1].id}
+            isLoading={msg.role === 'assistant' && isLoading && index === messages.length - 1 && msg.content === ''}
             thinking={msg.thinking}
             toolCalls={msg.toolCalls}
             onSpeak={msg.role === 'assistant' && msg.content && speakingMessageId !== msg.id ? () => onSpeak(msg.content, msg.id) : undefined}
             onStopSpeak={msg.role === 'assistant' && msg.content && speakingMessageId === msg.id ? onStopSpeak : undefined}
             isSpeaking={speakingMessageId === msg.id}
+            onRegenerate={msg.role === 'user' ? () => onRegenerate?.(msg.content) : undefined}
+            onDelete={onDeleteMessage ? () => onDeleteMessage(msg.id) : undefined}
           />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput onSend={onSendMessage} disabled={isLoading} />
+      <ChatInput onSend={onSendMessage} isLoading={isLoading} onCancel={onCancel}
+        models={models}
+        currentModel={currentModel}
+        currentThinkingLevel={currentThinkingLevel}
+        onModelChange={onModelChange}
+        onThinkingLevelChange={onThinkingLevelChange}
+      />
     </div>
   );
 }

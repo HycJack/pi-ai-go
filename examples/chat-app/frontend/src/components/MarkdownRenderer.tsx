@@ -1,8 +1,10 @@
+import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { InlineMath, BlockMath } from 'react-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Copy, Check } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
@@ -11,7 +13,7 @@ interface MarkdownRendererProps {
 function MathNode({ value }: { value: string }) {
   if (value.startsWith('$$') && value.endsWith('$$')) {
     return (
-      <div className="math-display">
+      <div className="math-display my-2">
         <BlockMath math={value.slice(2, -2)} />
       </div>
     );
@@ -40,11 +42,57 @@ function extractMathContent(text: string): { content: string; isMath: boolean }[
   return result;
 }
 
-export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
+function CodeBlock({ language, value }: { language: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="code-block">
+      <div className="code-block-header">
+        <span className="code-block-lang">{language}</span>
+        <button
+          onClick={handleCopy}
+          className="code-block-copy"
+          title="复制代码"
+        >
+          {copied ? (
+            <><Check className="w-3.5 h-3.5 text-green-400" /><span className="text-green-400">已复制</span></>
+          ) : (
+            <><Copy className="w-3.5 h-3.5" /><span>复制</span></>
+          )}
+        </button>
+      </div>
+      <SyntaxHighlighter
+        style={vscDarkPlus}
+        language={language}
+        PreTag="pre"
+        customStyle={{
+          margin: 0,
+          padding: '1rem',
+          background: 'rgb(2 6 23)',
+          fontSize: '0.8125rem',
+          borderBottomLeftRadius: '0.5rem',
+          borderBottomRightRadius: '0.5rem',
+        }}
+      >
+        {value}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+export default memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
+  return <MarkdownRendererInner content={content} />;
+});
+
+function MarkdownRendererInner({ content }: MarkdownRendererProps) {
   const parts = extractMathContent(content);
 
   return (
-    <div className="markdown-content prose prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-blockquote:my-2 prose-pre:my-2 prose-code:my-0 prose-hr:my-3">
+    <div className="markdown-content">
       {parts.map((part, index) =>
         part.isMath ? (
           <MathNode key={index} value={part.content} />
@@ -55,46 +103,41 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
             components={{
               code({ node, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || '');
-                const isInline = !match && !node?.tagName;
-                
-                if (isInline) {
+                const text = String(children).replace(/\n$/, '');
+
+                // 判断行内 vs 代码块（与 ref 项目一致）
+                const parentTag = node?.parent?.tagName;
+                const isInParagraph = parentTag === 'p' || parentTag === 'li' || parentTag === 'td' || parentTag === 'th';
+                const isShortNoNewline = !text.includes('\n') && text.length < 80;
+
+                if ((!match && isInParagraph) || (!match && isShortNoNewline)) {
                   return (
-                    <code className="bg-slate-700 px-1.5 py-0.5 rounded text-sm" {...props}>
+                    <code className="md-inline-code" {...props}>
                       {children}
                     </code>
                   );
                 }
-                
+
+                if (!match && !isInParagraph && text.includes('```')) {
+                  return (
+                    <pre className="code-block code-block-raw">
+                      <code>{text}</code>
+                    </pre>
+                  );
+                }
+
                 const language = match ? match[1] : 'text';
                 return (
-                  <pre className="bg-slate-800 rounded-lg overflow-x-auto p-0">
-                    <SyntaxHighlighter
-                      style={vscDarkPlus}
-                      language={language}
-                      PreTag="div"
-                      customStyle={{
-                        margin: 0,
-                        padding: '1rem',
-                        background: 'rgb(30 41 59)',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  </pre>
+                  <CodeBlock language={language} value={text} />
                 );
               },
-              hr({ children }: any) {
-                return (
-                  <hr className="border-t border-slate-600 my-3" />
-                );
+              hr() {
+                return <hr className="border-t border-slate-700 my-3" />;
               },
               table({ children }: any) {
                 return (
                   <div className="overflow-x-auto rounded-lg border border-slate-700 my-2">
-                    <table className="w-full">
-                      {children}
-                    </table>
+                    <table className="w-full">{children}</table>
                   </div>
                 );
               },
@@ -107,9 +150,7 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
               },
               td({ children }: any) {
                 return (
-                  <td className="px-4 py-2 border-b border-slate-700">
-                    {children}
-                  </td>
+                  <td className="px-4 py-2 border-b border-slate-700">{children}</td>
                 );
               },
               blockquote({ children }: any) {
@@ -121,53 +162,16 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
               },
               a({ href, children }: any) {
                 return (
-                  <a
-                    href={href}
-                    className="text-blue-400 hover:text-blue-300 underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  <a href={href} className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">
                     {children}
                   </a>
                 );
-              },
-              p({ children }: any) {
-                return (
-                  <p className="my-1">{children}</p>
-                );
-              },
-              ul({ children }: any) {
-                return (
-                  <ul className="my-1 pl-6 list-disc">{children}</ul>
-                );
-              },
-              ol({ children }: any) {
-                return (
-                  <ol className="my-1 pl-6 list-decimal">{children}</ol>
-                );
-              },
-              li({ children }: any) {
-                return (
-                  <li className="my-0.5">{children}</li>
-                );
-              },
-              h1({ children }: any) {
-                return <h1 className="text-2xl font-bold my-2">{children}</h1>;
-              },
-              h2({ children }: any) {
-                return <h2 className="text-xl font-bold my-2">{children}</h2>;
-              },
-              h3({ children }: any) {
-                return <h3 className="text-lg font-bold my-2">{children}</h3>;
-              },
-              h4({ children }: any) {
-                return <h4 className="text-base font-bold my-1">{children}</h4>;
               },
             }}
           >
             {part.content}
           </ReactMarkdown>
-        )
+        ),
       )}
     </div>
   );

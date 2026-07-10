@@ -1,4 +1,4 @@
-import { Bot, User, Copy, Check, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { Bot, User, Copy, Check, Loader2, Volume2, VolumeX, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBlock from './ThinkingBlock';
@@ -20,9 +20,11 @@ interface ChatMessageProps {
   onSpeak?: () => void;
   onStopSpeak?: () => void;
   isSpeaking?: boolean;
+  onRegenerate?: () => void;
+  onDelete?: () => void;
 }
 
-export default function ChatMessage({ role, content, timestamp, isLoading, thinking, toolCalls, onSpeak, onStopSpeak, isSpeaking }: ChatMessageProps) {
+export default function ChatMessage({ role, content, timestamp, isLoading, thinking, toolCalls, onSpeak, onStopSpeak, isSpeaking, onRegenerate, onDelete }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -43,22 +45,42 @@ export default function ChatMessage({ role, content, timestamp, isLoading, think
             <div className="bg-blue-600 rounded-2xl rounded-br-sm p-4">
               <MarkdownRenderer content={content} />
             </div>
-            <button
-              onClick={handleCopy}
-              className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
-                </>
+            <div className="mt-1.5 flex items-center gap-3">
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+              {onRegenerate && (
+                <button
+                  onClick={onRegenerate}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>重新生成</span>
+                </button>
               )}
-            </button>
+              {onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>删除</span>
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
             <User className="w-5 h-5 text-white" />
@@ -128,6 +150,15 @@ export default function ChatMessage({ role, content, timestamp, isLoading, think
                       <span>Speak</span>
                     </>
                   )}
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>删除</span>
                 </button>
               )}
             </div>
