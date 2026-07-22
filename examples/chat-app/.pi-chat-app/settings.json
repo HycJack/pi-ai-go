@@ -1,0 +1,31 @@
+{
+  "providers": [
+    {
+      "name": "hkmaas",
+      "type": "hkmaas",
+      "apiKey": "sk-9b958dd43cc249e38322c1ed118766fe",
+      "apiKeys": [
+        "sk-9b958dd43cc249e38322c1ed118766fe"
+      ],
+      "baseUrl": "https://maas.hikvision.com.cn/v1"
+    },
+    {
+      "name": "EB-GLM-5.2",
+      "type": "openai-compatible",
+      "apiKey": "sk-63e8ae23869f41ab9d57855ae4389dc9",
+      "apiKeys": [],
+      "baseUrl": "http://lanz.hikvision.com/v3/openai/model"
+    }
+  ],
+  "currentProviderIndex": 0,
+  "model": "DeepSeek-V4-Flash",
+  "maxTokens": 4096,
+  "temperature": 0.1,
+  "reasoning": "medium",
+  "agentMode": true,
+  "ttsEnabled": false,
+  "ttsVoice": "zh-CN",
+  "autoLearn": true,
+  "autoCompact": true,
+  "skillsDir": ""
+}

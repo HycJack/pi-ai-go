@@ -10,6 +10,8 @@ export function CaptureRegion(arg1:number,arg2:number,arg3:number,arg4:number,ar
 
 export function CaptureScreen(arg1:number):Promise<string>;
 
+export function DeleteConversation(arg1:string):Promise<void>;
+
 export function DeleteMemoryEntry(arg1:string):Promise<void>;
 
 export function GetCompactionStatus():Promise<string>;
@@ -25,6 +27,8 @@ export function GetModels(arg1:Record<string, any>):Promise<Array<main.ModelInfo
 export function GetSettings():Promise<string>;
 
 export function NumDisplays():Promise<number>;
+
+export function SaveConversation(arg1:string,arg2:string):Promise<void>;
 
 export function SaveConversations(arg1:string):Promise<void>;
 

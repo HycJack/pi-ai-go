@@ -69,7 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
     },
   ],
   currentProviderIndex: 0,
-  model: 'gpt-4o-mini',
+  model: '',
   maxTokens: 4096,
   temperature: 1.0,
   reasoning: 'medium',

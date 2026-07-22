@@ -18,6 +18,10 @@ export function CaptureScreen(arg1) {
   return window['go']['main']['App']['CaptureScreen'](arg1);
 }
 
+export function DeleteConversation(arg1) {
+  return window['go']['main']['App']['DeleteConversation'](arg1);
+}
+
 export function DeleteMemoryEntry(arg1) {
   return window['go']['main']['App']['DeleteMemoryEntry'](arg1);
 }
@@ -48,6 +52,10 @@ export function GetSettings() {
 
 export function NumDisplays() {
   return window['go']['main']['App']['NumDisplays']();
+}
+
+export function SaveConversation(arg1, arg2) {
+  return window['go']['main']['App']['SaveConversation'](arg1, arg2);
 }
 
 export function SaveConversations(arg1) {

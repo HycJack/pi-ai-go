@@ -48,6 +48,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
   const [settings, setSettings] = useState<Settings>(currentSettings);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [modelError, setModelError] = useState('');
   const [saved, setSaved] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newProviderType, setNewProviderType] = useState('openai');
@@ -77,13 +78,17 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     if (!isOpen) return;
     if (!cpForModels) return;
     setIsLoading(true);
+    setModelError('');
     GetModels({
       provider: cpType,
       baseUrl: cpBaseUrl,
       apiKey: cpApiKey,
     }).then((list) => {
       setModels(list || []);
-    }).catch(() => {}).finally(() => setIsLoading(false));
+    }).catch((e) => {
+      setModels([]);
+      setModelError(String(e?.message || e));
+    }).finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, settings.currentProviderIndex, cpType, cpBaseUrl, cpApiKey]);
 
@@ -435,9 +440,13 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                       const cp = settings.providers[settings.currentProviderIndex];
                       if (!cp) return;
                       setIsLoading(true);
+                      setModelError('');
                       GetModels({ provider: cp.type, baseUrl: cp.baseUrl, apiKey: cp.apiKey })
                         .then((list) => setModels(list || []))
-                        .catch(() => {})
+                        .catch((e) => {
+                          setModels([]);
+                          setModelError(String(e?.message || e));
+                        })
                         .finally(() => setIsLoading(false));
                     }}
                     disabled={isLoading}
@@ -446,6 +455,11 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                     <RefreshOutlined size={16} style={{ animation: isLoading ? 'status-spin 900ms linear infinite' : undefined }} />
                   </button>
                 </div>
+                {modelError && (
+                  <p className="settings-hint" style={{ color: 'var(--n-error)', marginTop: 4 }}>
+                    {modelError}
+                  </p>
+                )}
               </section>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

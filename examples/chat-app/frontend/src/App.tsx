@@ -9,7 +9,7 @@ import {
   StreamMessage, CancelStream,
   AgentMessage, GetSettings, SaveSettings,
   GetMemory, SetMemoryEntry, DeleteMemoryEntry, GetContextStats,
-  GetConversations, SaveConversations, GetModels, CaptureScreen,
+  GetConversations, SaveConversation, DeleteConversation, GetModels, CaptureScreen,
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 import { RefreshOutlined } from './icons';
@@ -134,6 +134,7 @@ function App() {
         });
         if (list && list.length > 0) {
           setModels(list);
+          // Auto-select first model only if user hasn't chosen one yet
           setSettings((prev) => prev.model ? prev : { ...prev, model: list[0].id });
         }
       } catch { /* ignore */ }
@@ -157,7 +158,10 @@ function App() {
   useEffect(() => {
     if (saveConvsTimeoutRef.current) clearTimeout(saveConvsTimeoutRef.current);
     saveConvsTimeoutRef.current = setTimeout(() => {
-      SaveConversations(JSON.stringify(conversations)).catch(() => {});
+      // Save each conversation to its own file
+      conversations.forEach((c) => {
+        SaveConversation(c.id, JSON.stringify(c)).catch(() => {});
+      });
     }, 500);
     return () => {
       if (saveConvsTimeoutRef.current) clearTimeout(saveConvsTimeoutRef.current);
@@ -402,6 +406,7 @@ function App() {
   }, []);
 
   const deleteConversation = useCallback((id: string) => {
+    DeleteConversation(id).catch(() => {});
     setConversations((prev) => {
       const next = prev.filter((c) => c.id !== id);
       if (activeConversationId === id) {

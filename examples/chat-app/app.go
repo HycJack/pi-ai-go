@@ -238,18 +238,96 @@ func (a *App) SaveSettings(str string) error {
 	return nil
 }
 
+func (a *App) conversationsDir() string {
+	return filepath.Join(a.dataDir, "conversations")
+}
+
+// GetConversations reads all conversation files from conversations/ directory.
+// Falls back to the legacy single-file conversations.json if the directory doesn't exist.
 func (a *App) GetConversations() (string, error) {
-	path := filepath.Join(a.dataDir, "conversations.json")
-	data, err := os.ReadFile(path)
+	dir := a.conversationsDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Fallback: try legacy single file
+		legacy := filepath.Join(a.dataDir, "conversations.json")
+		data, err2 := os.ReadFile(legacy)
+		if err2 != nil {
+			return "[]", nil
+		}
+		// Migrate legacy file to per-conversation files
+		var convs []map[string]interface{}
+		if json.Unmarshal(data, &convs) == nil && len(convs) > 0 {
+			os.MkdirAll(dir, 0755)
+			for _, c := range convs {
+				if id, ok := c["id"].(string); ok {
+					b, _ := json.Marshal(c)
+					os.WriteFile(filepath.Join(dir, id+".json"), b, 0644)
+				}
+			}
+			// Remove legacy file after migration
+			os.Remove(legacy)
+		}
+		return string(data), nil
+	}
+
+	var convs []json.RawMessage
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		convs = append(convs, json.RawMessage(data))
+	}
+	if convs == nil {
+		return "[]", nil
+	}
+	result, err := json.Marshal(convs)
 	if err != nil {
 		return "[]", nil
 	}
-	return string(data), nil
+	return string(result), nil
 }
 
+// SaveConversations saves all conversations (legacy bulk save).
+// For per-conversation saves, use SaveConversation instead.
 func (a *App) SaveConversations(str string) error {
-	path := filepath.Join(a.dataDir, "conversations.json")
-	return os.WriteFile(path, []byte(str), 0644)
+	dir := a.conversationsDir()
+	os.MkdirAll(dir, 0755)
+	var convs []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &convs); err != nil {
+		return err
+	}
+	// Write each conversation to its own file
+	for _, c := range convs {
+		id, ok := c["id"].(string)
+		if !ok {
+			continue
+		}
+		b, err := json.Marshal(c)
+		if err != nil {
+			continue
+		}
+		os.WriteFile(filepath.Join(dir, id+".json"), b, 0644)
+	}
+	return nil
+}
+
+// SaveConversation saves a single conversation to its own file.
+func (a *App) SaveConversation(id string, jsonStr string) error {
+	dir := a.conversationsDir()
+	os.MkdirAll(dir, 0755)
+	path := filepath.Join(dir, id+".json")
+	return os.WriteFile(path, []byte(jsonStr), 0644)
+}
+
+// DeleteConversation deletes a single conversation file.
+func (a *App) DeleteConversation(id string) error {
+	dir := a.conversationsDir()
+	path := filepath.Join(dir, id+".json")
+	return os.Remove(path)
 }
 
 func (a *App) GetMemory() (string, error) {
@@ -458,14 +536,14 @@ type ModelInfo struct {
 }
 
 func (a *App) getOpenAIModels(baseURL, apiKey string) ([]ModelInfo, error) {
-	url := baseURL
+	url := strings.TrimRight(baseURL, "/")
 	if url == "" {
 		url = "https://api.openai.com/v1"
 	}
 	url += "/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return a.getCachedModels(core.ProviderOpenAI), nil
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -476,12 +554,15 @@ func (a *App) getOpenAIModels(baseURL, apiKey string) ([]ModelInfo, error) {
 		}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return a.getCachedModels(core.ProviderOpenAI), nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch models: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
 	var result struct {
 		Data []struct {
 			ID   string `json:"id"`
@@ -489,7 +570,7 @@ func (a *App) getOpenAIModels(baseURL, apiKey string) ([]ModelInfo, error) {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return a.getCachedModels(core.ProviderOpenAI), nil
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	var models []ModelInfo
 	for _, m := range result.Data {
@@ -499,14 +580,14 @@ func (a *App) getOpenAIModels(baseURL, apiKey string) ([]ModelInfo, error) {
 }
 
 func (a *App) getAnthropicModels(baseURL, apiKey string) ([]ModelInfo, error) {
-	url := baseURL
+	url := strings.TrimRight(baseURL, "/")
 	if url == "" {
 		url = "https://api.anthropic.com/v1"
 	}
 	url += "/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return a.getCachedModels(core.ProviderAnthropic), nil
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	if apiKey != "" {
 		req.Header.Set("x-api-key", apiKey)
@@ -518,12 +599,15 @@ func (a *App) getAnthropicModels(baseURL, apiKey string) ([]ModelInfo, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return a.getCachedModels(core.ProviderAnthropic), nil
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch models: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
 	var result struct {
 		Data []struct {
 			ID   string `json:"id"`
@@ -531,7 +615,7 @@ func (a *App) getAnthropicModels(baseURL, apiKey string) ([]ModelInfo, error) {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return a.getCachedModels(core.ProviderAnthropic), nil
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	var models []ModelInfo
 	for _, m := range result.Data {
@@ -892,10 +976,8 @@ func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
 		api = core.APIOpenAICompletions
 	}
 	if modelID == "" {
-		modelID = "gpt-4o-mini"
-		if providerStr == "anthropic" {
-			modelID = "claude-3-5-haiku-20241022"
-		}
+		// No default model — caller must provide one
+		modelID = "auto"
 	}
 	model, err := llm.GetModel(provider, modelID)
 	if err != nil {
@@ -915,13 +997,21 @@ func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
 func (a *App) buildSystemPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("你是一个有帮助的 AI 助手，可以访问文件系统工具。\n")
-	sb.WriteString("你可以读取文件、写入文件、编辑文件、列出目录、执行命令和搜索内容。\n")
+	sb.WriteString("你可以读取文件、写入文件、追加写入文件、编辑文件、列出目录、执行命令和搜索内容。\n")
 	sb.WriteString("当用户提出涉及文件操作的任务时，请使用可用的工具。\n")
 	sb.WriteString("在执行工具之前，请清楚地解释你的操作。\n")
 	sb.WriteString("\n## 输出规范\n")
 	sb.WriteString("- 尽量不要在回复中使用 emoji（表情符号）\n")
 	sb.WriteString("- 使用简洁、专业的语言回复\n")
 	sb.WriteString("- 代码块使用正确的 markdown 格式\n")
+	sb.WriteString("\n## 生成大文件的策略\n")
+	sb.WriteString("当你需要生成一个**完整文件**（HTML 页面、长文档、大段代码）且预估内容可能超过单次输出上限时：\n")
+	sb.WriteString("1. 先规划文件结构（开头/正文/结尾），把内容切成几个明确的部分\n")
+	sb.WriteString("2. 第一段使用 `write_file` 写入（创建文件）\n")
+	sb.WriteString("3. 后续每一段使用 `append_file` 追加到文件末尾\n")
+	sb.WriteString("4. 每一段控制在合理大小（例如几百行代码），避免单次工具调用过大导致失败\n")
+	sb.WriteString("5. 如果上一次写入失败或被截断，使用 `read_file` 查看文件当前末尾内容，再用 `append_file` 从断点继续\n")
+	sb.WriteString("6. 写完后用 `read_file` 或 `bash` 简单校验文件是否完整\n")
 	if a.mem != nil && a.mem.Size() > 0 {
 		memText := a.mem.FormatForPrompt()
 		if memText != "" {
@@ -1073,21 +1163,61 @@ func (a *App) buildAgentMessages(req AgentRequest) []core.Message {
 	return msgs
 }
 
-// extractImagesFromParams pulls the "images" array from a StreamMessage params map.
-func extractImagesFromParams(params map[string]interface{}) []ImageInput {
-	raw, ok := params["images"].([]interface{})
-	if !ok || len(raw) == 0 {
+// extractImageBlocks converts an "images" array from any of the shapes Wails may
+// deserialize into a normalized []core.ContentBlock of image content.
+func extractImageBlocks(raw interface{}) []core.ContentBlock {
+	if raw == nil {
 		return nil
 	}
-	out := make([]ImageInput, 0, len(raw))
-	for _, item := range raw {
-		if img, ok := item.(map[string]interface{}); ok {
-			data, _ := img["data"].(string)
-			mime, _ := img["mimeType"].(string)
-			if data != "" {
-				out = append(out, ImageInput{Data: data, MimeType: mime})
+	var blocks []core.ContentBlock
+	switch items := raw.(type) {
+	case []interface{}:
+		for _, item := range items {
+			if img, ok := item.(map[string]interface{}); ok {
+				if b := buildImageBlock(img); b != nil {
+					blocks = append(blocks, *b)
+				}
 			}
 		}
+	case []map[string]interface{}:
+		for _, img := range items {
+			if b := buildImageBlock(img); b != nil {
+				blocks = append(blocks, *b)
+			}
+		}
+	}
+	return blocks
+}
+
+func buildImageBlock(img map[string]interface{}) *core.ImageContent {
+	data, _ := img["data"].(string)
+	if data == "" {
+		return nil
+	}
+	mime, _ := img["mimeType"].(string)
+	if mime == "" {
+		mime = "image/png"
+	}
+	// Strip optional "data:<mime>;base64," prefix
+	if idx := strings.Index(data, "base64,"); idx >= 0 {
+		data = data[idx+len("base64,"):]
+	}
+	return &core.ImageContent{Type: "image", Data: data, MimeType: mime}
+}
+
+// extractImagesFromParams pulls the "images" array from a StreamMessage params map.
+func extractImagesFromParams(params map[string]interface{}) []ImageInput {
+	blocks := extractImageBlocks(params["images"])
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]ImageInput, 0, len(blocks))
+	for _, b := range blocks {
+		img, ok := b.(core.ImageContent)
+		if !ok {
+			continue
+		}
+		out = append(out, ImageInput{Data: img.Data, MimeType: img.MimeType})
 	}
 	return out
 }
@@ -1145,28 +1275,8 @@ func parseMessageHistory(raw []interface{}) []core.Message {
 		content, _ := m["content"].(string)
 		// images: optional array of { data, mimeType } for multi-modal input
 		var imageBlocks []core.ContentBlock
-		if rawImgs, ok := m["images"].([]interface{}); ok {
-			for _, rawImg := range rawImgs {
-				if img, ok := rawImg.(map[string]interface{}); ok {
-					data, _ := img["data"].(string)
-					mime, _ := img["mimeType"].(string)
-					if mime == "" {
-						mime = "image/png"
-					}
-					if data != "" {
-						// Strip optional "data:<mime>;base64," prefix
-						if idx := strings.Index(data, "base64,"); idx >= 0 {
-							data = data[idx+len("base64,"):]
-						}
-						imageBlocks = append(imageBlocks, core.ImageContent{
-							Type:     "image",
-							Data:     data,
-							MimeType: mime,
-						})
-					}
-				}
-			}
-		}
+		imagesAny := m["images"]
+		imageBlocks = extractImageBlocks(imagesAny)
 		if role == "user" {
 			if len(imageBlocks) > 0 {
 				// Multi-modal: [text?, image...]

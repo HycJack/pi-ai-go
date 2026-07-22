@@ -1,0 +1,68 @@
+{
+  "fact.script-source": {
+    "value": "https://cdn.geogebra.org/apps/deployggb.js",
+    "createdAt": "2026-07-22T17:55:56.2309847+08:00",
+    "updatedAt": "2026-07-22T17:55:56.2309847+08:00",
+    "category": "user"
+  },
+  "fact.workflow": {
+    "value": "如果写的文件内容太长，先写基础文件，再用edit_file逐步追加内容",
+    "createdAt": "2026-07-22T17:56:49.2882726+08:00",
+    "updatedAt": "2026-07-22T17:56:49.2882726+08:00",
+    "category": "user"
+  },
+  "project.geogebra_api_forbidden_rule": {
+    "value": "禁止使用ggbApp.evalCommand('ClearAll()')、ggbApp.evalCommand('SetCoordSystem(-1, 6, -1, 5)')、ggbApp.evalCommand('SetLabel(E, \"E\")')、ggbApp.setLabel('f', 'fff')",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_api_usage_rule": {
+    "value": "控制标签显示用ggbApp.setLabelVisible()，设置对象颜色用ggbApp.setColor()，控制对象可见性用ggbApp.setVisible()，实现图表重置用window.ggbApp.reset()",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_browser_support": {
+    "value": "目标浏览器为Chrome、Firefox、Edge的现代版本",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_command_rule": {
+    "value": "使用ggbApp.evalCommand('')方法执行单个命令，所有命令必须使用英文名称，严禁使用中文命令",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_demo_spec": {
+    "value": "生成包含GeoGebra动态演示的完整HTML课件，严禁修改原始HTML模板的结构和样式",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_init_rule": {
+    "value": "初始化时严禁使用materialid、filename、base64参数，不设置全局变量ggbApp，仅在appletOnLoad回调中设置window.ggbApp = api",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_output_format": {
+    "value": "最终交付物为完整的单文件HTML，包含完整保留的原始HTML模板结构、集成的GeoGebra演示功能、符合技术规范的JavaScript代码、完整的样式和交互逻辑",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_resource_rule": {
+    "value": "字体库使用Google Fonts，图标库使用Font Awesome",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  },
+  "project.geogebra_text_layout_rule": {
+    "value": "Geogebra中需要显示文字内容时，统一显示在左上角，采用从上到下的垂直布局",
+    "createdAt": "2026-07-22T17:11:43.9150643+08:00",
+    "updatedAt": "2026-07-22T17:11:43.9150643+08:00",
+    "category": "user"
+  }
+}
