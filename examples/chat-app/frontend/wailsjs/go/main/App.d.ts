@@ -6,6 +6,10 @@ export function AgentMessage(arg1:string):Promise<void>;
 
 export function CancelStream():Promise<void>;
 
+export function CaptureRegion(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number):Promise<string>;
+
+export function CaptureScreen(arg1:number):Promise<string>;
+
 export function DeleteMemoryEntry(arg1:string):Promise<void>;
 
 export function GetCompactionStatus():Promise<string>;
@@ -19,6 +23,8 @@ export function GetMemory():Promise<string>;
 export function GetModels(arg1:Record<string, any>):Promise<Array<main.ModelInfo>>;
 
 export function GetSettings():Promise<string>;
+
+export function NumDisplays():Promise<number>;
 
 export function SaveConversations(arg1:string):Promise<void>;
 

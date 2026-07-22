@@ -1,9 +1,11 @@
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { InlineMath, BlockMath } from 'react-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { CheckOutlined, CopyOutlined } from '../icons';
+import { useT } from '../i18n';
 
 interface MarkdownRendererProps {
   content: string;
@@ -41,6 +43,141 @@ function extractMathContent(text: string): { content: string; isMath: boolean }[
   return result;
 }
 
+// ── Copy button for code blocks ──
+function CopyButton({ text }: { text: string }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch { /* clipboard might be blocked */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [text]);
+
+  return (
+    <button className="code-copy-btn" onClick={handleCopy} title={t('code.copy')}>
+      {copied ? <CheckOutlined size={12} /> : <CopyOutlined size={12} />}
+      <span>{copied ? t('code.copied') : t('code.copy')}</span>
+    </button>
+  );
+}
+
+// ── HTML code / preview component ──
+function HtmlBlock({ html }: { html: string }) {
+  const t = useT();
+  const [showPreview, setShowPreview] = useState(true);
+
+  return (
+    <div className="code-block">
+      <div className="code-block-header">
+        <span>html</span>
+        <div className="html-block-actions">
+          <button
+            className={`preview-toggle-btn ${showPreview ? 'active' : ''}`}
+            onClick={() => setShowPreview((value) => !value)}
+          >
+            {showPreview ? t('code.viewSource') : t('code.viewPreview')}
+          </button>
+          <CopyButton text={html} />
+        </div>
+      </div>
+      {showPreview ? (
+        <iframe
+          className="html-preview-iframe"
+          sandbox="allow-scripts"
+          title={t('code.htmlPreview')}
+          srcDoc={html}
+        />
+      ) : (
+        <SyntaxHighlighter
+          style={oneLight}
+          language="html"
+          PreTag="pre"
+          customStyle={{
+            margin: 0,
+            padding: '1rem',
+            background: 'transparent',
+            fontSize: '0.875rem',
+          }}
+        >
+          {html}
+        </SyntaxHighlighter>
+      )}
+    </div>
+  );
+}
+
+// ── Mermaid diagram component ──
+function MermaidDiagram({ chart }: { chart: string }) {
+  const t = useT();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string>('');
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mermaid = (await import('mermaid')).default;
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const { svg: rendered } = await mermaid.render(id, chart);
+        if (!cancelled) {
+          setSvg(rendered);
+          setError('');
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message ?? String(e));
+          setSvg('');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chart]);
+
+  if (error) {
+    return (
+      <div className="mermaid-error">
+        <div className="mermaid-error-header">{t('code.mermaidError')}</div>
+        <pre>{chart}</pre>
+        <div className="mermaid-error-msg">{error}</div>
+      </div>
+    );
+  }
+
+  if (svg) {
+    return (
+      <>
+        <div
+          ref={containerRef}
+          className="mermaid-container has-preview"
+          onClick={() => setExpanded(true)}
+          title={t('code.clickToExpand')}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+        {expanded && (
+          <div className="mermaid-preview-overlay" onClick={() => setExpanded(false)}>
+            <div
+              className="mermaid-preview-content"
+              onClick={(event) => event.stopPropagation()}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="mermaid-container">
+      <div className="mermaid-loading">{t('code.mermaidLoading')}</div>
+    </div>
+  );
+}
+
 export default memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return <MarkdownRendererInner content={content} />;
 });
@@ -76,17 +213,44 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
 
                 if (!match && !isInParagraph && text.includes('```')) {
                   return (
-                    <pre className="code-block code-block-raw">
-                      <code>{text}</code>
-                    </pre>
+                    <div className="code-block">
+                      <div className="code-block-header">
+                        <span>text</span>
+                        <CopyButton text={text} />
+                      </div>
+                      <pre className="code-block-raw">
+                        <code>{text}</code>
+                      </pre>
+                    </div>
                   );
                 }
 
                 const language = match ? match[1] : 'text';
+
+                // Mermaid diagram
+                if (language === 'mermaid') {
+                  return (
+                    <div className="code-block">
+                      <div className="code-block-header">
+                        <span>mermaid</span>
+                        <CopyButton text={text} />
+                      </div>
+                      <MermaidDiagram chart={text} />
+                    </div>
+                  );
+                }
+
+                // HTML preview / source (mutually exclusive)
+                if (language === 'html') {
+                  return <HtmlBlock html={text} />;
+                }
+
+                // Regular code block with copy button
                 return (
                   <div className="code-block">
                     <div className="code-block-header">
                       <span>{language}</span>
+                      <CopyButton text={text} />
                     </div>
                     <SyntaxHighlighter
                       style={oneLight}

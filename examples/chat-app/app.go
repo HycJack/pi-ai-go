@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"math"
 	"net/http"
 	"os"
@@ -24,6 +28,7 @@ import (
 	"chat-app/keypool"
 	"chat-app/memory"
 
+	"github.com/kbinani/screenshot"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -79,10 +84,9 @@ type TTSSettings struct {
 }
 
 type AgentSettings struct {
-	AutoLearn        bool   `json:"autoLearn"`
-	AutoCompact      bool   `json:"autoCompact"`
-	SkillsDir        string `json:"skillsDir"`
-	AutoLearnExtract bool   `json:"autoLearnExtract"`
+	AutoLearn   bool   `json:"autoLearn"`
+	AutoCompact bool   `json:"autoCompact"`
+	SkillsDir   string `json:"skillsDir"`
 }
 
 type ConversationSettings struct {
@@ -319,6 +323,99 @@ func (a *App) GetCompactionStatus() string {
 	}
 	s := a.tokenStats.Get()
 	return contextmgr.FormatStats(s)
+}
+
+// CaptureScreen captures the given display (default 0 = primary screen) and
+// returns the PNG image as a base64 data URL (e.g. "data:image/png;base64,...").
+// The frontend can use this directly in an <img src> or send it to a
+// multi-modal model as an ImageContent block.
+func (a *App) CaptureScreen(displayIndex int) (string, error) {
+	if displayIndex < 0 {
+		displayIndex = 0
+	}
+	n := screenshot.NumActiveDisplays()
+	if n == 0 {
+		return "", fmt.Errorf("no active display available")
+	}
+	if displayIndex >= n {
+		displayIndex = 0
+	}
+	bounds := screenshot.GetDisplayBounds(displayIndex)
+	img, err := screenshot.CaptureRect(bounds)
+	if err != nil {
+		return "", fmt.Errorf("capture failed: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", fmt.Errorf("png encode failed: %w", err)
+	}
+	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	return "data:image/png;base64," + encoded, nil
+}
+
+// NumDisplays returns the number of active displays.
+func (a *App) NumDisplays() int {
+	return screenshot.NumActiveDisplays()
+}
+
+// CaptureRegion captures a rectangular region of the given display and returns
+// the PNG image as a base64 data URL. Coordinates (x, y) are relative to the
+// display's origin; width/height define the region size. If width or height
+// is <= 0, the entire display is captured.
+func (a *App) CaptureRegion(displayIndex, x, y, width, height int) (string, error) {
+	if displayIndex < 0 {
+		displayIndex = 0
+	}
+	n := screenshot.NumActiveDisplays()
+	if n == 0 {
+		return "", fmt.Errorf("no active display available")
+	}
+	if displayIndex >= n {
+		displayIndex = 0
+	}
+	bounds := screenshot.GetDisplayBounds(displayIndex)
+	// If no region specified, capture the whole display
+	if width <= 0 || height <= 0 {
+		img, err := screenshot.CaptureRect(bounds)
+		if err != nil {
+			return "", fmt.Errorf("capture failed: %w", err)
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return "", fmt.Errorf("png encode failed: %w", err)
+		}
+		encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+		return "data:image/png;base64," + encoded, nil
+	}
+	// Clamp region to display bounds
+	maxW := bounds.Dx() - x
+	maxH := bounds.Dy() - y
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	if width > maxW {
+		width = maxW
+	}
+	if height > maxH {
+		height = maxH
+	}
+	if width <= 0 || height <= 0 {
+		return "", fmt.Errorf("invalid region after clamping")
+	}
+	rect := image.Rect(bounds.Min.X+x, bounds.Min.Y+y, bounds.Min.X+x+width, bounds.Min.Y+y+height)
+	img, err := screenshot.CaptureRect(rect)
+	if err != nil {
+		return "", fmt.Errorf("capture region failed: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return "", fmt.Errorf("png encode failed: %w", err)
+	}
+	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	return "data:image/png;base64," + encoded, nil
 }
 
 func (a *App) GetModels(params map[string]interface{}) ([]ModelInfo, error) {
@@ -577,6 +674,13 @@ type AgentRequest struct {
 	MaxTokens   int                      `json:"maxTokens"`
 	Temperature float64                  `json:"temperature"`
 	Reasoning   string                   `json:"reasoning"`
+	Images      []ImageInput             `json:"images,omitempty"`
+}
+
+// ImageInput represents an image attachment for multi-modal input.
+type ImageInput struct {
+	Data     string `json:"data"`
+	MimeType string `json:"mimeType,omitempty"`
 }
 
 func (a *App) AgentMessage(jsonStr string) error {
@@ -810,10 +914,14 @@ func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
 
 func (a *App) buildSystemPrompt() string {
 	var sb strings.Builder
-	sb.WriteString("You are a helpful AI assistant with access to file system tools.\n")
-	sb.WriteString("You can read files, write files, edit files, list directories, execute commands, and search content.\n")
-	sb.WriteString("When the user asks about tasks that involve file operations, use the available tools.\n")
-	sb.WriteString("Always explain your actions clearly before executing tools.\n")
+	sb.WriteString("你是一个有帮助的 AI 助手，可以访问文件系统工具。\n")
+	sb.WriteString("你可以读取文件、写入文件、编辑文件、列出目录、执行命令和搜索内容。\n")
+	sb.WriteString("当用户提出涉及文件操作的任务时，请使用可用的工具。\n")
+	sb.WriteString("在执行工具之前，请清楚地解释你的操作。\n")
+	sb.WriteString("\n## 输出规范\n")
+	sb.WriteString("- 尽量不要在回复中使用 emoji（表情符号）\n")
+	sb.WriteString("- 使用简洁、专业的语言回复\n")
+	sb.WriteString("- 代码块使用正确的 markdown 格式\n")
 	if a.mem != nil && a.mem.Size() > 0 {
 		memText := a.mem.FormatForPrompt()
 		if memText != "" {
@@ -954,15 +1062,62 @@ func splitKV(line string) (key, value string, found bool) {
 func buildMessages(params map[string]interface{}, currentMessage string) []core.Message {
 	raw, _ := params["messages"].([]interface{})
 	msgs := parseMessageHistory(raw)
-	msgs = append(msgs, core.UserMessage{Content: currentMessage})
+	msgs = append(msgs, buildCurrentUserMessage(currentMessage, extractImagesFromParams(params)))
 	return msgs
 }
 
 // buildAgentMessages 从 AgentRequest 中构建消息历史，包括现有的 history 和最新的用户消息。
 func (a *App) buildAgentMessages(req AgentRequest) []core.Message {
 	msgs := parseMessageHistory(toInterfaceSlice(req.Messages))
-	msgs = append(msgs, core.UserMessage{Content: req.Message})
+	msgs = append(msgs, buildCurrentUserMessage(req.Message, req.Images))
 	return msgs
+}
+
+// extractImagesFromParams pulls the "images" array from a StreamMessage params map.
+func extractImagesFromParams(params map[string]interface{}) []ImageInput {
+	raw, ok := params["images"].([]interface{})
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]ImageInput, 0, len(raw))
+	for _, item := range raw {
+		if img, ok := item.(map[string]interface{}); ok {
+			data, _ := img["data"].(string)
+			mime, _ := img["mimeType"].(string)
+			if data != "" {
+				out = append(out, ImageInput{Data: data, MimeType: mime})
+			}
+		}
+	}
+	return out
+}
+
+// buildCurrentUserMessage builds a UserMessage that may contain text + image blocks.
+func buildCurrentUserMessage(text string, images []ImageInput) core.UserMessage {
+	if len(images) == 0 {
+		return core.UserMessage{Content: text}
+	}
+	var blocks []core.ContentBlock
+	if text != "" {
+		blocks = append(blocks, core.TextContent{Type: "text", Text: text})
+	}
+	for _, img := range images {
+		mime := img.MimeType
+		if mime == "" {
+			mime = "image/png"
+		}
+		data := img.Data
+		// Strip optional "data:<mime>;base64," prefix
+		if idx := strings.Index(data, "base64,"); idx >= 0 {
+			data = data[idx+len("base64,"):]
+		}
+		blocks = append(blocks, core.ImageContent{
+			Type:     "image",
+			Data:     data,
+			MimeType: mime,
+		})
+	}
+	return core.UserMessage{Content: blocks}
 }
 
 func toInterfaceSlice(src []map[string]interface{}) []interface{} {
@@ -988,8 +1143,42 @@ func parseMessageHistory(raw []interface{}) []core.Message {
 			continue
 		}
 		content, _ := m["content"].(string)
+		// images: optional array of { data, mimeType } for multi-modal input
+		var imageBlocks []core.ContentBlock
+		if rawImgs, ok := m["images"].([]interface{}); ok {
+			for _, rawImg := range rawImgs {
+				if img, ok := rawImg.(map[string]interface{}); ok {
+					data, _ := img["data"].(string)
+					mime, _ := img["mimeType"].(string)
+					if mime == "" {
+						mime = "image/png"
+					}
+					if data != "" {
+						// Strip optional "data:<mime>;base64," prefix
+						if idx := strings.Index(data, "base64,"); idx >= 0 {
+							data = data[idx+len("base64,"):]
+						}
+						imageBlocks = append(imageBlocks, core.ImageContent{
+							Type:     "image",
+							Data:     data,
+							MimeType: mime,
+						})
+					}
+				}
+			}
+		}
 		if role == "user" {
-			msgs = append(msgs, core.UserMessage{Content: content})
+			if len(imageBlocks) > 0 {
+				// Multi-modal: [text?, image...]
+				var blocks []core.ContentBlock
+				if content != "" {
+					blocks = append(blocks, core.TextContent{Type: "text", Text: content})
+				}
+				blocks = append(blocks, imageBlocks...)
+				msgs = append(msgs, core.UserMessage{Content: blocks})
+			} else {
+				msgs = append(msgs, core.UserMessage{Content: content})
+			}
 		} else if role == "assistant" {
 			msg := core.AssistantMessage{
 				Role: "assistant",

@@ -33,6 +33,10 @@ import {
   Volume2 as Volume2Icon,
   VolumeX as VolumeXIcon,
   Terminal as TerminalIcon,
+  Camera as CameraIcon,
+  Image as ImageLucide,
+  Paperclip as PaperclipIcon,
+  X as XIcon2,
 } from 'lucide-react';
 
 export const EditOutlined = PencilIcon;
@@ -68,3 +72,7 @@ export const Loader2 = LoaderIcon;
 export const Volume2 = Volume2Icon;
 export const VolumeX = VolumeXIcon;
 export const Terminal = TerminalIcon;
+export const Camera = CameraIcon;
+export const ImageIcon = ImageLucide;
+export const Paperclip = PaperclipIcon;
+export const CloseCircle = XIcon2;

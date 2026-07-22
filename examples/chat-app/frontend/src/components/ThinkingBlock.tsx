@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Brain, ChevronDownOutlined, ChevronUpOutlined } from '../icons';
 import MarkdownRenderer from './MarkdownRenderer';
+import { useT } from '../i18n';
 
 interface ThinkingBlockProps {
   content: string;
@@ -8,6 +9,7 @@ interface ThinkingBlockProps {
 }
 
 export default function ThinkingBlock({ content, defaultExpanded = true }: ThinkingBlockProps) {
+  const t = useT();
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   if (!content || content.trim() === '') return null;
@@ -20,7 +22,7 @@ export default function ThinkingBlock({ content, defaultExpanded = true }: Think
       >
         <span className="think-title">
           <span className="think-dot" />
-          <span>Thinking</span>
+          <span>{t('thinking.title')}</span>
         </span>
         {expanded ? <ChevronUpOutlined size={14} /> : <ChevronDownOutlined size={14} />}
       </button>

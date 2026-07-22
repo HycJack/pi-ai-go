@@ -11,6 +11,7 @@ import {
   ChevronLeftOutlined,
   ChevronRightOutlined,
 } from '../icons';
+import { useT } from '../i18n';
 
 interface Conversation {
   id: string;
@@ -43,6 +44,7 @@ export default function Sidebar({
   onRenameConversation,
   onOpenSettings,
 }: SidebarProps) {
+  const t = useT();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -87,14 +89,14 @@ export default function Sidebar({
   if (collapsed) {
     return (
       <aside className="app-sidebar collapsed">
-        <button className="nav-icon-btn sidebar-toggle" onClick={onToggleCollapse} aria-label="Expand sidebar">
+        <button className="nav-icon-btn sidebar-toggle" onClick={onToggleCollapse} aria-label={t('app.expandSidebar')}>
           <MenuOutlined size={18} />
         </button>
-        <button className="nav-icon-btn" onClick={onCreateNewConversation} title="New chat">
+        <button className="nav-icon-btn" onClick={onCreateNewConversation} title={t('app.newChat')}>
           <PlusOutlined size={18} />
         </button>
         <div className="sidebar-spacer" />
-        <button className="nav-icon-btn" onClick={onOpenSettings} title="Settings">
+        <button className="nav-icon-btn" onClick={onOpenSettings} title={t('app.settings')}>
           <SettingOutlined size={18} />
         </button>
         <button className="nav-icon-btn profile-link" title="Pi-AI">
@@ -114,27 +116,25 @@ export default function Sidebar({
           <div className="brand">Pi-AI Chat</div>
           <div className="bridge-pill">
             <span className="status-dot green" />
-            <span>Ready</span>
+            <span>{t('sidebar.ready')}</span>
           </div>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="primary-cta" onClick={onCreateNewConversation} style={{ flex: 1 }}>
-          <PlusOutlined size={16} />
-          <span>New chat</span>
-        </button>
-        <button className="icon-btn" onClick={onToggleCollapse} title="Collapse sidebar" style={{ flex: '0 0 32px' }}>
+        <button className="sidebar-collapse-btn" onClick={onToggleCollapse} title={t('app.collapseSidebar')} aria-label={t('app.collapseSidebar')}>
           <ChevronLeftOutlined size={16} />
         </button>
       </div>
+
+      <button className="primary-cta" onClick={onCreateNewConversation}>
+        <PlusOutlined size={16} />
+        <span>{t('app.newChat')}</span>
+      </button>
 
       {workingDir && (
         <div className="workspace-card" title={workingDir}>
           <FolderOpenOutlined size={18} />
           <div className="workspace-meta">
-            <div className="workspace-label">Working directory</div>
-            <div className="workspace-path">{dirName || 'Not set'}</div>
+            <div className="workspace-label">{t('sidebar.workingDir')}</div>
+            <div className="workspace-path">{dirName || t('sidebar.notSet')}</div>
           </div>
         </div>
       )}
@@ -143,12 +143,12 @@ export default function Sidebar({
         <div className="history-list-header">
           <span className="history-list-title">
             <MessageOutlined size={16} />
-            <span>History</span>
+            <span>{t('sidebar.history')}</span>
           </span>
         </div>
         <div className="history-list-items">
           {conversations.length === 0 && (
-            <div className="history-empty">No conversations yet</div>
+            <div className="history-empty">{t('sidebar.noConversations')}</div>
           )}
           {conversations.map((conv) => {
             const isActive = activeConversation === conv.id;
@@ -185,18 +185,18 @@ export default function Sidebar({
                   )}
                   {isConfirmingDelete ? (
                     <div className="history-confirm-row">
-                      <span className="history-confirm-text">Delete this chat?</span>
+                      <span className="history-confirm-text">{t('chat.deleteConfirm')}</span>
                       <button
                         className="history-confirm-btn danger"
                         onClick={(e) => { e.stopPropagation(); confirmDelete(); }}
                       >
-                        Yes
+                        {t('chat.deleteYes')}
                       </button>
                       <button
                         className="history-confirm-btn"
                         onClick={(e) => { e.stopPropagation(); cancelDelete(); }}
                       >
-                        Cancel
+                        {t('chat.deleteNo')}
                       </button>
                     </div>
                   ) : (
@@ -207,8 +207,8 @@ export default function Sidebar({
                   <button
                     className="history-action"
                     onClick={(e) => { e.stopPropagation(); requestDelete(conv.id); }}
-                    aria-label="Delete"
-                    title="Delete"
+                    aria-label={t('chat.delete')}
+                    title={t('chat.delete')}
                   >
                     <DeleteOutlined size={14} />
                   </button>
@@ -222,11 +222,11 @@ export default function Sidebar({
       <div className="sidebar-footer">
         <button className="nav-item" onClick={onOpenSettings}>
           <SettingOutlined size={16} />
-          <span>Settings</span>
+          <span>{t('app.settings')}</span>
         </button>
         <button className="nav-item profile-link">
           <UserOutlined size={16} />
-          <span>Pi-AI Agent</span>
+          <span>{t('sidebar.agent')}</span>
         </button>
       </div>
     </aside>

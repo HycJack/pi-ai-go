@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Terminal, ChevronDownOutlined, ChevronUpOutlined } from '../icons';
+import { useT } from '../i18n';
 
 interface ToolCall {
   id: string;
@@ -9,10 +10,12 @@ interface ToolCall {
 
 interface ToolCallBlockProps {
   toolCalls: ToolCall[];
+  isLoading?: boolean;
 }
 
-export default function ToolCallBlock({ toolCalls }: ToolCallBlockProps) {
-  const [expanded, setExpanded] = useState(false);
+export default function ToolCallBlock({ toolCalls, isLoading }: ToolCallBlockProps) {
+  const t = useT();
+  const [expanded, setExpanded] = useState(true);
 
   if (!toolCalls || toolCalls.length === 0) return null;
 
@@ -24,7 +27,7 @@ export default function ToolCallBlock({ toolCalls }: ToolCallBlockProps) {
       >
         <span className="tools-title">
           <Terminal size={14} />
-          <span>Tool calls ({toolCalls.length})</span>
+          <span>{t('tool.calls')} ({toolCalls.length})</span>
         </span>
         {expanded ? <ChevronUpOutlined size={14} /> : <ChevronDownOutlined size={14} />}
       </button>
@@ -34,7 +37,9 @@ export default function ToolCallBlock({ toolCalls }: ToolCallBlockProps) {
             <div key={toolCall.id || index} className="tool-row">
               <div className="tool-row-header">
                 <span className="tool-name">{toolCall.name}</span>
-                <span className="tool-badge ok">running</span>
+                <span className={`tool-badge ${isLoading ? 'running' : 'done'}`}>
+                  {isLoading ? t('tool.running') : t('tool.done')}
+                </span>
               </div>
               <div className="tool-args">
                 <code>{toolCall.arguments}</code>

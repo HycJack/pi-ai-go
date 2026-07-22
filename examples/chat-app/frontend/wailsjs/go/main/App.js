@@ -10,6 +10,14 @@ export function CancelStream() {
   return window['go']['main']['App']['CancelStream']();
 }
 
+export function CaptureRegion(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['CaptureRegion'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function CaptureScreen(arg1) {
+  return window['go']['main']['App']['CaptureScreen'](arg1);
+}
+
 export function DeleteMemoryEntry(arg1) {
   return window['go']['main']['App']['DeleteMemoryEntry'](arg1);
 }
@@ -36,6 +44,10 @@ export function GetModels(arg1) {
 
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
+}
+
+export function NumDisplays() {
+  return window['go']['main']['App']['NumDisplays']();
 }
 
 export function SaveConversations(arg1) {

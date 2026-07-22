@@ -1,3 +1,12 @@
+export interface ImageAttachment {
+  /** Base64 data URL, e.g. "data:image/png;base64,..." */
+  data: string;
+  /** MIME type, e.g. "image/png" */
+  mimeType: string;
+  /** Optional display name */
+  name?: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -5,6 +14,7 @@ export interface Message {
   timestamp: string;
   thinking?: string;
   toolCalls?: ToolCall[];
+  images?: ImageAttachment[];
 }
 
 export interface ToolCall {
@@ -45,6 +55,7 @@ export interface Settings {
   ttsVoice: string;
   agentMode: boolean;
   agentSettings: AgentSettings;
+  locale?: string; // 'zh' | 'en', default 'zh'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -64,20 +75,23 @@ export const DEFAULT_SETTINGS: Settings = {
   reasoning: 'medium',
   ttsEnabled: false,
   ttsVoice: 'zh-CN',
-  agentMode: false,
+  agentMode: true,
   agentSettings: {
     autoLearn: false,
     autoCompact: true,
     skillsDir: '',
   },
+  locale: 'zh',
 };
 
 export const PROVIDER_TYPES: { type: string; name: string; baseUrl: string }[] = [
   { type: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  { type: 'openai-compatible', name: 'OpenAI Compatible', baseUrl: 'https://api.example.com/v1' },
   { type: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   { type: 'google', name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
   { type: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com' },
   { type: 'mistral', name: 'Mistral', baseUrl: 'https://api.mistral.ai/v1' },
+  { type: 'ollama', name: 'Ollama (Local)', baseUrl: 'http://localhost:11434' },
 ];
 
 export function getProviderTypeName(type: string): string {

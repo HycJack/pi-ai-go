@@ -18,12 +18,14 @@ import {
 import { GetModels } from '../../wailsjs/go/main/App';
 import type { Settings, ProviderConfig } from '../types';
 import { PROVIDER_TYPES, getProviderTypeName } from '../types';
+import { useT } from '../i18n';
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   currentSettings: Settings;
   onSave: (settings: Settings) => void;
+  onRunOnboarding?: () => void;
 }
 
 interface ModelInfo {
@@ -35,12 +37,13 @@ interface ModelInfo {
 
 type TabId = 'general' | 'system';
 
-const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'general', label: 'General', icon: <Settings2 size={14} /> },
-  { id: 'system', label: 'System', icon: <WrenchOutlined size={14} /> },
+const tabs: { id: TabId; labelKey: string; icon: React.ReactNode }[] = [
+  { id: 'general', labelKey: 'settings.general', icon: <Settings2 size={14} /> },
+  { id: 'system', labelKey: 'settings.system', icon: <WrenchOutlined size={14} /> },
 ];
 
-export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave }: SettingsPanelProps) {
+export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave, onRunOnboarding }: SettingsPanelProps) {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<TabId>('general');
   const [settings, setSettings] = useState<Settings>(currentSettings);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -50,6 +53,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
   const [newProviderType, setNewProviderType] = useState('openai');
   const [newProviderName, setNewProviderName] = useState('');
   const [newProviderKey, setNewProviderKey] = useState('');
+  const [newProviderBaseUrl, setNewProviderBaseUrl] = useState('https://api.openai.com/v1');
   const [showNewKey, setShowNewKey] = useState(false);
   const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
   const [secretKeys, setSecretKeys] = useState<Record<number, boolean>>({});
@@ -62,19 +66,26 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     setSaved(false);
   }, [currentSettings, isOpen]);
 
+  // Fetch models when provider changes or when the current provider's
+  // baseUrl/apiKey/type are edited.
+  const cpForModels = settings.providers[settings.currentProviderIndex];
+  const cpType = cpForModels?.type;
+  const cpBaseUrl = cpForModels?.baseUrl;
+  const cpApiKey = cpForModels?.apiKey;
+
   useEffect(() => {
     if (!isOpen) return;
-    const cp = settings.providers[settings.currentProviderIndex];
-    if (!cp) return;
+    if (!cpForModels) return;
     setIsLoading(true);
     GetModels({
-      provider: cp.type,
-      baseUrl: cp.baseUrl,
-      apiKey: cp.apiKey,
+      provider: cpType,
+      baseUrl: cpBaseUrl,
+      apiKey: cpApiKey,
     }).then((list) => {
       setModels(list || []);
     }).catch(() => {}).finally(() => setIsLoading(false));
-  }, [isOpen, settings.currentProviderIndex, settings.providers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, settings.currentProviderIndex, cpType, cpBaseUrl, cpApiKey]);
 
   useEffect(() => {
     if (isOpen) return;
@@ -84,12 +95,13 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
 
   const addProvider = useCallback(() => {
     const name = newProviderName.trim() || getProviderTypeName(newProviderType);
+    const defaultBaseUrl = PROVIDER_TYPES.find(p => p.type === newProviderType)?.baseUrl || `https://api.${newProviderType}.com/v1`;
     const newP: ProviderConfig = {
       name,
       type: newProviderType,
       apiKey: newProviderKey.trim(),
       apiKeys: [],
-      baseUrl: PROVIDER_TYPES.find(p => p.type === newProviderType)?.baseUrl || `https://api.${newProviderType}.com/v1`,
+      baseUrl: newProviderBaseUrl.trim() || defaultBaseUrl,
     };
     setSettings((prev) => ({
       ...prev,
@@ -99,8 +111,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     setShowNewForm(false);
     setNewProviderName('');
     setNewProviderKey('');
+    setNewProviderBaseUrl('https://api.openai.com/v1');
     setShowNewKey(false);
-  }, [newProviderType, newProviderName, newProviderKey]);
+  }, [newProviderType, newProviderName, newProviderKey, newProviderBaseUrl]);
 
   const removeProvider = useCallback((idx: number) => {
     setSettings((prev) => {
@@ -135,8 +148,8 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card settings-modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2 className="modal-title">Settings</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <h2 className="modal-title">{t('settings.title')}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label={t('settings.close')}>
             <CloseOutlined size={16} />
           </button>
         </div>
@@ -149,7 +162,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               onClick={() => setActiveTab(tab.id)}
             >
               {tab.icon}
-              <span>{tab.label}</span>
+              <span>{t(tab.labelKey)}</span>
             </button>
           ))}
         </div>
@@ -158,27 +171,58 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
           {activeTab === 'general' && (
             <>
               <section className="settings-section">
+                <label className="settings-label">{t('settings.languageLabel')}</label>
+                <div className="provider-type-grid">
+                  <button
+                    className={`provider-type-btn ${(settings.locale || 'zh') === 'zh' ? 'active' : ''}`}
+                    onClick={() => setSettings((prev) => ({ ...prev, locale: 'zh' }))}
+                  >
+                    中文
+                  </button>
+                  <button
+                    className={`provider-type-btn ${settings.locale === 'en' ? 'active' : ''}`}
+                    onClick={() => setSettings((prev) => ({ ...prev, locale: 'en' }))}
+                  >
+                    English
+                  </button>
+                </div>
+                {onRunOnboarding && (
+                  <button
+                    onClick={onRunOnboarding}
+                    className="btn-sm"
+                    style={{ marginTop: 12 }}
+                  >
+                    {t('settings.runOnboarding')}
+                  </button>
+                )}
+              </section>
+
+              <section className="settings-section">
                 <div className="settings-section-header">
-                  <label className="settings-label">Providers</label>
+                  <label className="settings-label">{t('settings.providers')}</label>
                   <button
                     onClick={() => setShowNewForm(!showNewForm)}
                     className="btn-sm"
                   >
                     <PlusOutlined size={12} />
-                    Add Provider
+                    {t('settings.addProvider')}
                   </button>
                 </div>
 
                 {showNewForm && (
                   <div className="add-provider-form">
                     <div className="provider-field">
-                      <label className="provider-field-label">Type</label>
+                      <label className="provider-field-label">{t('settings.providerType')}</label>
                       <div className="provider-type-grid">
                         {PROVIDER_TYPES.map((pt) => (
                           <button
                             key={pt.type}
                             className={`provider-type-btn ${newProviderType === pt.type ? 'active' : ''}`}
-                            onClick={() => { setNewProviderType(pt.type); setNewProviderName(''); }}
+                            onClick={() => {
+                              setNewProviderType(pt.type);
+                              setNewProviderName('');
+                              setNewProviderBaseUrl(pt.baseUrl);
+                            }}
                           >
                             {pt.name}
                           </button>
@@ -186,7 +230,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                       </div>
                     </div>
                     <div className="provider-field">
-                      <label className="provider-field-label">Display Name (optional)</label>
+                      <label className="provider-field-label">{t('settings.displayNameOptional')}</label>
                       <input
                         type="text"
                         value={newProviderName}
@@ -196,7 +240,17 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                       />
                     </div>
                     <div className="provider-field">
-                      <label className="provider-field-label">API Key</label>
+                      <label className="provider-field-label">{t('settings.baseUrl')}</label>
+                      <input
+                        type="text"
+                        value={newProviderBaseUrl}
+                        onChange={(e) => setNewProviderBaseUrl(e.target.value)}
+                        placeholder="https://api.example.com/v1"
+                        className="text-input"
+                      />
+                    </div>
+                    <div className="provider-field">
+                      <label className="provider-field-label">{t('settings.apiKey')}</label>
                       <div className="input-with-adornment">
                         <input
                           type={showNewKey ? 'text' : 'password'}
@@ -219,20 +273,20 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                         onClick={() => setShowNewForm(false)}
                         className="btn-sm"
                       >
-                        Cancel
+                        {t('settings.cancel')}
                       </button>
                       <button
                         onClick={addProvider}
                         className="btn-sm btn-primary-sm"
                       >
-                        Add
+                        {t('settings.add')}
                       </button>
                     </div>
                   </div>
                 )}
 
                 {settings.providers.length === 0 ? (
-                  <div className="settings-empty">No providers configured. Click "Add Provider" to get started.</div>
+                  <div className="settings-empty">{t('settings.noProviders')}</div>
                 ) : (
                   <div className="provider-list">
                     {settings.providers.map((p, idx) => (
@@ -248,14 +302,14 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                             <span className="provider-card-name">{p.name}</span>
                             <span className="provider-card-type">{getProviderTypeName(p.type)}</span>
                             {idx === settings.currentProviderIndex && (
-                              <span className="provider-card-active-badge">Active</span>
+                              <span className="provider-card-active-badge">{t('settings.active')}</span>
                             )}
                           </div>
                           <div className="provider-card-actions">
                             <button
                               onClick={(e) => { e.stopPropagation(); removeProvider(idx); }}
                               className="icon-btn"
-                              title="Remove provider"
+                              title={t('settings.removeProvider')}
                               style={{ width: 24, height: 24 }}
                             >
                               <DeleteOutlined size={14} />
@@ -267,7 +321,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                         {expandedIdx === idx && (
                           <div className="provider-card-body">
                             <div className="provider-field">
-                              <label className="provider-field-label">Display Name</label>
+                              <label className="provider-field-label">{t('settings.displayName')}</label>
                               <input
                                 type="text"
                                 value={p.name}
@@ -276,7 +330,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                               />
                             </div>
                             <div className="provider-field">
-                              <label className="provider-field-label">API Key</label>
+                              <label className="provider-field-label">{t('settings.apiKey')}</label>
                               <div className="input-with-adornment">
                                 <input
                                   type={secretKeys[idx] ? 'text' : 'password'}
@@ -295,7 +349,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                               </div>
                             </div>
                             <div className="provider-field">
-                              <label className="provider-field-label">Base URL</label>
+                              <label className="provider-field-label">{t('settings.baseUrl')}</label>
                               <input
                                 type="text"
                                 value={p.baseUrl}
@@ -305,10 +359,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                             </div>
                             <div className="provider-field">
                               <label className="provider-field-label">
-                                API Keys Pool
-                                <span style={{ color: 'var(--n-stone)', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>
-                                  (add one by one)
-                                </span>
+                                {t('settings.apiKeyPool')}
                               </label>
                               <div className="api-key-rows">
                                 {(p.apiKeys || []).map((key, kidx) => (
@@ -330,7 +381,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                                         ...pv,
                                         apiKeys: (pv.apiKeys || []).filter((_, i) => i !== kidx),
                                       }))}
-                                      title="Remove key"
+                                      title={t('settings.removeKey')}
                                     >
                                       <DeleteOutlined size={14} />
                                     </button>
@@ -345,11 +396,11 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                                   }))}
                                 >
                                   <PlusOutlined size={12} />
-                                  Add Key
+                                  {t('settings.addKey')}
                                 </button>
                               </div>
                               <p className="settings-hint" style={{ marginTop: 4 }}>
-                                {(p.apiKeys || []).length > 0 ? `${p.apiKeys.length} keys configured` : 'Leave empty to use single API key above'}
+                                {(p.apiKeys || []).length > 0 ? `${p.apiKeys.length} ${t('settings.keysConfigured')}` : t('settings.useSingleKey')}
                               </p>
                             </div>
                           </div>
@@ -361,19 +412,22 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               </section>
 
               <section className="settings-section">
-                <label className="settings-label">Model</label>
+                <label className="settings-label">{t('settings.model')}</label>
                 <div className="input-with-adornment">
-                  <select
+                  <input
+                    type="text"
+                    list="model-list"
                     value={settings.model}
                     onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))}
                     disabled={isLoading}
-                    className="text-input select-input"
-                  >
-                    <option value="" disabled>Select a model</option>
+                    className="text-input"
+                    placeholder={t('settings.selectModel')}
+                  />
+                  <datalist id="model-list">
                     {models.map((m) => (
                       <option key={m.id} value={m.id}>{m.name || m.id}</option>
                     ))}
-                  </select>
+                  </datalist>
                   <button
                     type="button"
                     className="input-adornment"
@@ -387,7 +441,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                         .finally(() => setIsLoading(false));
                     }}
                     disabled={isLoading}
-                    title="Refresh models"
+                    title={t('settings.refreshModels')}
                   >
                     <RefreshOutlined size={16} style={{ animation: isLoading ? 'status-spin 900ms linear infinite' : undefined }} />
                   </button>
@@ -397,7 +451,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <section className="settings-section" style={{ marginBottom: 0 }}>
                   <label className="settings-label">
-                    Max Tokens <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.maxTokens})</span>
+                    {t('settings.maxTokens')} <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.maxTokens})</span>
                   </label>
                   <input
                     type="range"
@@ -411,7 +465,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                 </section>
                 <section className="settings-section" style={{ marginBottom: 0 }}>
                   <label className="settings-label">
-                    Temperature <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.temperature.toFixed(1)})</span>
+                    {t('settings.temperature')} <span style={{ color: 'var(--n-stone)', fontWeight: 400 }}>({settings.temperature.toFixed(1)})</span>
                   </label>
                   <input
                     type="range"
@@ -426,9 +480,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               </div>
 
               <section className="settings-section">
-                <label className="settings-label">Text-to-Speech</label>
+                <label className="settings-label">{t('settings.tts')}</label>
                 <div className="switch-row" style={{ marginBottom: 8 }}>
-                  <span>Enable TTS</span>
+                  <span>{t('settings.enableTts')}</span>
                   <button
                     className={`switch ${settings.ttsEnabled ? 'on' : ''}`}
                     onClick={() => setSettings((prev) => ({ ...prev, ttsEnabled: !prev.ttsEnabled }))}
@@ -453,9 +507,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               </section>
 
               <section className="settings-section">
-                <label className="settings-label">Agent Mode</label>
+                <label className="settings-label">{t('settings.agentMode')}</label>
                 <div className="switch-row">
-                  <span>Enable agent mode</span>
+                  <span>{t('settings.enableAgent')}</span>
                   <button
                     className={`switch ${settings.agentMode ? 'on' : ''}`}
                     onClick={() => setSettings((prev) => ({ ...prev, agentMode: !prev.agentMode }))}
@@ -469,9 +523,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
               {settings.agentMode && (
                 <>
                   <section className="settings-section">
-                    <label className="settings-label">Auto-learn</label>
+                    <label className="settings-label">{t('settings.autoLearn')}</label>
                     <div className="switch-row">
-                      <span>Automatically learn from conversations</span>
+                      <span>{t('settings.autoLearnDesc')}</span>
                       <button
                         className={`switch ${settings.agentSettings.autoLearn ? 'on' : ''}`}
                         onClick={() => setSettings((prev) => ({
@@ -485,9 +539,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                     </div>
                   </section>
                   <section className="settings-section">
-                    <label className="settings-label">Auto-compact</label>
+                    <label className="settings-label">{t('settings.autoCompact')}</label>
                     <div className="switch-row">
-                      <span>Automatically compact context</span>
+                      <span>{t('settings.autoCompactDesc')}</span>
                       <button
                         className={`switch ${settings.agentSettings.autoCompact ? 'on' : ''}`}
                         onClick={() => setSettings((prev) => ({
@@ -508,9 +562,9 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
           {activeTab === 'system' && (
             <>
               <section className="settings-section">
-                <label className="settings-label">About</label>
+                <label className="settings-label">{t('settings.about')}</label>
                 <p className="settings-hint">
-                  Pi-AI Chat v0.1.0 — Multi-provider AI chat interface built with Go + React.
+                  {t('settings.aboutText')}
                 </p>
               </section>
             </>
@@ -520,7 +574,7 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
         <div className="modal-footer">
           <button className="btn-primary" onClick={handleSave}>
             <SaveOutlined size={14} />
-            {saved ? 'Saved!' : 'Save'}
+            {saved ? t('settings.savedExclaim') : t('settings.save')}
           </button>
         </div>
       </div>

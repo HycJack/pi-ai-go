@@ -3,7 +3,8 @@ import { Bot, CheckOutlined, CopyOutlined, UserOutlined } from '../icons';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBlock from './ThinkingBlock';
 import ToolCallBlock from './ToolCallBlock';
-import type { ToolCall } from '../types';
+import type { ToolCall, ImageAttachment } from '../types';
+import { useT } from '../i18n';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -12,6 +13,7 @@ interface ChatMessageProps {
   isLoading?: boolean;
   thinking?: string;
   toolCalls?: ToolCall[];
+  images?: ImageAttachment[];
   onSpeak?: () => void;
   onStopSpeak?: () => void;
   isSpeaking?: boolean;
@@ -24,11 +26,14 @@ function ChatMessageInner({
   isLoading,
   thinking,
   toolCalls,
+  images,
   onSpeak,
   onStopSpeak,
   isSpeaking,
 }: ChatMessageProps) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
 
   const handleCopy = async () => {
     try {
@@ -43,22 +48,42 @@ function ChatMessageInner({
       <div className="msg-row msg-row-user">
         <div className="msg-stack">
           <div className="msg-meta">
-            <span className="msg-author">You</span>
+            <span className="msg-author">{t('msg.you')}</span>
             <span className="msg-time">{timestamp}</span>
           </div>
-          <div className="msg-bubble user">
-            <MarkdownRenderer content={content} />
-          </div>
+          {images && images.length > 0 && (
+            <div className="msg-images">
+              {images.map((img, idx) => (
+                <img
+                  key={idx}
+                  src={img.data}
+                  alt={img.name || `${t('input.altImage')}-${idx}`}
+                  className="msg-image-thumb"
+                  onClick={() => setPreviewImg(img.data)}
+                />
+              ))}
+            </div>
+          )}
+          {content && (
+            <div className="msg-bubble user">
+              <MarkdownRenderer content={content} />
+            </div>
+          )}
           <div className="msg-actions">
             <button className="ghost-action" onClick={handleCopy}>
               {copied ? <CheckOutlined size={12} /> : <CopyOutlined size={12} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              <span>{copied ? t('msg.copied') : t('msg.copy')}</span>
             </button>
           </div>
         </div>
         <div className="msg-avatar user">
           <UserOutlined size={16} />
         </div>
+        {previewImg && (
+          <div className="msg-image-preview-overlay" onClick={() => setPreviewImg(null)}>
+            <img src={previewImg} alt={t('input.altPreview')} className="msg-image-preview" />
+          </div>
+        )}
       </div>
     );
   }
@@ -71,11 +96,11 @@ function ChatMessageInner({
       <div className="msg-stack">
         <div className="msg-meta">
           <span className="msg-author">Pi-AI</span>
-          <span className="msg-time">{timestamp || (isLoading ? 'generating…' : '')}</span>
+          <span className="msg-time">{timestamp || (isLoading ? t('msg.generating') : '')}</span>
         </div>
         <div className="msg-bubble assistant">
           <ThinkingBlock content={thinking || ''} />
-          <ToolCallBlock toolCalls={toolCalls || []} />
+          <ToolCallBlock toolCalls={toolCalls || []} isLoading={isLoading} />
           {content ? (
             <MarkdownRenderer content={content} />
           ) : (
@@ -84,7 +109,7 @@ function ChatMessageInner({
             (!toolCalls || toolCalls.length === 0) && (
               <div className="generating-row">
                 <span className="status-spinner" />
-                <span>Thinking…</span>
+                <span>{t('msg.thinking')}</span>
               </div>
             )
           )}
@@ -93,12 +118,12 @@ function ChatMessageInner({
           <div className="msg-actions">
             <button className="ghost-action" onClick={handleCopy}>
               {copied ? <CheckOutlined size={12} /> : <CopyOutlined size={12} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              <span>{copied ? t('msg.copied') : t('msg.copy')}</span>
             </button>
             {content && (onSpeak || onStopSpeak) && (
               <button className={`ghost-action ${isSpeaking ? 'is-active' : ''}`} onClick={isSpeaking ? onStopSpeak : onSpeak}>
                 <span className="status-dot" style={{ background: isSpeaking ? 'var(--n-error)' : 'var(--n-primary)' }} />
-                <span>{isSpeaking ? 'Stop' : 'Speak'}</span>
+                <span>{isSpeaking ? t('msg.stopSpeak') : t('msg.speak')}</span>
               </button>
             )}
           </div>
