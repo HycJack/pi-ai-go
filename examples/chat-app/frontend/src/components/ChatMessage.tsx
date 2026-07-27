@@ -3,7 +3,8 @@ import { Bot, CheckOutlined, CopyOutlined, UserOutlined } from '../icons';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBlock from './ThinkingBlock';
 import ToolCallBlock from './ToolCallBlock';
-import type { ToolCall, ImageAttachment } from '../types';
+import AgentSteps from './AgentSteps';
+import type { ToolCall, ImageAttachment, AgentStep } from '../types';
 import { useT } from '../i18n';
 
 interface ChatMessageProps {
@@ -13,6 +14,7 @@ interface ChatMessageProps {
   isLoading?: boolean;
   thinking?: string;
   toolCalls?: ToolCall[];
+  steps?: AgentStep[];
   images?: ImageAttachment[];
   onSpeak?: () => void;
   onStopSpeak?: () => void;
@@ -26,6 +28,7 @@ function ChatMessageInner({
   isLoading,
   thinking,
   toolCalls,
+  steps,
   images,
   onSpeak,
   onStopSpeak,
@@ -99,14 +102,21 @@ function ChatMessageInner({
           <span className="msg-time">{timestamp || (isLoading ? t('msg.generating') : '')}</span>
         </div>
         <div className="msg-bubble assistant">
-          <ThinkingBlock content={thinking || ''} />
-          <ToolCallBlock toolCalls={toolCalls || []} isLoading={isLoading} />
+          {steps && steps.length > 0 ? (
+            <AgentSteps steps={steps} isLoading={isLoading} />
+          ) : (
+            <>
+              <ThinkingBlock content={thinking || ''} />
+              <ToolCallBlock toolCalls={toolCalls || []} isLoading={isLoading} />
+            </>
+          )}
           {content ? (
             <MarkdownRenderer content={content} />
           ) : (
             isLoading &&
             !thinking &&
-            (!toolCalls || toolCalls.length === 0) && (
+            (!toolCalls || toolCalls.length === 0) &&
+            (!steps || steps.length === 0) && (
               <div className="generating-row">
                 <span className="status-spinner" />
                 <span>{t('msg.thinking')}</span>

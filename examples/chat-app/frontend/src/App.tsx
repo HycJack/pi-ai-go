@@ -1,15 +1,18 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import SettingsPanel from './components/SettingsPanel';
+import FileTabBar, { type FileTab } from './components/FileTabBar';
+import FilePreview from './components/FilePreview';
 import { OnboardingApp } from './components/generic-onboarding';
 import type { OnboardingResult } from './components/generic-onboarding';
 import { Message, Conversation, Settings, DEFAULT_SETTINGS, getCurrentProvider, PROVIDER_TYPES, getProviderTypeName, ImageAttachment } from './types';
+import { log } from './utils/logger';
 import {
   StreamMessage, CancelStream,
   AgentMessage, GetSettings, SaveSettings,
   GetMemory, SetMemoryEntry, DeleteMemoryEntry, GetContextStats,
-  GetConversations, SaveConversation, DeleteConversation, GetModels, CaptureScreen,
+  GetConversations, SaveConversation, DeleteConversation, GetModels,
 } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 import { RefreshOutlined } from './icons';
@@ -45,6 +48,9 @@ function App() {
   const [memoryEntries, setMemoryEntries] = useState<{key: string; value: string; category?: string}[]>([]);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [fileTabs, setFileTabs] = useState<FileTab[]>([]);
+  const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [models, setModels] = useState<{id: string; name: string; reasoning?: boolean; thinkingLevelMap?: Record<string, string>}[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -83,9 +89,11 @@ function App() {
             maxTokens: s.maxTokens ?? DEFAULT_SETTINGS.maxTokens,
             temperature: s.temperature ?? DEFAULT_SETTINGS.temperature,
             reasoning: s.reasoning || DEFAULT_SETTINGS.reasoning,
+            workingDir: s.workingDir || DEFAULT_SETTINGS.workingDir,
             ttsEnabled: s.ttsEnabled ?? DEFAULT_SETTINGS.ttsEnabled,
             ttsVoice: s.ttsVoice || DEFAULT_SETTINGS.ttsVoice,
             agentMode: s.agentMode ?? DEFAULT_SETTINGS.agentMode,
+            locale: s.locale || raw.locale || DEFAULT_SETTINGS.locale,
             agentSettings: {
               autoLearn: raw.autoLearn ?? s.agentSettings?.autoLearn ?? DEFAULT_SETTINGS.agentSettings.autoLearn,
               autoCompact: raw.autoCompact ?? s.agentSettings?.autoCompact ?? DEFAULT_SETTINGS.agentSettings.autoCompact,
@@ -96,8 +104,12 @@ function App() {
           // Trigger onboarding if the current provider has no API key
           // (unless it's a local-only provider like Ollama)
           const cp = getCurrentProvider(merged);
+          // Trigger onboarding only if this is a fresh install:
+          // - no API key or API key pool configured
+          // - AND no existing conversations (i.e. not a returning user)
           const isLocal = cp?.type === 'ollama';
-          if (cp && !isLocal && !cp.apiKey) {
+          const hasKey = !!(cp?.apiKey || (cp?.apiKeys && cp.apiKeys.length > 0));
+          if (cp && !isLocal && !hasKey && !merged.locale) {
             setShowOnboarding(true);
           }
         }
@@ -154,8 +166,15 @@ function App() {
     };
   }, [settings, settingsLoaded]);
 
+  const initialLoadRef = useRef(true);
   const saveConvsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    // Skip save on initial load to avoid rewriting conversation files
+    // with potentially different JSON formatting on every startup.
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      return;
+    }
     if (saveConvsTimeoutRef.current) clearTimeout(saveConvsTimeoutRef.current);
     saveConvsTimeoutRef.current = setTimeout(() => {
       // Save each conversation to its own file
@@ -279,6 +298,15 @@ function App() {
 
     cleanups.push(handler('stream-done', () => {
       updateAssistantInConv(convId, (m) => {
+        if (!m.content) {
+          log.warn('[frontend] stream-done but content is empty', { convId, msgId: m.id });
+          return {
+            ...m,
+            content: '(模型未返回任何内容，请检查模型设置或重试)',
+            timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+        log.info('[frontend] stream-done, content length=' + m.content.length);
         if (!m.timestamp) {
           return { ...m, timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) };
         }
@@ -291,6 +319,7 @@ function App() {
     }));
 
     cleanups.push(handler('stream-error', (error: string) => {
+      log.error('[frontend] stream-error', { error, convId });
       updateAssistantInConv(convId, (m) => {
         if (!m.content) {
           return { ...m, content: error, timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) };
@@ -303,20 +332,56 @@ function App() {
     }));
 
     cleanups.push(handler('agent-text-delta', (delta: string) => {
-      updateAssistantInConv(convId, (m) => ({ ...m, content: m.content + delta }));
+      updateAssistantInConv(convId, (m) => {
+        const steps = [...(m.steps || [])];
+        const last = steps[steps.length - 1];
+
+        // Check if there is a running tool call — if so, this text delta
+        // is an intermediate utterance during tool execution, not the final
+        // assistant reply. Append to steps only, not to content.
+        const hasRunningToolCall = steps.some(
+          (s) => s.type === 'tool_call' && s.status === 'running',
+        );
+
+        if (last && last.type === 'text') {
+          steps[steps.length - 1] = { ...last, content: last.content + delta };
+        } else {
+          steps.push({ type: 'text', content: delta });
+        }
+
+        if (hasRunningToolCall) {
+          // Intermediate text — do not append to content.
+          return { ...m, steps };
+        }
+        return { ...m, content: m.content + delta, steps };
+      });
     }));
 
     cleanups.push(handler('agent-thinking-delta', (delta: string) => {
-      updateAssistantInConv(convId, (m) => ({ ...m, thinking: (m.thinking || '') + delta }));
+      updateAssistantInConv(convId, (m) => {
+        const steps = [...(m.steps || [])];
+        const last = steps[steps.length - 1];
+        if (last && last.type === 'thinking') {
+          steps[steps.length - 1] = { ...last, content: last.content + delta };
+        } else {
+          steps.push({ type: 'thinking', content: delta });
+        }
+        return { ...m, thinking: (m.thinking || '') + delta, steps };
+      });
     }));
 
     cleanups.push(handler('agent-tool-call-start', (data: string) => {
       try {
         const tc = JSON.parse(data);
-        updateAssistantInConv(convId, (m) => ({
-          ...m,
-          toolCalls: [...(m.toolCalls || []), { id: tc.id, name: tc.name, arguments: '' }],
-        }));
+        updateAssistantInConv(convId, (m) => {
+          const steps = [...(m.steps || [])];
+          steps.push({ type: 'tool_call', content: '', toolName: tc.name, toolCallId: tc.id, status: 'running' });
+          return {
+            ...m,
+            toolCalls: [...(m.toolCalls || []), { id: tc.id, name: tc.name, arguments: '' }],
+            steps,
+          };
+        });
       } catch (e) { console.error(e); }
     }));
 
@@ -326,7 +391,15 @@ function App() {
         if (tcs.length > 0) {
           tcs[tcs.length - 1] = { ...tcs[tcs.length - 1], arguments: tcs[tcs.length - 1].arguments + delta };
         }
-        return { ...m, toolCalls: tcs };
+        // Also update the last tool_call step.
+        const steps = [...(m.steps || [])];
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'tool_call' && steps[i].status === 'running') {
+            steps[i] = { ...steps[i], content: steps[i].content + delta };
+            break;
+          }
+        }
+        return { ...m, toolCalls: tcs, steps };
       });
     }));
 
@@ -336,12 +409,61 @@ function App() {
         if (tcs.length > 0) {
           tcs[tcs.length - 1] = { ...tcs[tcs.length - 1], arguments: args };
         }
-        return { ...m, toolCalls: tcs };
+        const steps = [...(m.steps || [])];
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'tool_call' && steps[i].status === 'running') {
+            steps[i] = { ...steps[i], content: args };
+            break;
+          }
+        }
+        return { ...m, toolCalls: tcs, steps };
+      });
+    }));
+
+    cleanups.push(handler('agent-tool-result', (result: string) => {
+      updateAssistantInConv(convId, (m) => {
+        const steps = [...(m.steps || [])];
+        // Mark the last running tool_call as done, and push a tool_result step.
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'tool_call' && steps[i].status === 'running') {
+            steps[i] = { ...steps[i], status: 'done' };
+            break;
+          }
+        }
+        steps.push({ type: 'tool_result', content: result });
+        return { ...m, steps };
+      });
+    }));
+
+    cleanups.push(handler('agent-tool-exec-end', (data: string) => {
+      updateAssistantInConv(convId, (m) => {
+        const steps = [...(m.steps || [])];
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].type === 'tool_call' && steps[i].status === 'running') {
+            try {
+              const parsed = JSON.parse(data);
+              steps[i] = { ...steps[i], status: parsed.success === false ? 'error' : 'done' };
+            } catch {
+              steps[i] = { ...steps[i], status: 'done' };
+            }
+            break;
+          }
+        }
+        return { ...m, steps };
       });
     }));
 
     cleanups.push(handler('agent-done', () => {
       updateAssistantInConv(convId, (m) => {
+        if (!m.content) {
+          log.warn('[frontend] agent-done but content is empty', { convId, msgId: m.id });
+          return {
+            ...m,
+            content: '(模型未返回任何内容，请检查模型设置或重试)',
+            timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+        log.info('[frontend] agent-done, content length=' + m.content.length);
         if (!m.timestamp) {
           return { ...m, timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) };
         }
@@ -355,6 +477,7 @@ function App() {
     }));
 
     cleanups.push(handler('agent-error', (error: string) => {
+      log.error('[frontend] agent-error', { error, convId });
       updateAssistantInConv(convId, (m) => {
         if (!m.content) {
           return { ...m, content: `Error: ${error}`, timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) };
@@ -365,6 +488,8 @@ function App() {
       currentStreamRef.current = null;
       sendingRef.current = null;
     }));
+
+
 
     return () => {
       cleanups.forEach((fn) => fn());
@@ -497,9 +622,11 @@ function App() {
 
     try {
       if (settings.agentMode) {
+        log.info('[frontend] sending AgentMessage', { provider: providerType, model: settings.model, history: historyMessages.length, images: images?.length || 0 });
         const req = JSON.stringify({
           message,
           messages: historyMessages,
+          conversationId: activeConversationId,
           provider: providerType,
           apiKey,
           baseUrl,
@@ -511,6 +638,7 @@ function App() {
         });
         await AgentMessage(req);
       } else {
+        log.info('[frontend] sending StreamMessage', { provider: providerType, model: settings.model, history: historyMessages.length, images: images?.length || 0 });
         await StreamMessage({
           message,
           messages: historyMessages,
@@ -525,6 +653,7 @@ function App() {
         });
       }
     } catch (error) {
+      log.error('[frontend] send error', error);
       console.error('Error:', error);
       setConversations((prev) =>
         prev.map((c) =>
@@ -636,6 +765,33 @@ function App() {
     );
   }, [activeConversationId]);
 
+  const handleOpenFile = useCallback((filePath: string, fileName: string) => {
+    const tabId = filePath;
+    setFileTabs((prev) => {
+      const existing = prev.find((t) => t.id === tabId);
+      if (existing) return prev;
+      return [...prev, { id: tabId, label: fileName, filePath }];
+    });
+    setActiveFileTabId(tabId);
+    setRightPanelOpen(true);
+  }, []);
+
+  const handleCloseFileTab = useCallback((tabId: string) => {
+    setFileTabs((prev) => {
+      const remaining = prev.filter((t) => t.id !== tabId);
+      if (remaining.length === 0) {
+        setRightPanelOpen(false);
+      }
+      return remaining;
+    });
+    setActiveFileTabId((cur) => {
+      if (cur !== tabId) return cur;
+      // Switch to the last remaining tab or null
+      const remaining = fileTabs.filter((t) => t.id !== tabId);
+      return remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+    });
+  }, [fileTabs]);
+
   const handleCancel = useCallback(() => {
     CancelStream().catch(() => {});
     if (eventCleanupRef.current) {
@@ -670,9 +826,12 @@ function App() {
     const locale = (result.locale === 'en' ? 'en' : 'zh') as 'zh' | 'en';
     setLocale(locale);
     saveLocaleToStorage(locale);
+    const ws = result.workspace;
+    const workingDir = ws && !ws.useDefault && ws.path ? ws.path : '';
     const newSettings: Settings = {
       ...DEFAULT_SETTINGS,
       locale,
+      workingDir,
       providers: [
         {
           name: providerName,
@@ -700,35 +859,67 @@ function App() {
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
 
-  // Get working dir from the current provider's base URL or a static field
-  const workingDir = '';
+  // Get working dir
+  const workingDir = settings?.workingDir || '';
+
+  // Sort conversations by timestamp descending (newest first).
+  const sortedConversations = useMemo(() => {
+    return [...conversations].sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return tb - ta; // descending
+    });
+  }, [conversations]);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className="app-shell">
       {showOnboarding && (
         <OnboardingApp
           onComplete={handleOnboardingComplete}
           onFinish={handleOnboardingFinish}
         />
       )}
-      <Sidebar
-        conversations={conversations}
-        activeConversation={activeConversationId}
-        workingDir={workingDir}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-        onSelectConversation={selectConversation}
-        onCreateNewConversation={createNewConversation}
-        onDeleteConversation={deleteConversation}
-        onRenameConversation={renameConversation}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
+
+      {/* Left sidebar with animated width */}
+      <div className={`sidebar-container ${sidebarCollapsed ? 'sidebar-closed' : 'sidebar-open'}`}>
+        <Sidebar
+          conversations={sortedConversations}
+          activeConversation={activeConversationId}
+          workingDir={workingDir}
+          onSelectConversation={selectConversation}
+          onCreateNewConversation={createNewConversation}
+          onDeleteConversation={deleteConversation}
+          onRenameConversation={renameConversation}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenFile={handleOpenFile}
+        />
+      </div>
 
       <div className="main-frame">
         {activeConversation ? (
           <>
             <div className="topbar">
               <div className="topbar-left">
+                {/* Sidebar toggle button — like pi-web */}
+                <button
+                  onClick={() => setSidebarCollapsed((v) => !v)}
+                  title={sidebarCollapsed ? t('app.expandSidebar') : t('app.collapseSidebar')}
+                  aria-label={sidebarCollapsed ? t('app.expandSidebar') : t('app.collapseSidebar')}
+                  className="sidebar-toggle-btn"
+                >
+                  {sidebarCollapsed ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <line x1="3" y1="12" x2="21" y2="12" />
+                      <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                    </svg>
+                  )}
+                </button>
                 <div className="breadcrumb">
                   <span className="crumb-root">{t('breadcrumb.conversations')}</span>
                   <span className="crumb-sep">/</span>
@@ -763,14 +954,6 @@ function App() {
               currentThinkingLevel={settings.reasoning}
               onModelChange={(model) => setSettings((prev) => ({ ...prev, model }))}
               onThinkingLevelChange={(level) => setSettings((prev) => ({ ...prev, reasoning: level }))}
-              onCaptureScreen={async () => {
-                try {
-                  return await CaptureScreen(0);
-                } catch (e) {
-                  console.error('capture failed', e);
-                  return null;
-                }
-              }}
             />
           </>
         ) : (
@@ -789,17 +972,43 @@ function App() {
             currentThinkingLevel={settings.reasoning}
             onModelChange={(model) => setSettings((prev) => ({ ...prev, model }))}
             onThinkingLevelChange={(level) => setSettings((prev) => ({ ...prev, reasoning: level }))}
-            onCaptureScreen={async () => {
-              try {
-                return await CaptureScreen(0);
-              } catch (e) {
-                console.error('capture failed', e);
-                return null;
-              }
-            }}
           />
         )}
       </div>
+
+      {/* Right panel: file preview with tabs — like pi-web */}
+      <div
+        className={`right-panel-container ${rightPanelOpen ? 'right-panel-open' : 'right-panel-closed'}`}
+      >
+        {fileTabs.length > 0 && (
+          <FileTabBar
+            tabs={fileTabs}
+            activeTabId={activeFileTabId}
+            onSelectTab={setActiveFileTabId}
+            onCloseTab={handleCloseFileTab}
+          />
+        )}
+        <div className="right-panel-body">
+          {activeFileTabId ? (
+            <FilePreview filePath={activeFileTabId} />
+          ) : (
+            <div className="file-preview-empty">{t('fileExplorer.noFileSelected')}</div>
+          )}
+        </div>
+      </div>
+
+      {/* File panel toggle — fixed at top-right, like pi-web */}
+      <button
+        onClick={() => setRightPanelOpen((v) => !v)}
+        title={rightPanelOpen ? t('app.hideFilePanel') : t('app.showFilePanel')}
+        aria-label={rightPanelOpen ? t('app.hideFilePanel') : t('app.showFilePanel')}
+        className="right-panel-toggle-btn"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <line x1="15" y1="3" x2="15" y2="21" />
+        </svg>
+      </button>
 
       {isSettingsOpen && (
         <SettingsPanel

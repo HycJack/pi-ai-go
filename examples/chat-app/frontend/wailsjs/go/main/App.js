@@ -10,14 +10,6 @@ export function CancelStream() {
   return window['go']['main']['App']['CancelStream']();
 }
 
-export function CaptureRegion(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['CaptureRegion'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function CaptureScreen(arg1) {
-  return window['go']['main']['App']['CaptureScreen'](arg1);
-}
-
 export function DeleteConversation(arg1) {
   return window['go']['main']['App']['DeleteConversation'](arg1);
 }
@@ -50,16 +42,16 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
-export function NumDisplays() {
-  return window['go']['main']['App']['NumDisplays']();
+export function ListDirectory(arg1) {
+  return window['go']['main']['App']['ListDirectory'](arg1);
+}
+
+export function ReadTextFile(arg1) {
+  return window['go']['main']['App']['ReadTextFile'](arg1);
 }
 
 export function SaveConversation(arg1, arg2) {
   return window['go']['main']['App']['SaveConversation'](arg1, arg2);
-}
-
-export function SaveConversations(arg1) {
-  return window['go']['main']['App']['SaveConversations'](arg1);
 }
 
 export function SaveSettings(arg1) {
@@ -76,4 +68,8 @@ export function SetMemoryEntry(arg1, arg2, arg3) {
 
 export function StreamMessage(arg1) {
   return window['go']['main']['App']['StreamMessage'](arg1);
+}
+
+export function WriteLog(arg1, arg2) {
+  return window['go']['main']['App']['WriteLog'](arg1, arg2);
 }

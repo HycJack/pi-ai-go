@@ -3,15 +3,13 @@ import {
   CheckOutlined2,
   DeleteOutlined,
   FolderOpenOutlined,
-  MenuOutlined,
   MessageOutlined,
   PlusOutlined,
   SettingOutlined,
   UserOutlined,
-  ChevronLeftOutlined,
-  ChevronRightOutlined,
 } from '../icons';
 import { useT } from '../i18n';
+import FileExplorer from './FileExplorer';
 
 interface Conversation {
   id: string;
@@ -23,31 +21,30 @@ interface SidebarProps {
   conversations: Conversation[];
   activeConversation: string | null;
   workingDir: string;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
   onSelectConversation: (id: string) => void;
   onCreateNewConversation: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, title: string) => void;
   onOpenSettings: () => void;
+  onOpenFile?: (filePath: string, fileName: string) => void;
 }
 
 export default function Sidebar({
   conversations,
   activeConversation,
   workingDir,
-  collapsed,
-  onToggleCollapse,
   onSelectConversation,
   onCreateNewConversation,
   onDeleteConversation,
   onRenameConversation,
   onOpenSettings,
+  onOpenFile,
 }: SidebarProps) {
   const t = useT();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [treeExpanded, setTreeExpanded] = useState(true);
 
   const dirName = workingDir ? workingDir.split(/[\\/]/).filter(Boolean).slice(-1)[0] : '';
 
@@ -86,26 +83,6 @@ export default function Sidebar({
 
   const cancelDelete = () => setConfirmDeleteId(null);
 
-  if (collapsed) {
-    return (
-      <aside className="app-sidebar collapsed">
-        <button className="nav-icon-btn sidebar-toggle" onClick={onToggleCollapse} aria-label={t('app.expandSidebar')}>
-          <MenuOutlined size={18} />
-        </button>
-        <button className="nav-icon-btn" onClick={onCreateNewConversation} title={t('app.newChat')}>
-          <PlusOutlined size={18} />
-        </button>
-        <div className="sidebar-spacer" />
-        <button className="nav-icon-btn" onClick={onOpenSettings} title={t('app.settings')}>
-          <SettingOutlined size={18} />
-        </button>
-        <button className="nav-icon-btn profile-link" title="Pi-AI">
-          <UserOutlined size={18} />
-        </button>
-      </aside>
-    );
-  }
-
   return (
     <aside className="app-sidebar">
       <div className="brand-block">
@@ -119,25 +96,12 @@ export default function Sidebar({
             <span>{t('sidebar.ready')}</span>
           </div>
         </div>
-        <button className="sidebar-collapse-btn" onClick={onToggleCollapse} title={t('app.collapseSidebar')} aria-label={t('app.collapseSidebar')}>
-          <ChevronLeftOutlined size={16} />
-        </button>
       </div>
 
       <button className="primary-cta" onClick={onCreateNewConversation}>
         <PlusOutlined size={16} />
         <span>{t('app.newChat')}</span>
       </button>
-
-      {workingDir && (
-        <div className="workspace-card" title={workingDir}>
-          <FolderOpenOutlined size={18} />
-          <div className="workspace-meta">
-            <div className="workspace-label">{t('sidebar.workingDir')}</div>
-            <div className="workspace-path">{dirName || t('sidebar.notSet')}</div>
-          </div>
-        </div>
-      )}
 
       <div className="history-list">
         <div className="history-list-header">
@@ -218,6 +182,26 @@ export default function Sidebar({
           })}
         </div>
       </div>
+
+      {workingDir && (
+        <div className="workspace-card" title={workingDir} onClick={() => setTreeExpanded(!treeExpanded)}>
+          <span className={`workspace-chevron ${treeExpanded ? 'expanded' : ''}`}>▸</span>
+          <FolderOpenOutlined size={18} />
+          <div className="workspace-meta">
+            <div className="workspace-label">{t('sidebar.workingDir')}</div>
+            <div className="workspace-path">{dirName || t('sidebar.notSet')}</div>
+          </div>
+        </div>
+      )}
+
+      {workingDir && treeExpanded && (
+        <div className="sidebar-file-tree">
+          <FileExplorer
+            workingDir={workingDir}
+            onOpenFile={onOpenFile}
+          />
+        </div>
+      )}
 
       <div className="sidebar-footer">
         <button className="nav-item" onClick={onOpenSettings}>

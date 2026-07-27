@@ -1,5 +1,5 @@
 import { KeyboardEvent, useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { SendOutlined, StopOutlined, Settings2, Brain, Camera, Paperclip, CloseCircle } from '../icons';
+import { SendOutlined, StopOutlined, Settings2, Brain, Paperclip, CloseCircle } from '../icons';
 import type { ImageAttachment } from '../types';
 import { useT } from '../i18n';
 
@@ -20,8 +20,6 @@ interface ChatInputProps {
   currentThinkingLevel?: string;
   onModelChange?: (model: string) => void;
   onThinkingLevelChange?: (level: string) => void;
-  /** Optional handler to capture a screenshot via the backend. Defaults to wails CaptureScreen. */
-  onCaptureScreen?: () => Promise<string | null>;
 }
 
 const THINKING_LEVELS = [
@@ -43,14 +41,12 @@ export default function ChatInput({
   currentThinkingLevel = '',
   onModelChange,
   onThinkingLevelChange,
-  onCaptureScreen,
 }: ChatInputProps) {
   const t = useT();
   const [value, setValue] = useState('');
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [pickerDropdown, setPickerDropdown] = useState<'top' | 'bottom'>('top');
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
-  const [capturing, setCapturing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,32 +124,6 @@ export default function ChatInput({
     }
   }, [addFiles]);
 
-  const handleScreenshot = useCallback(async () => {
-    setCapturing(true);
-    try {
-      let dataUrl: string | null = null;
-      if (onCaptureScreen) {
-        dataUrl = await onCaptureScreen();
-      } else {
-        // Lazy import to avoid breaking SSR / non-wails environments
-        const { CaptureScreen } = await import('../../wailsjs/go/main/App');
-        dataUrl = await CaptureScreen(0);
-      }
-      if (dataUrl) {
-        const url: string = dataUrl;
-        setAttachments((prev) => [...prev, {
-          data: url,
-          mimeType: 'image/png',
-          name: `screenshot-${Date.now()}.png`,
-        }]);
-      }
-    } catch (e: any) {
-      console.error('screenshot failed', e);
-    } finally {
-      setCapturing(false);
-    }
-  }, [onCaptureScreen]);
-
   const submit = () => {
     if (disabled) {
       onStop?.();
@@ -222,15 +192,6 @@ export default function ChatInput({
 
         <div className="composer-toolbar">
           <div className="composer-toolbar-left">
-            <button
-              type="button"
-              className="composer-icon-btn"
-              onClick={handleScreenshot}
-              disabled={disabled || capturing}
-              title={capturing ? t('input.capturing') : t('input.captureScreen')}
-            >
-              <Camera size={14} />
-            </button>
             <button
               type="button"
               className="composer-icon-btn"

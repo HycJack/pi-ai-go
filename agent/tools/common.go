@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -114,7 +113,10 @@ func executeListFiles(ctx context.Context, toolCallID string, params json.RawMes
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
 
-	useLong := args.Long || len(out) > 0 // default ON
+	// Default to long format. args.Long is kept for forward compatibility
+	// but we can't distinguish "unset" from "false" with a plain bool,
+	// so we always show the long format.
+	useLong := true
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Directory: %s\n", safePath)
@@ -526,18 +528,4 @@ func executeFindFiles(ctx context.Context, toolCallID string, params json.RawMes
 			"truncated": truncated,
 		}),
 	}, nil
-}
-
-// ─── OS hint helper ───────────────────────────────────────────────────────
-
-// osHint is a tiny helper used only by tooling/UX code that wants to
-// branch on the host OS in a portable way.
-func osHint() string {
-	if runtime.GOOS == "windows" {
-		return "windows"
-	}
-	if runtime.GOOS == "darwin" {
-		return "macos"
-	}
-	return "linux"
 }

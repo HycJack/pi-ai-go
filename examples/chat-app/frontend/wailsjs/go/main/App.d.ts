@@ -6,10 +6,6 @@ export function AgentMessage(arg1:string):Promise<void>;
 
 export function CancelStream():Promise<void>;
 
-export function CaptureRegion(arg1:number,arg2:number,arg3:number,arg4:number,arg5:number):Promise<string>;
-
-export function CaptureScreen(arg1:number):Promise<string>;
-
 export function DeleteConversation(arg1:string):Promise<void>;
 
 export function DeleteMemoryEntry(arg1:string):Promise<void>;
@@ -26,11 +22,11 @@ export function GetModels(arg1:Record<string, any>):Promise<Array<main.ModelInfo
 
 export function GetSettings():Promise<string>;
 
-export function NumDisplays():Promise<number>;
+export function ListDirectory(arg1:string):Promise<string>;
+
+export function ReadTextFile(arg1:string):Promise<string>;
 
 export function SaveConversation(arg1:string,arg2:string):Promise<void>;
-
-export function SaveConversations(arg1:string):Promise<void>;
 
 export function SaveSettings(arg1:string):Promise<void>;
 
@@ -39,3 +35,5 @@ export function SetAutoLearnEnabled(arg1:boolean):Promise<void>;
 export function SetMemoryEntry(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function StreamMessage(arg1:Record<string, any>):Promise<void>;
+
+export function WriteLog(arg1:string,arg2:string):Promise<void>;

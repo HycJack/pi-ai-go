@@ -20,10 +20,17 @@ const dict: Dict = {
   'app.newChat': { zh: '新建对话', en: 'New chat' },
   'app.search': { zh: '搜索对话…', en: 'Search conversations…' },
   'app.settings': { zh: '设置', en: 'Settings' },
-  'app.collapseSidebar': { zh: '收起侧边栏', en: 'Collapse sidebar' },
   'app.expandSidebar': { zh: '展开侧边栏', en: 'Expand sidebar' },
+  'app.collapseSidebar': { zh: '收起侧边栏', en: 'Collapse sidebar' },
+  'app.showFilePanel': { zh: '显示文件面板', en: 'Show file panel' },
+  'app.hideFilePanel': { zh: '隐藏文件面板', en: 'Hide file panel' },
   'app.runOnboarding': { zh: '重新引导', en: 'Run onboarding' },
   'app.onboardingDone': { zh: '设置已完成，开始使用吧！', en: 'Setup complete. Ready to go!' },
+  'app.expandFileExplorer': { zh: '展开文件浏览器', en: 'Expand file explorer' },
+  'app.collapseFileExplorer': { zh: '收起文件浏览器', en: 'Collapse file explorer' },
+  'app.loading': { zh: '加载中…', en: 'Loading…' },
+  'app.refresh': { zh: '刷新', en: 'Refresh' },
+  'app.goUp': { zh: '上级目录', en: 'Go up' },
 
   // 输入框
   'input.placeholder': { zh: '输入消息…', en: 'Message Pi-AI…' },
@@ -31,13 +38,7 @@ const dict: Dict = {
   'input.stop': { zh: '停止', en: 'Stop' },
   'input.generating': { zh: '生成中…', en: 'Generating…' },
   'input.captureScreen': { zh: '截屏', en: 'Capture screenshot' },
-  'input.capturing': { zh: '截图中…', en: 'Capturing…' },
-  'input.attachImage': { zh: '添加图片', en: 'Attach image' },
-  'input.selectRegion': { zh: '选择截图区域', en: 'Select screenshot region' },
-  'input.captureFull': { zh: '全屏截图', en: 'Full screen' },
-  'input.captureRegion': { zh: '区域截图', en: 'Region' },
-  'input.cancelCapture': { zh: '取消', en: 'Cancel' },
-  'input.confirmCapture': { zh: '确认截图', en: 'Confirm' },
+  'chatArea.emptyMessage': { zh: '暂无消息', en: 'No messages' },
 
   // 消息
   'msg.you': { zh: '你', en: 'You' },
@@ -88,6 +89,9 @@ const dict: Dict = {
   'settings.cancel': { zh: '取消', en: 'Cancel' },
   'settings.add': { zh: '添加', en: 'Add' },
   'settings.language': { zh: '语言', en: 'Language' },
+  'settings.workingDir': { zh: '工作目录', en: 'Working Directory' },
+  'settings.workingDirPlaceholder': { zh: '例如: C:\\Projects\\my-app', en: 'e.g. /home/user/projects' },
+  'settings.workingDirHint': { zh: '文件工具（读写编辑等）的操作将被限制在此目录内', en: 'File tool operations will be restricted to this directory' },
 
   // Onboarding
   'onboarding.welcomeTitle': { zh: '欢迎使用 Pi-AI Chat', en: 'Welcome to Pi-AI Chat' },
@@ -144,9 +148,16 @@ const dict: Dict = {
   'thinking.title': { zh: '思考', en: 'Thinking' },
 
   // 工具调用
-  'tool.calls': { zh: '工具调用', en: 'Tool calls' },
+  'tool.calls': { zh: '工具调用', en: 'tool calls' },
   'tool.running': { zh: '运行中', en: 'running' },
   'tool.done': { zh: '完成', en: 'done' },
+  'tool.result': { zh: '工具结果', en: 'Result' },
+  'tool.process': { zh: '过程', en: 'Process' },
+
+  // File explorer
+  'fileExplorer.noWorkingDir': { zh: '请先在设置中配置工作目录', en: 'Set a working directory in Settings first' },
+  'fileExplorer.empty': { zh: '目录为空', en: 'Empty directory' },
+  'fileExplorer.noFileSelected': { zh: '无打开的文件', en: 'No file open' },
 
   // 输入框补充
   'input.selectModel': { zh: '选择模型', en: 'Select model' },
@@ -166,6 +177,7 @@ const dict: Dict = {
   'code.mermaidLoading': { zh: '正在渲染图表…', en: 'Rendering diagram...' },
   'code.mermaidError': { zh: 'Mermaid 渲染错误', en: 'Mermaid render error' },
   'code.clickToExpand': { zh: '点击放大', en: 'Click to expand' },
+  'code.mermaidScrollHint': { zh: '滚轮缩放 · 拖拽平移 · 点击空白关闭', en: 'Scroll to zoom · Drag to pan · Click outside to close' },
 
   // 设置面板补充
   'settings.close': { zh: '关闭', en: 'Close' },

@@ -15,12 +15,24 @@ export interface Message {
   thinking?: string;
   toolCalls?: ToolCall[];
   images?: ImageAttachment[];
+  /** Ordered agent steps (thinking, tool_call, tool_result, text). */
+  steps?: AgentStep[];
 }
 
 export interface ToolCall {
   id: string;
   name: string;
   arguments: string;
+}
+
+export type AgentStepType = 'thinking' | 'tool_call' | 'tool_result' | 'text';
+
+export interface AgentStep {
+  type: AgentStepType;
+  content: string;
+  toolName?: string;
+  toolCallId?: string;
+  status?: 'running' | 'done' | 'error';
 }
 
 export interface Conversation {
@@ -51,6 +63,7 @@ export interface Settings {
   maxTokens: number;
   temperature: number;
   reasoning: string;
+  workingDir: string;
   ttsEnabled: boolean;
   ttsVoice: string;
   agentMode: boolean;
@@ -73,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxTokens: 4096,
   temperature: 1.0,
   reasoning: 'medium',
+  workingDir: '',
   ttsEnabled: false,
   ttsVoice: 'zh-CN',
   agentMode: true,

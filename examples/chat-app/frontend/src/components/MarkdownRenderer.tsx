@@ -108,10 +108,12 @@ function HtmlBlock({ html }: { html: string }) {
   );
 }
 
-// ── Mermaid diagram component ──
+// ── Mermaid diagram component with drag-to-pan and scroll-to-zoom ──
 function MermaidDiagram({ chart }: { chart: string }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{ startX: number; startY: number; startScrollLeft: number; startScrollTop: number } | null>(null);
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [expanded, setExpanded] = useState(false);
@@ -138,6 +140,88 @@ function MermaidDiagram({ chart }: { chart: string }) {
     return () => { cancelled = true; };
   }, [chart]);
 
+  // ── Drag-to-pan handler for the zoomed preview ──
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!previewRef.current) return;
+    // Only on left button
+    if (e.button !== 0) return;
+    // Don't start drag if user clicked a link or interactive element
+    const target = e.target as HTMLElement;
+    if (target.closest('a, button, [role="button"]')) return;
+
+    // Check if the content is scrollable (i.e., zoomed in enough)
+    const el = previewRef.current;
+    const hasOverflow = el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight;
+    if (!hasOverflow) return;
+
+    dragStateRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: el.scrollLeft,
+      startScrollTop: el.scrollTop,
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragStateRef.current) return;
+      const dx = ev.clientX - dragStateRef.current.startX;
+      const dy = ev.clientY - dragStateRef.current.startY;
+      el.scrollLeft = dragStateRef.current.startScrollLeft - dx;
+      el.scrollTop = dragStateRef.current.startScrollTop - dy;
+      el.style.cursor = 'grabbing';
+    };
+
+    const onMouseUp = () => {
+      dragStateRef.current = null;
+      el.style.cursor = '';
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  // ── Scroll-to-zoom handler ──
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!previewRef.current) return;
+    const el = previewRef.current;
+    const scaleStep = 0.12;
+    const maxScale = 5;
+    const minScale = 0.5;
+
+    // Get current scale from transform or default to 1
+    const currentTransform = el.style.transform || 'scale(1)';
+    const match = currentTransform.match(/scale\(([\d.]+)\)/);
+    let currentScale = match ? parseFloat(match[1]) : 1;
+
+    let newScale = currentScale;
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      newScale = Math.max(minScale, Math.min(maxScale, currentScale - e.deltaY * scaleStep * 0.01));
+    } else {
+      // Without Ctrl, normal scroll is horizontal panning (for wide diagrams)
+      el.scrollLeft += e.deltaY * 1.5;
+      return;
+    }
+
+    // Calculate mouse position relative to the element
+    const rect = el.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Zoom towards mouse position
+    const scaleRatio = newScale / currentScale;
+    el.scrollLeft = mouseX + (el.scrollLeft - mouseX) * scaleRatio;
+    el.scrollTop = mouseY + (el.scrollTop - mouseY) * scaleRatio;
+
+    // Apply scale via transform on the inner content wrapper
+    const inner = el.firstElementChild as HTMLElement | null;
+    if (inner) {
+      inner.style.transform = `scale(${newScale})`;
+      inner.style.transformOrigin = '0 0';
+    }
+  }, []);
+
   if (error) {
     return (
       <div className="mermaid-error">
@@ -161,10 +245,20 @@ function MermaidDiagram({ chart }: { chart: string }) {
         {expanded && (
           <div className="mermaid-preview-overlay" onClick={() => setExpanded(false)}>
             <div
-              className="mermaid-preview-content"
-              onClick={(event) => event.stopPropagation()}
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
+              ref={previewRef}
+              className="mermaid-preview-content zoomable"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={handleMouseDown}
+              onWheel={handleWheel}
+            >
+              <div
+                className="mermaid-preview-svg-wrap"
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            </div>
+            <div className="mermaid-preview-hint">
+              {t('code.mermaidScrollHint')}
+            </div>
           </div>
         )}
       </>

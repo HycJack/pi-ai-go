@@ -26,7 +26,6 @@ interface ChatAreaProps {
   currentThinkingLevel?: string;
   onModelChange?: (model: string) => void;
   onThinkingLevelChange?: (level: string) => void;
-  onCaptureScreen?: () => Promise<string | null>;
 }
 
 const SUGGESTION_KEYS = [
@@ -60,7 +59,6 @@ export default function ChatArea({
   currentThinkingLevel,
   onModelChange,
   onThinkingLevelChange,
-  onCaptureScreen,
 }: ChatAreaProps) {
   const t = useT();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -166,7 +164,6 @@ export default function ChatArea({
           currentThinkingLevel={currentThinkingLevel}
           onModelChange={onModelChange}
           onThinkingLevelChange={onThinkingLevelChange}
-          onCaptureScreen={onCaptureScreen}
         />
       </section>
     );
@@ -187,6 +184,7 @@ export default function ChatArea({
               isLoading={msg.role === 'assistant' && isLoading && msg.id === lastId}
               thinking={msg.thinking}
               toolCalls={msg.toolCalls}
+              steps={msg.steps}
               images={msg.images}
               onSpeak={
                 msg.role === 'assistant' && msg.content && speakingMessageId !== msg.id
@@ -224,7 +222,6 @@ export default function ChatArea({
         currentThinkingLevel={currentThinkingLevel}
         onModelChange={onModelChange}
         onThinkingLevelChange={onThinkingLevelChange}
-        onCaptureScreen={onCaptureScreen}
       />
     </section>
   );

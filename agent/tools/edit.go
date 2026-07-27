@@ -70,9 +70,6 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 	if count == 0 {
 		return errResult(fmt.Sprintf("edit_file: oldText not found in %s", safePath)), nil
 	}
-	if !args.AllOccurrences && count > 1 {
-		return errResult(fmt.Sprintf("edit_file: oldText matches %d times in %s; pass allOccurrences=true to replace all", count, safePath)), nil
-	}
 
 	var out string
 	replacements := 1
@@ -80,7 +77,11 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 		out = strings.ReplaceAll(src, args.OldText, args.NewText)
 		replacements = count
 	} else {
+		// Default: replace only the first occurrence, even when there
+		// are multiple matches. The result message notes how many
+		// other matches were left untouched.
 		out = strings.Replace(src, args.OldText, args.NewText, 1)
+		replacements = 1
 	}
 
 	if execEnv != nil {
@@ -96,10 +97,15 @@ func executeEdit(ctx context.Context, toolCallID string, params json.RawMessage,
 	details, _ := json.Marshal(map[string]any{
 		"filePath":     safePath,
 		"replacements": replacements,
+		"matchesLeft":  count - replacements,
 		"bytes":        len(out),
 	})
+	msg := fmt.Sprintf("Edited %s (%d replacement(s))", safePath, replacements)
+	if !args.AllOccurrences && count > 1 {
+		msg += fmt.Sprintf("; %d more match(es) left — use allOccurrences=true to replace them", count-1)
+	}
 	return core.AgentToolResult{
-		Content: textBlock(fmt.Sprintf("Edited %s (%d replacement(s))", safePath, replacements)),
+		Content: textBlock(msg),
 		Details: details,
 	}, nil
 }

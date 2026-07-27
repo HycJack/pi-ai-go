@@ -129,9 +129,14 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
   }, []);
 
   const selectProvider = useCallback((idx: number) => {
+    if (expandedIdx === idx) {
+      // Toggle collapse if clicking the same one
+      setExpandedIdx(null);
+      return;
+    }
     setSettings((prev) => ({ ...prev, currentProviderIndex: idx }));
     setExpandedIdx(idx);
-  }, []);
+  }, [expandedIdx]);
 
   const updateProvider = useCallback((idx: number, updater: (p: ProviderConfig) => ProviderConfig) => {
     setSettings((prev) => {
@@ -421,18 +426,12 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                 <div className="input-with-adornment">
                   <input
                     type="text"
-                    list="model-list"
                     value={settings.model}
                     onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))}
                     disabled={isLoading}
                     className="text-input"
                     placeholder={t('settings.selectModel')}
                   />
-                  <datalist id="model-list">
-                    {models.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                    ))}
-                  </datalist>
                   <button
                     type="button"
                     className="input-adornment"
@@ -459,6 +458,25 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                   <p className="settings-hint" style={{ color: 'var(--n-error)', marginTop: 4 }}>
                     {modelError}
                   </p>
+                )}
+                {models.length > 0 && (
+                  <div className="settings-model-list">
+                    {models.map((m) => (
+                      <div
+                        key={m.id}
+                        className={`settings-model-item ${settings.model === m.id ? 'active' : ''}`}
+                        onClick={() => setSettings((prev) => ({ ...prev, model: m.id }))}
+                      >
+                        <span className="settings-model-item-id">{m.id}</span>
+                        {m.name && m.name !== m.id && (
+                          <span className="settings-model-item-name">{m.name}</span>
+                        )}
+                        {m.reasoning && (
+                          <span className="settings-model-item-badge">{t('thinking.reasoning')}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </section>
 
@@ -570,6 +588,18 @@ export default function SettingsPanel({ isOpen, onClose, currentSettings, onSave
                   </section>
                 </>
               )}
+
+              <section className="settings-section">
+                <label className="settings-label">{t('settings.workingDir')}</label>
+                <input
+                  type="text"
+                  value={settings.workingDir}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, workingDir: e.target.value }))}
+                  className="text-input"
+                  placeholder={t('settings.workingDirPlaceholder')}
+                />
+                <p className="settings-hint">{t('settings.workingDirHint')}</p>
+              </section>
             </>
           )}
 
