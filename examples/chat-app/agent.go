@@ -122,8 +122,11 @@ func (a *App) AgentMessage(jsonStr string) error {
 		len(messages), len(config.Tools), len(config.Skills))
 
 	go func() {
+		defer func() {
+			a.cancelFn = nil
+		}()
 		textLen := 0
-		eventStream.ForEach(streamCtx, func(evt agent.AgentEvent) error {
+		_, forEachErr := eventStream.ForEach(streamCtx, func(evt agent.AgentEvent) error {
 			switch e := evt.(type) {
 			case agent.EventMessageUpdate:
 				if e.AssistantEvent != nil {
@@ -172,6 +175,12 @@ func (a *App) AgentMessage(jsonStr string) error {
 			}
 			return nil
 		})
+		if forEachErr != nil {
+			LogError("[agent] ForEach error: %v (textLen=%d)", forEachErr, textLen)
+			runtime.EventsEmit(a.ctx, "agent-error", fmt.Sprintf("agent error: %v", forEachErr))
+			runtime.EventsEmit(a.ctx, "agent-done", "")
+			return
+		}
 
 		result, err := detailed()
 		if err != nil {
@@ -220,12 +229,23 @@ func (a *App) AgentMessage(jsonStr string) error {
 // resolveModel maps a provider string + model ID to a core.Model, using
 // a fallback if the model is not in the registry.
 func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
+	providerStr = strings.ToLower(providerStr)
 	var provider core.KnownProvider
 	var api core.KnownAPI
-	if providerStr == "anthropic" {
+	switch providerStr {
+	case "anthropic":
 		provider = core.ProviderAnthropic
 		api = core.APIAnthropicMessages
-	} else {
+	case "google":
+		provider = core.ProviderGoogle
+		api = core.APIGoogleGenerative
+	case "deepseek":
+		provider = core.ProviderDeepSeek
+		api = core.APIOpenAICompletions
+	case "mistral":
+		provider = core.ProviderMistral
+		api = core.APIMistralConversations
+	default:
 		provider = core.ProviderOpenAI
 		api = core.APIOpenAICompletions
 	}
@@ -234,12 +254,21 @@ func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
 	}
 	model, err := llm.GetModel(provider, modelID)
 	if err != nil {
-		LogWarn("[model] %v, using fallback model %s/%s", err, provider, modelID)
-		model = core.Model{
-			ID:            modelID,
-			Provider:      provider,
-			API:           api,
-			ContextWindow: 8192,
+		// Try openai as a fallback for openai-compatible providers
+		if provider != core.ProviderOpenAI && providerStr != "openai" {
+			if m, err2 := llm.GetModel(core.ProviderOpenAI, modelID); err2 == nil {
+				model = m
+				err = nil
+			}
+		}
+		if err != nil {
+			LogWarn("[model] %v, using fallback model %s/%s", err, provider, modelID)
+			model = core.Model{
+				ID:            modelID,
+				Provider:      provider,
+				API:           api,
+				ContextWindow: 8192,
+			}
 		}
 	}
 	if baseURL != "" {
@@ -405,8 +434,15 @@ func splitKV(line string) (key, value string, found bool) {
 // directory, or uses the default process CWD if none is set.
 func (a *App) makeExecEnv() core.ExecutionEnv {
 	wd := a.settings.WorkingDir
+	LogInfo("[makeExecEnv] configured workingDir=%q", wd)
 	if wd != "" {
-		return core.NewDefaultExecutionEnvWithDir(wd)
+		absWd, err := filepath.Abs(wd)
+		if err != nil {
+			LogError("[makeExecEnv] failed to resolve absolute path for %q: %v", wd, err)
+		} else {
+			LogInfo("[makeExecEnv] resolved workingDir=%q", absWd)
+			return core.NewDefaultExecutionEnvWithDir(absWd)
+		}
 	}
 	return core.NewDefaultExecutionEnv()
 }

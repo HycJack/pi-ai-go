@@ -28,6 +28,12 @@ var providerModelListConfigs = map[string]providerHeaderConfig{
 			{"Authorization", "Bearer %s"},
 		},
 	},
+	"openai-compatible": {
+		defaultBaseURL: "https://api.openai.com/v1",
+		header: []struct{ key, valueTemplate string }{
+			{"Authorization", "Bearer %s"},
+		},
+	},
 	"anthropic": {
 		defaultBaseURL: "https://api.anthropic.com/v1",
 		header: []struct{ key, valueTemplate string }{

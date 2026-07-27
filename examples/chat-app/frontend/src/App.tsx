@@ -216,6 +216,9 @@ function App() {
         eventCleanupRef.current = null;
       }
     };
+    // eventCleanupRef is set by registerStreamEvents (called from generateResponse).
+    // On unmount, ensure all Wails event listeners are cleaned up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentStreamRef = useRef<{ streamId: string; convId: string; msgId: string } | null>(null);
@@ -669,6 +672,10 @@ function App() {
             : c
         )
       );
+      if (eventCleanupRef.current) {
+        eventCleanupRef.current();
+        eventCleanupRef.current = null;
+      }
       setIsLoading(false);
       currentStreamRef.current = null;
       sendingRef.current = null;

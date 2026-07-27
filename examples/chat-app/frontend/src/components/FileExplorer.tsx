@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FolderOpenOutlined, CodeOutlined, RefreshOutlined, ChevronLeftOutlined } from '../icons';
+import { FolderOpenOutlined, CodeOutlined } from '../icons';
 import { useT } from '../i18n';
 
 interface FileEntry {
@@ -69,34 +69,8 @@ export default function FileExplorer({ workingDir, onOpenFile }: FileExplorerPro
     }
   };
 
-  const refresh = () => {
-    if (currentPath) loadDir(currentPath);
-    else if (workingDir) loadDir(workingDir);
-  };
-
-  const dirName = currentPath
-    ? currentPath.replace(/\\/g, '/').split('/').filter(Boolean).slice(-1)[0] || currentPath
-    : '';
-
   return (
     <div className="file-explorer">
-      <div className="file-explorer-header">
-        <div className="file-explorer-title">
-          <FolderOpenOutlined size={14} />
-          <span>{dirName || t('sidebar.workingDir')}</span>
-        </div>
-        <div className="file-explorer-actions">
-          {currentPath && (
-            <button className="icon-btn" onClick={goUp} title={t('app.goUp')}>
-              <ChevronLeftOutlined size={14} />
-            </button>
-          )}
-          <button className="icon-btn" onClick={refresh} disabled={loading} title={t('app.refresh')}>
-            <RefreshOutlined size={14} style={{ animation: loading ? 'status-spin 900ms linear infinite' : undefined }} />
-          </button>
-        </div>
-      </div>
-
       <div className="file-explorer-body">
         {!workingDir && (
           <div className="file-explorer-empty">{t('fileExplorer.noWorkingDir')}</div>
@@ -115,7 +89,7 @@ export default function FileExplorer({ workingDir, onOpenFile }: FileExplorerPro
         )}
         {entries.length > 0 && (
           <div className="file-explorer-list">
-            {currentPath && (
+            {currentPath && workingDir && currentPath.replace(/\\/g, '/') !== workingDir.replace(/\\/g, '/') && (
               <div className="file-explorer-item" onClick={goUp}>
                 <span className="file-explorer-item-icon">
                   <FolderOpenOutlined size={14} />

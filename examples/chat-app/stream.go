@@ -92,8 +92,11 @@ func (a *App) StreamMessage(params map[string]interface{}) error {
 	LogInfo("[stream] stream started, messages=%d", len(messages))
 
 	go func() {
+		defer func() {
+			a.cancelFn = nil
+		}()
 		textLen := 0
-		_, err := stream.ForEach(streamCtx, func(event core.AssistantMessageEvent) error {
+		_, forEachErr := stream.ForEach(streamCtx, func(event core.AssistantMessageEvent) error {
 			switch e := event.(type) {
 			case core.EventThinkingDelta:
 				runtime.EventsEmit(a.ctx, "stream-thinking-delta", e.Delta)
@@ -120,10 +123,11 @@ func (a *App) StreamMessage(params map[string]interface{}) error {
 			}
 			return nil
 		})
-		if err != nil {
-			LogError("[stream] ForEach error: %v (textLen=%d)", err, textLen)
-			a.markKeyFailed(err)
-			runtime.EventsEmit(a.ctx, "stream-error", fmt.Sprintf("Error: %v", err))
+		if forEachErr != nil {
+			LogError("[stream] ForEach error: %v (textLen=%d)", forEachErr, textLen)
+			a.markKeyFailed(forEachErr)
+			runtime.EventsEmit(a.ctx, "stream-error", fmt.Sprintf("Error: %v", forEachErr))
+			runtime.EventsEmit(a.ctx, "stream-done", "")
 		}
 	}()
 	return nil

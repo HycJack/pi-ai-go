@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   CheckOutlined2,
   DeleteOutlined,
   FolderOpenOutlined,
   MessageOutlined,
   PlusOutlined,
+  RefreshOutlined,
   SettingOutlined,
   UserOutlined,
 } from '../icons';
@@ -45,8 +46,15 @@ export default function Sidebar({
   const [editingTitle, setEditingTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [treeExpanded, setTreeExpanded] = useState(true);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useState(0);
 
   const dirName = workingDir ? workingDir.split(/[\\/]/).filter(Boolean).slice(-1)[0] : '';
+
+  const refreshTree = () => {
+    // Force remount FileExplorer by toggling a dummy key
+    forceUpdate((n) => n + 1);
+  };
 
   const beginEdit = (conv: Conversation) => {
     setEditingId(conv.id);
@@ -184,22 +192,30 @@ export default function Sidebar({
       </div>
 
       {workingDir && (
-        <div className="workspace-card" title={workingDir} onClick={() => setTreeExpanded(!treeExpanded)}>
-          <span className={`workspace-chevron ${treeExpanded ? 'expanded' : ''}`}>▸</span>
-          <FolderOpenOutlined size={18} />
-          <div className="workspace-meta">
-            <div className="workspace-label">{t('sidebar.workingDir')}</div>
-            <div className="workspace-path">{dirName || t('sidebar.notSet')}</div>
+        <div className="workspace-block">
+          <div className="workspace-block-header" onClick={() => setTreeExpanded(!treeExpanded)}>
+            <span className={`workspace-chevron ${treeExpanded ? 'expanded' : ''}`}>▸</span>
+            <FolderOpenOutlined size={16} />
+            <span className="workspace-block-path" title={workingDir}>
+              {dirName || workingDir}
+            </span>
+            <button
+              className="workspace-block-refresh"
+              onClick={(e) => { e.stopPropagation(); refreshTree(); }}
+              title={t('app.refresh')}
+            >
+              <RefreshOutlined size={12} />
+            </button>
           </div>
-        </div>
-      )}
-
-      {workingDir && treeExpanded && (
-        <div className="sidebar-file-tree">
-          <FileExplorer
-            workingDir={workingDir}
-            onOpenFile={onOpenFile}
-          />
+          {treeExpanded && (
+            <div className="workspace-block-tree" ref={treeRef}>
+              <FileExplorer
+                key={`tree-${workingDir}-${treeExpanded}`}
+                workingDir={workingDir}
+                onOpenFile={onOpenFile}
+              />
+            </div>
+          )}
         </div>
       )}
 

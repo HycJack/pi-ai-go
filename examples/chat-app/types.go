@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"chat-app/contextmgr"
-	"chat-app/keypool"
 	"chat-app/memory"
 )
 
@@ -24,7 +24,7 @@ type App struct {
 	settingsPath           string
 	conversationSettings   map[string]ConversationSettings
 	conversationSettingsMu sync.RWMutex
-	keyPool                *keypool.Pool
+	keyPool                atomic.Value // stores *keypool.Pool
 }
 
 // AppSettings holds all user-configurable settings, persisted to

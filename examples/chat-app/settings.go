@@ -85,19 +85,34 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) initKeyPool() {
 	cp := a.settings.Current()
 	if cp == nil {
-		a.keyPool = keypool.New(nil, keypool.DefaultSettings())
+		a.storeKeyPool(keypool.New(nil, keypool.DefaultSettings()))
 		return
 	}
 	keys := cp.ApiKeys
 	if len(keys) == 0 && cp.APIKey != "" {
 		keys = []string{cp.APIKey}
 	}
-	a.keyPool = keypool.New(keys, keypool.DefaultSettings())
+	a.storeKeyPool(keypool.New(keys, keypool.DefaultSettings()))
+}
+
+// loadKeyPool atomically loads the key pool pointer.
+func (a *App) loadKeyPool() *keypool.Pool {
+	v := a.keyPool.Load()
+	if v == nil {
+		return keypool.New(nil, keypool.DefaultSettings())
+	}
+	return v.(*keypool.Pool)
+}
+
+// storeKeyPool atomically stores the key pool pointer.
+func (a *App) storeKeyPool(p *keypool.Pool) {
+	a.keyPool.Store(p)
 }
 
 // selectAPIKey returns the next available API key from the pool.
 func (a *App) selectAPIKey() string {
-	key, err := a.keyPool.Next()
+	p := a.loadKeyPool()
+	key, err := p.Next()
 	if err != nil {
 		return ""
 	}
@@ -106,12 +121,12 @@ func (a *App) selectAPIKey() string {
 
 // markKeySuccess marks the current key as successful.
 func (a *App) markKeySuccess() {
-	a.keyPool.MarkSuccess()
+	a.loadKeyPool().MarkSuccess()
 }
 
 // markKeyFailed marks the current key as failed.
 func (a *App) markKeyFailed(err error) {
-	a.keyPool.MarkFailed(keypool.CategorizeError(err))
+	a.loadKeyPool().MarkFailed(keypool.CategorizeError(err))
 }
 
 // ─── Settings load/save ───

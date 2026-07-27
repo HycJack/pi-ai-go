@@ -250,7 +250,24 @@ func Truncate(messages []core.Message, keepLast int) []core.Message {
 	if len(messages) <= keepLast {
 		return messages
 	}
-	result := make([]core.Message, 0, keepLast)
+	// Preserve the first system message if present — it is typically a
+	// globally important prompt that must not be dropped during truncation.
+	var systemMsg core.Message
+	hasSystem := false
+	if len(messages) > 0 {
+		if _, ok := messages[0].(core.SystemMessage); ok {
+			systemMsg = messages[0]
+			hasSystem = true
+		} else if userMsg, ok := messages[0].(core.UserMessage); ok && userMsg.Role == "system" {
+			systemMsg = messages[0]
+			hasSystem = true
+		}
+	}
+
+	result := make([]core.Message, 0, keepLast+1)
+	if hasSystem {
+		result = append(result, systemMsg)
+	}
 	result = append(result, messages[len(messages)-keepLast:]...)
 	return result
 }
