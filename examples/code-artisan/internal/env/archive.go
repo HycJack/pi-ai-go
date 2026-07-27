@@ -151,16 +151,13 @@ func extractArchive(archivePath string, targetDir string, onProgress func(Progre
 		}
 
 		_, copyErr := io.Copy(dst, src)
-		closeErr := dst.Close()
-		srcErr := src.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
+		if closeErr := dst.Close(); closeErr != nil {
+			src.Close()
 			return closeErr
 		}
-		if srcErr != nil {
-			return srcErr
+		src.Close()
+		if copyErr != nil {
+			return copyErr
 		}
 
 		processedFiles++

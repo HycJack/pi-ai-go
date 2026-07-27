@@ -18,12 +18,18 @@ var StdLogger *Logger
 func InitLogger(baseDir string) {
 	logDir := filepath.Join(baseDir, ".code-artisan", "logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		StdLogger = &Logger{}
 		return
 	}
 
 	logFile := filepath.Join(logDir, fmt.Sprintf("app_%s.log", time.Now().Format("2006-01-02")))
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		StdLogger = &Logger{}
 		return
 	}
 

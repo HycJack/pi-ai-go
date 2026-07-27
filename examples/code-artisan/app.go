@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	stk "runtime"
+	"strings"
 
 	"code-artisan/internal/env"
 
@@ -64,6 +66,26 @@ func (a *App) startup(ctx context.Context) {
 	} else {
 		LogInfo("Embedded Python runtime ready")
 	}
+
+	// Global panic recovery
+}
+
+// safeGo runs fn in a goroutine with panic recovery. If onRecover is nil
+// the panic is logged but not re-panicked, preventing the app from crashing.
+func safeGo(fn func(), onRecover ...func(r any)) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				buf := make([]byte, 4096)
+				n := stk.Stack(buf, false)
+				LogError("[panic] recovered: %v\nstack:\n%s", r, buf[:n])
+				if len(onRecover) > 0 && onRecover[0] != nil {
+					onRecover[0](r)
+				}
+			}
+		}()
+		fn()
+	}()
 }
 
 func (a *App) reportProgress(p env.Progress) {
@@ -191,7 +213,7 @@ func getDataDir() string {
 }
 
 func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
-	providerStr = toLower(providerStr)
+	providerStr = strings.ToLower(providerStr)
 	var provider core.KnownProvider
 	var api core.KnownAPI
 	switch providerStr {
@@ -227,18 +249,6 @@ func (a *App) resolveModel(providerStr, modelID, baseURL string) core.Model {
 		model.BaseURL = baseURL
 	}
 	return model
-}
-
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 32
-		}
-		b[i] = c
-	}
-	return string(b)
 }
 
 func getModel(provider core.KnownProvider, modelID string) (core.Model, error) {

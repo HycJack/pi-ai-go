@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import SettingsPanel from './components/SettingsPanel';
 import CodePreview from './components/CodePreview';
-import { Settings, Conversation, ConversationSummary, DEFAULT_SETTINGS, getCurrentProvider } from './types';
+import { Settings, Conversation, ConversationSummary, Message, DEFAULT_SETTINGS, getCurrentProvider } from './types';
 import {
   GetSettings, SaveSettings,
   StreamGenerateCode,
@@ -81,30 +81,23 @@ function App() {
     }).catch(() => {});
   }, [settingsLoaded]);
 
-  // Save a conversation
-  const saveConv = useCallback((promptText: string, code: string, convId?: string) => {
-    const id = convId || `conv_${Date.now()}`;
-    const title = promptText.length > 60 ? promptText.substring(0, 60) + '...' : promptText;
-    const conv: Conversation = {
-      id,
-      title,
-      prompt: promptText,
-      code,
-      timestamp: new Date().toLocaleString('zh-CN'),
-      messages: [
-        { role: 'user', content: promptText },
-        { role: 'assistant', content: code },
-      ],
-    };
-    SaveConversation(id, JSON.stringify(conv)).then(() => {
-      // Refresh conversations list
-      GetConversations().then((str) => {
-        try {
-          setConversations(JSON.parse(str));
-        } catch {}
-      }).catch(() => {});
-    }).catch((err) => console.error('save conv error:', err));
-    return id;
+  // messages ref to track current conversation messages
+  const messagesRef = useRef<Message[]>([]);
+
+  // After generation, update messages ref + refresh sidebar
+  // (persistence is handled by Go backend)
+  const postGeneration = useCallback((promptText: string, code: string) => {
+    messagesRef.current = [
+      ...messagesRef.current,
+      { role: 'user' as const, content: promptText },
+      { role: 'assistant' as const, content: code },
+    ];
+    // Refresh sidebar
+    GetConversations().then((str) => {
+      try {
+        setConversations(JSON.parse(str));
+      } catch {}
+    }).catch(() => {});
   }, []);
 
   const handleGenerate = useCallback(() => {
@@ -113,7 +106,7 @@ function App() {
     const cp = getCurrentProvider(settings);
     if (!cp) return;
 
-    const req = {
+    const req: Record<string, unknown> = {
       prompt: prompt.trim(),
       provider: cp.type,
       apiKey: cp.apiKey,
@@ -122,6 +115,8 @@ function App() {
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
       currentCode: generatedCode || '',
+      convId: selectedConvId,
+      messages: messagesRef.current,
     };
 
     setIsStreaming(true);
@@ -140,9 +135,9 @@ function App() {
         setGeneratedCode(code);
         setStreamingCode('');
         setIsStreaming(false);
-        // Save conversation and update sidebar
-        const id = saveConv(prompt.trim(), code);
-        setSelectedConvId(id);
+        // Backend saves conversation; update messages ref + sidebar
+        postGeneration(prompt.trim(), code);
+        // selectedConvId is already set from req, or backend returns it
       } else {
         setIsStreaming(false);
       }
@@ -167,7 +162,7 @@ function App() {
       setStreamingCode('生成失败: ' + String(err));
       setIsStreaming(false);
     });
-  }, [prompt, generatedCode, isLoading, isStreaming, settings, saveConv]);
+  }, [prompt, generatedCode, isLoading, isStreaming, settings, selectedConvId, messagesRef, postGeneration]);
 
   const handleRun = useCallback(() => {
     const codeToRun = streamingCode || generatedCode;
@@ -209,6 +204,7 @@ function App() {
         setGeneratedCode(conv.code);
         setStreamingCode('');
         setSelectedConvId(conv.id);
+        messagesRef.current = conv.messages || [];
       } catch {}
     }).catch(() => {});
   }, []);
@@ -265,6 +261,7 @@ function App() {
     setStreamingCode('');
     setPrompt('');
     setSelectedConvId(null);
+    messagesRef.current = [];
   }, []);
 
   return (

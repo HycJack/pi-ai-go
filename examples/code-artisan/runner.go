@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,6 +102,17 @@ func (r *Runner) Run(scriptCode string, req RunRequest) error {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				buf := make([]byte, 4096)
+				n := runtime.Stack(buf, false)
+				if req.OnError != nil {
+					req.OnError(fmt.Errorf("[panic] recovered: %v", r))
+				}
+				// Print to stderr since log system may not be available
+				fmt.Fprintf(os.Stderr, "[runner panic] %v\n%s\n", r, buf[:n])
+			}
+		}()
 		waitErr := cmd.Wait()
 		output := strings.TrimSpace(stderr.String())
 		stopped := r.finish()

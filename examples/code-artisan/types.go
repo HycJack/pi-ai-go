@@ -13,6 +13,7 @@ type App struct {
 	cancelFn         context.CancelFunc
 	settings         AppSettings
 	settingsMu       sync.RWMutex
+	convMu           sync.Mutex
 	dataDir          string
 	settingsPath     string
 	envManager       *env.Manager
@@ -78,15 +79,16 @@ type ConversationSummary struct {
 
 // CodeGenRequest is the JSON payload for code generation.
 type CodeGenRequest struct {
-	Prompt      string  `json:"prompt"`
-	Provider    string  `json:"provider"`
-	APIKey      string  `json:"apiKey"`
-	BaseURL     string  `json:"baseUrl"`
-	Model       string  `json:"model"`
-	MaxTokens   int     `json:"maxTokens"`
-	Temperature float64 `json:"temperature"`
-	CurrentCode string  `json:"currentCode,omitempty"`
-	ConvID      string  `json:"convId,omitempty"`
+	Prompt      string    `json:"prompt"`
+	Provider    string    `json:"provider"`
+	APIKey      string    `json:"apiKey"`
+	BaseURL     string    `json:"baseUrl"`
+	Model       string    `json:"model"`
+	MaxTokens   int       `json:"maxTokens"`
+	Temperature float64   `json:"temperature"`
+	CurrentCode string    `json:"currentCode,omitempty"`
+	ConvID      string    `json:"convId,omitempty"`
+	Messages    []Message `json:"messages,omitempty"`
 }
 
 // CodeGenResponse is sent back to frontend after generation.
