@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Code Artisan",
+			"FileDescription": "Code Artisan - AI 绘图代码生成器",
+			"LegalCopyright": "",
+			"ProductName": "Code Artisan",
+			"Comments": ""
+		}
+	}
+}
