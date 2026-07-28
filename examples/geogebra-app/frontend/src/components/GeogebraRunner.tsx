@@ -56,22 +56,25 @@ function saveFile(content: string, ext: string) {
   URL.revokeObjectURL(url);
 }
 
-// Declare the GeoGebra global types
+// GeoGebra deployggb.js global types
 interface GGBAppletInstance {
-  inject?(containerId: string): void;
   evalCommand?(cmd: string): boolean;
-  evalCommandGetLabels?(cmd: string): string[];
   evalXML?(xml: string): void;
   getXML?(): string;
   setValue?(key: string, val: number): void;
   getValue?(key: string): string;
 }
 
+interface GGBAppletConstructor {
+  new(params: Record<string, unknown>): GGBAppletInstance & {
+    inject(containerId: string): void;
+  };
+}
+
 declare global {
   interface Window {
-    GGBApplet?: {
-      new(params: Record<string, unknown>, id: string): GGBAppletInstance;
-    };
+    GGBApplet?: GGBAppletConstructor;
+    ggbApplet?: GGBAppletInstance;
     __ggb_applets?: Record<string, GGBAppletInstance>;
   }
 }
@@ -80,21 +83,28 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   const [tab, setTab] = useState<PanelTab>(activeTab);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const appletRef = useRef<string | null>(null);
-  const [ggbReady, setGgbReady] = useState(false);
+  const ggbInjectedRef = useRef(false);
   const [ggbView, setGgbView] = useState<GGBView>('geometry');
+  const [ggbLoaded, setGgbLoaded] = useState(false);
+  const ggbCodeRef = useRef(ggbCode);
+  ggbCodeRef.current = ggbCode;
   const [panelWidth, setPanelWidth] = useState(520);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
-  const ggbInitializedRef = useRef(false);
-  const ggbCodeRef = useRef(ggbCode);
-  ggbCodeRef.current = ggbCode;
 
   // Sync activeTab prop
   useEffect(() => {
     setTab(activeTab);
   }, [activeTab]);
+
+  // Auto-detect GGB view
+  useEffect(() => {
+    if (!ggbCode) return;
+    const lower = ggbCode.toLowerCase();
+    const is3D = /\b(surface|sphere|cube|prism|pyramid|net|volume|z\s*=|z\(|xAxis|yAxis|zAxis|view3d|setactiveview\["3d"\])\b/i.test(lower);
+    setGgbView(is3D ? '3d' : 'geometry');
+  }, [ggbCode]);
 
   // ─── Drag handlers ───
 
@@ -133,87 +143,66 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // ─── Initialize GeoGebra applet ───
+  // ─── Inject GeoGebra applet ───
 
-  const initGeoGebra = useCallback(() => {
-    if (!containerRef.current || ggbInitializedRef.current) return;
-    ggbInitializedRef.current = true;
+  const injectGGB = useCallback(() => {
+    if (!containerRef.current || ggbInjectedRef.current) return;
 
-    // Load the GeoGebra deployment script if not already loaded
-    const loadGGB = () => {
-      // Generate a unique applet ID for this instance
-      const appletId = `ggb-applet-${Date.now()}`;
+    const container = containerRef.current;
+    const containerId = `ggb-container-${ggbView}`;
+    container.id = containerId;
 
-      const params = {
-        ...GGB_PARAMS[ggbView],
-        id: appletId,
-        borderColor: '#25262b',
-        fontCss: 'font-family: var(--font-body)',
-      };
+    // Clear any previous content
+    container.innerHTML = '';
 
-      if (window.GGBApplet) {
-        // GeoGebra script already loaded — instantiate directly
-        const applet = new window.GGBApplet(params, appletId);
-        appletRef.current = appletId;
-        try {
-          applet.inject?.(appletId); // older API
-        } catch { /* newer API uses different method */ }
-        // For newer GGB API, we use the inject method with container ID
-        setGgbReady(true);
-      } else {
-        // Script not loaded yet — will try again
-        setGgbReady(true);
-      }
+    const params = {
+      ...GGB_PARAMS[ggbView],
+      id: `ggb-applet-${ggbView}-${Date.now()}`,
+      borderColor: '#ddd',
+      showLogging: false,
+      allowStyleBar: true,
     };
 
     if (typeof window.GGBApplet !== 'undefined') {
-      loadGGB();
+      const applet = new window.GGBApplet(params);
+      applet.inject(containerId);
+      ggbInjectedRef.current = true;
+      setGgbLoaded(true);
     } else {
-      // Load the GeoGebra deploy script
+      // Load the deploy script first
       const script = document.createElement('script');
-      script.src = 'https://www.geogebra.org/apps/deployggb.js';
+      script.src = 'https://cdn.geogebra.org/apps/deployggb.js';
       script.onload = () => {
-        loadGGB();
+        if (typeof window.GGBApplet !== 'undefined') {
+          const applet = new window.GGBApplet(params);
+          applet.inject(containerId);
+          ggbInjectedRef.current = true;
+          setGgbLoaded(true);
+        }
       };
       document.head.appendChild(script);
     }
   }, [ggbView]);
 
-  // Initialize when switching to ggb tab
-  useEffect(() => {
-    if (tab === 'ggb') {
-      initGeoGebra();
-    }
-  }, [tab, initGeoGebra]);
-
-  // ─── Execute GGB commands via evalCommand ───
+  // ─── Execute GGB commands ───
 
   const executeGGBCommands = useCallback(() => {
     const code = ggbCodeRef.current;
     if (!code) return;
 
-    // Try multiple ways to get the applet reference
     const getApplet = () => {
-      // Method 1: window.__ggb_applets global map
-      if (window.__ggb_applets) {
-        const keys = Object.keys(window.__ggb_applets);
-        if (keys.length > 0) {
-          return window.__ggb_applets[keys[0]];
-        }
-      }
-      // Method 2: Direct ggbApplet global
-      if ((window as any).ggbApplet) {
+      if ((window as any).ggbApplet && typeof (window as any).ggbApplet.evalCommand === 'function') {
         return (window as any).ggbApplet;
       }
       return null;
     };
 
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 30;
     const interval = setInterval(() => {
       attempts++;
       const applet = getApplet();
-      if (applet && typeof applet.evalCommand === 'function') {
+      if (applet) {
         const lines = code.split('\n')
           .map((l) => l.trim())
           .filter((l) => l && !l.startsWith('#') && !l.startsWith('//'));
@@ -228,45 +217,32 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
         return;
       }
       if (attempts >= maxAttempts) {
-        console.warn('[GGB] Failed to get applet after', maxAttempts, 'attempts');
         clearInterval(interval);
       }
     }, 500);
   }, []);
 
-  // Execute commands when ready and ggbCode changes
-  useEffect(() => {
-    if (!ggbReady || !ggbCode) return;
-    // Wait a bit for the applet to fully initialize
-    const timer = setTimeout(() => {
-      executeGGBCommands();
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [ggbCode, ggbReady, executeGGBCommands]);
-
-  // Auto-detect GGB view
-  useEffect(() => {
-    if (!ggbCode) return;
-    const lower = ggbCode.toLowerCase();
-    const is3D = /\b(surface|sphere|cube|prism|pyramid|net|volume|z\s*=|z\(|xAxis|yAxis|zAxis|view3d|setactiveview\["3d"\])\b/i.test(lower);
-    setGgbView(is3D ? '3d' : 'geometry');
-  }, [ggbCode]);
-
-  // Re-init GeoGebra when switching views
+  // Inject when switching to ggb tab
   useEffect(() => {
     if (tab === 'ggb') {
-      ggbInitializedRef.current = false;
-      setGgbReady(false);
-      // Delay to let DOM re-render
-      const timer = setTimeout(() => initGeoGebra(), 100);
+      ggbInjectedRef.current = false;
+      setGgbLoaded(false);
+      const timer = setTimeout(() => injectGGB(), 200);
       return () => clearTimeout(timer);
     }
-  }, [ggbView, tab, initGeoGebra]);
+  }, [tab, ggbView, injectGGB]);
+
+  // Execute commands after applet is loaded
+  useEffect(() => {
+    if (!ggbLoaded || !ggbCode) return;
+    const timer = setTimeout(() => executeGGBCommands(), 2000);
+    return () => clearTimeout(timer);
+  }, [ggbCode, ggbLoaded, executeGGBCommands]);
 
   const showGGB = tab === 'ggb' && ggbCode;
+  const showGGBPanel = tab === 'ggb';
   const showHTML = tab === 'html' && html;
   const showSVG = tab === 'svg' && svg;
-  const ggbViewConfig = GGB_PARAMS[ggbView];
 
   const currentContent = tab === 'html' ? html : tab === 'svg' ? svg : '';
 
@@ -283,7 +259,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
           {tab === 'html' ? <Eye size={14} /> : tab === 'svg' ? <ImageIcon size={14} /> : <Play size={14} />}
           <span>{tab === 'html' ? 'HTML 预览' : tab === 'svg' ? 'SVG 预览' : 'GeoGebra 运行器'}</span>
           {tab === 'ggb' && (
-            ggbReady
+            ggbLoaded
               ? <span className="ggb-runner-status ready">就绪</span>
               : <span className="ggb-runner-status loading">初始化中...</span>
           )}
@@ -334,7 +310,6 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
         <button
           className={`ggb-runner-tab ${tab === 'ggb' ? 'active' : ''}`}
           onClick={() => setTab('ggb')}
-          disabled={!ggbCode}
         >
           <Play size={14} />
           <span>GeoGebra</span>
@@ -363,7 +338,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
       )}
 
       {/* GGB Runner Tab */}
-      {showGGB && (
+      {showGGBPanel && (
         <>
           <div className="ggb-runner-subtabs">
             {(Object.keys(GGB_PARAMS) as GGBView[]).map((key) => (
@@ -377,7 +352,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
               </button>
             ))}
           </div>
-          <div className="ggb-runner-body" style={{ position: 'relative' }}>
+          <div className="ggb-runner-body" style={{ position: 'relative', overflow: 'hidden' }}>
             <div
               ref={containerRef}
               id={`ggb-container-${ggbView}`}
@@ -387,7 +362,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
         </>
       )}
 
-      {!showGGB && !showHTML && !showSVG && (
+      {!showGGBPanel && !showHTML && !showSVG && (
         <div className="ggb-runner-body ggb-runner-empty">
           <span className="ggb-runner-empty-text">暂无内容</span>
         </div>
