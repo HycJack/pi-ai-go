@@ -145,6 +145,107 @@ button, input, textarea, select { font: inherit; }
   gap: 0;
   justify-content: center;
 }
+
+/* Confirm dialog (inline, not browser confirm) */
+.sidebar-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: sidebar-confirm-fade-in 160ms ease;
+}
+@keyframes sidebar-confirm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.sidebar-confirm-dialog {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px 18px 16px;
+  width: calc(100% - 32px);
+  max-width: 248px;
+  box-shadow:
+    0 10px 40px rgba(15, 23, 42, 0.18),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+  animation: sidebar-confirm-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes sidebar-confirm-pop {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.sidebar-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.sidebar-confirm-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sidebar-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--n-charcoal);
+  letter-spacing: 0.1px;
+}
+.sidebar-confirm-text {
+  font-size: 12.5px;
+  color: var(--n-slate);
+  line-height: 1.55;
+  margin-bottom: 16px;
+  padding-left: 38px;
+}
+.sidebar-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: stretch;
+}
+.sidebar-confirm-cancel,
+.sidebar-confirm-ok {
+  border: none;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  flex: 1;
+  transition: all 140ms ease;
+}
+.sidebar-confirm-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.sidebar-confirm-cancel:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+.sidebar-confirm-ok {
+  background: #dc2626;
+  color: #ffffff;
+  border: 1px solid #dc2626;
+}
+.sidebar-confirm-ok:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.sidebar-confirm-ok:active,
+.sidebar-confirm-cancel:active {
+  transform: scale(0.98);
+}
 .sidebar-brand-icon {
   width: 34px;
   height: 34px;

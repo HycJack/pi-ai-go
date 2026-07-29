@@ -1,4 +1,5 @@
 import { Triangle, MessageSquare, Plus, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useState } from 'react';
 import type { Conversation } from '../types';
 
 interface SidebarProps {
@@ -22,6 +23,7 @@ export default function Sidebar({
   collapsed = false,
   onToggleCollapse,
 }: SidebarProps) {
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   return (
     <aside className={`app-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
@@ -75,10 +77,7 @@ export default function Sidebar({
                       className="history-delete-btn"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const title = conv.title || '此对话';
-                        const confirmed = confirm(`确定要删除"${title}"吗？此操作不可恢复。`);
-                        if (!confirmed) return;
-                        onDeleteConversation(conv.id);
+                        setPendingDeleteId(conv.id);
                       }}
                       title="删除"
                     >
@@ -101,6 +100,40 @@ export default function Sidebar({
             </svg>
             <span>设置</span>
           </button>
+        </div>
+      )}
+
+      {pendingDeleteId && (
+        <div className="sidebar-confirm-overlay" onClick={() => setPendingDeleteId(null)}>
+          <div className="sidebar-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="sidebar-confirm-header">
+              <div className="sidebar-confirm-icon">
+                <Trash2 size={14} />
+              </div>
+              <div className="sidebar-confirm-title">删除对话</div>
+            </div>
+            <div className="sidebar-confirm-text">
+              确定要删除这条对话记录吗？此操作不可恢复。
+            </div>
+            <div className="sidebar-confirm-actions">
+              <button
+                className="sidebar-confirm-cancel"
+                onClick={() => setPendingDeleteId(null)}
+              >
+                取消
+              </button>
+              <button
+                className="sidebar-confirm-ok"
+                onClick={() => {
+                  const id = pendingDeleteId;
+                  setPendingDeleteId(null);
+                  if (id) onDeleteConversation(id);
+                }}
+              >
+                删除
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </aside>
