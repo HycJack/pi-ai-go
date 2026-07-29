@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
-	"syscall"
 	"time"
 
 	core "pi-ai-go/core"
@@ -77,12 +76,7 @@ func executeBash(ctx context.Context, toolCallID string, params json.RawMessage,
 		cmd := exec.CommandContext(runCtx, shell, shellArgs...)
 		cmd.Args = append(cmd.Args, args.Command)
 
-		// 在 Windows 上隐藏控制台窗口（避免 cmd.exe 弹窗）
-		if runtime.GOOS == "windows" {
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				HideWindow: true,
-			}
-		}
+		cmd.SysProcAttr = newSysProcAttr()
 
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout

@@ -6,7 +6,8 @@ import {
 import Sidebar from './components/Sidebar';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
-import GeogebraRunner from './components/GeogebraRunner';
+import GeoGebraWorkspace, { GeoGebraRef } from './components/GeoGebraWorkspace';
+import ScriptEditor from './components/ScriptEditor';
 import SettingsPanel from './components/SettingsPanel';
 import { log } from './utils/logger';
 import {
@@ -22,7 +23,7 @@ import { validateGGB } from './lib/geogebra-lint/validator';
 // ─── Helpers ───
 
 function nextConvId(): string {
-  return `conv_${Date.now()}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function nextMsgId(): string {
@@ -57,11 +58,46 @@ function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
-  const [rightPanel, setRightPanel] = useState<{ html: string; ggbCode: string; svg: string; activeTab: 'html' | 'ggb' | 'svg' } | null>(null);
+  const [perspective, setPerspective] = useState('2');
+  const [ggbCode, setGgbCode] = useState('');
+  const [scriptCode, setScriptCode] = useState('');
+  const [loadingTip, setLoadingTip] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState(420);
+  const [chatPanelHeight, setChatPanelHeight] = useState(300);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const isResizingRightRef = useRef(false);
+  const isResizingChatRef = useRef(false);
+  
   const retryCountRef = useRef(0);
   const lastPromptRef = useRef<string>('');
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  const loadingTips = [
+    '正在分析题目内容...',
+    '识别几何图形特征...',
+    '构建数学模型...',
+    '生成 GeoGebra 指令...',
+    '正在绘制图形...',
+    '即将完成...'
+  ];
+
+  // Auto-cycle loading tips
+  useEffect(() => {
+    if (!isLoading) return;
+    let index = 0;
+    setLoadingTip(loadingTips[0]);
+    const interval = setInterval(() => {
+      index = (index + 1) % loadingTips.length;
+      setLoadingTip(loadingTips[index]);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isLoading, loadingTips]);
+
+  // GeoGebra ref
+  const ggbRef = useRef<GeoGebraRef>(null);
 
   // Track current streaming conversation context
   const currentStreamRef = useRef<{ convId: string } | null>(null);
@@ -147,7 +183,6 @@ function App() {
   // ─── Stream events registration ───
 
   const registerGeogebraEvents = useCallback((convId: string) => {
-    // Guard: only process events for the current stream
     const guard = () => {
       const cur = currentStreamRef.current;
       return cur && cur.convId === convId;
@@ -180,7 +215,6 @@ function App() {
       try {
         const result = JSON.parse(data) as GeogebraResult;
 
-        // Update conversation: finalize assistant message + set result
         setConversations((prev) => prev.map((c) => {
           if (c.id !== currentConvId) return c;
           const msgs = [...c.messages];
@@ -189,7 +223,6 @@ function App() {
             msgs[msgs.length - 1] = {
               ...last,
               content: result.text || last.content,
-              html: result.html,
               timestamp: formatTimestamp(),
             };
           }
@@ -200,6 +233,11 @@ function App() {
             timestamp: formatTimestamp(),
           };
         }));
+
+        // Update script editor with GGB code
+        if (result.ggbCode) {
+          setScriptCode(result.ggbCode);
+        }
 
         // Validate GGB code and auto-retry if errors found
         const s = settingsRef.current;
@@ -213,14 +251,12 @@ function App() {
               errors: validationErrors,
             });
 
-            // Add a user message showing lint errors
             const lintUserMsg: Message = {
               id: nextMsgId(),
               role: 'user',
               content: `🔍 GeoGebra 命令校验不通过，报错如下：\n\n\`\`\`\n${validationErrors}\n\`\`\`\n\n请修正以上问题后重新生成。`,
               timestamp: formatTimestamp(),
             };
-            // Add a new empty assistant message for the regenerated result
             const newAssistantMsg: Message = {
               id: nextMsgId(),
               role: 'assistant',
@@ -233,12 +269,11 @@ function App() {
               return {
                 ...c,
                 messages: [...c.messages, lintUserMsg, newAssistantMsg],
-                result: c.result, // Keep previous result to avoid UI flicker
+                result: c.result,
                 timestamp: formatTimestamp(),
               };
             }));
 
-            // Update lastPromptRef with the regen prompt so it gets the full context
             lastPromptRef.current = lastPromptRef.current +
               `\n\n（之前的生成有校验错误，需要修正。错误：${validationErrors}）`;
 
@@ -260,7 +295,7 @@ function App() {
               setIsLoading(false);
               currentStreamRef.current = null;
             });
-            return; // Don't end loading; regen stream handles it
+            return;
           }
         }
       } catch (e) { /* ignore */ }
@@ -300,13 +335,29 @@ function App() {
     };
   }, []);
 
+  // ─── Execute GGB commands ───
+
+  const handleExecuteGGB = useCallback((commands: string[]) => {
+    if (!ggbRef.current) return;
+    
+    commands.forEach((cmd) => {
+      const trimmed = cmd.trim();
+      if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('//')) {
+        ggbRef.current?.executeCommand(trimmed);
+      }
+    });
+  }, []);
+
+  const handleResetGGB = useCallback(() => {
+    ggbRef.current?.reset();
+  }, []);
+
   // ─── Submit ───
 
   const handleSubmit = useCallback(() => {
     const text = input.trim();
     if (!text) return;
 
-    // Create or reuse conversation
     let convId = activeConvId;
     if (!convId || (activeConv && activeConv.messages.length > 0 && !activeConv.result)) {
       convId = nextConvId();
@@ -339,7 +390,6 @@ function App() {
           timestamp: formatTimestamp(),
         };
 
-    // Cleanup previous events
     if (eventCleanupRef.current) {
       eventCleanupRef.current();
     }
@@ -365,7 +415,6 @@ function App() {
 
     const cp = getCurrentProvider(settings);
 
-    // Build history messages for multi-turn context
     const historyMsgs = newConv.messages
       .filter((m) => m.id !== userMsg.id && m.id !== assistantMsg.id && m.content)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -379,7 +428,11 @@ function App() {
       model: settings.model,
       maxTokens: settings.maxTokens,
       temperature: settings.temperature,
+      perspective: perspective,
+      image: selectedImage || undefined,
     });
+
+    setSelectedImage(null);
 
     GeogebraMessage(payload).catch((err: Error) => {
       setIsLoading(false);
@@ -394,7 +447,7 @@ function App() {
         return { ...c, messages: msgs };
       }));
     });
-  }, [input, activeConvId, activeConv, settings, registerGeogebraEvents]);
+  }, [input, activeConvId, activeConv, settings, registerGeogebraEvents, perspective]);
 
   // ─── Cancel ───
 
@@ -410,30 +463,50 @@ function App() {
     setInput(value);
   }, []);
 
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  const handleRemoveImage = useCallback(() => {
+    setSelectedImage(null);
+  }, []);
+
   // ─── New conversation ───
 
   const handleNewConversation = useCallback(() => {
     setActiveConvId(null);
+    setScriptCode('');
   }, []);
 
   // ─── Select conversation ───
 
   const handleSelectConversation = useCallback((id: string) => {
     setActiveConvId(id);
-  }, []);
+    const conv = conversations.find((c) => c.id === id);
+    if (conv?.result?.ggbCode) {
+      setScriptCode(conv.result.ggbCode);
+    } else {
+      setScriptCode('');
+    }
+  }, [conversations]);
 
   // ─── Delete conversation ───
 
   const handleDeleteConversation = useCallback((id: string) => {
-    const conv = conversations.find((c) => c.id === id);
-    const title = conv?.title || '此对话';
-    if (!confirm(`确定要删除"${title}"吗？此操作不可恢复。`)) return;
     setConversations((prev) => prev.filter((c) => c.id !== id));
     DeleteConversation(id).catch(() => {});
     if (activeConvId === id) {
       setActiveConvId(null);
+      setScriptCode('');
     }
-  }, [activeConvId, conversations]);
+  }, [activeConvId]);
 
   // ─── Save settings ───
 
@@ -441,23 +514,183 @@ function App() {
     setSettings(s);
   }, []);
 
-  // ─── Right Panel ───
+  // ─── GeoGebra ready ───
 
-  const handleExecuteGGB = useCallback((code: string) => {
-    setRightPanel((prev) => ({
-      html: prev?.html || '',
-      ggbCode: code,
-      svg: prev?.svg || '',
-      activeTab: 'ggb',
-    }));
+  // Only auto-execute the saved script on the FIRST ready event.
+  // When the user switches perspective, the applet is rebuilt and onReady
+  // fires again — in that case we must NOT re-run the script automatically.
+  const isGgbFirstReadyRef = useRef(true);
+  const scriptCodeRef = useRef(scriptCode);
+  scriptCodeRef.current = scriptCode;
+
+  const handleGeoGebraReady = useCallback((api: any) => {
+    if (isGgbFirstReadyRef.current) {
+      isGgbFirstReadyRef.current = false;
+      const code = scriptCodeRef.current;
+      if (code) {
+        const lines = code.split('\n').filter(line => line.trim());
+        lines.forEach((cmd) => api.evalCommand(cmd));
+      }
+    }
   }, []);
 
-  const handleOpenHTMLPreview = useCallback((html: string, ggbCode: string, svg: string) => {
-    setRightPanel({ html, ggbCode, svg, activeTab: svg ? 'svg' : 'html' });
+  // ─── Script change ───
+
+  const handleScriptChange = useCallback((code: string) => {
+    setScriptCode(code);
   }, []);
 
-  const handleCloseRightPanel = useCallback(() => {
-    setRightPanel(null);
+  const handleScriptAiModify = useCallback(async (instruction: string, selectedText: string) => {
+    // TODO: 接入后端 AI 修改脚本接口
+    console.log('[AI Modify] instruction:', instruction, 'selected:', selectedText);
+    // 占位：简单在选中文本前插入注释
+    const marker = `// AI: ${instruction}\n`;
+    setScriptCode((prev) => prev + '\n' + marker + selectedText);
+  }, []);
+
+  // ─── Resize handlers (follow GeogebraRunner pattern) ───
+
+  const resizeApplet = useCallback((width: number, height: number) => {
+    if (!ggbRef.current?.setSize) return;
+    const w = Math.round(width);
+    const h = Math.round(height);
+    try {
+      ggbRef.current.setSize(w, h);
+    } catch {
+      // ignore resize race
+    }
+  }, []);
+
+  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const resizeTimeoutRef = useRef<number | null>(null);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+
+  const handleRightMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizingRightRef.current = true;
+    startXRef.current = e.clientX;
+    startWidthRef.current = rightPanelWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [rightPanelWidth]);
+
+  const handleChatMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizingChatRef.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (isResizingRightRef.current) {
+      const delta = startXRef.current - e.clientX;
+      const newWidth = Math.max(360, Math.min(1000, startWidthRef.current + delta));
+      setRightPanelWidth(newWidth);
+    }
+
+    if (isResizingChatRef.current) {
+      const container = rightPanelRef.current as HTMLElement | null;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const newHeight = rect.bottom - e.clientY - 48;
+      const clamped = Math.min(Math.max(newHeight, 120), rect.height - 200);
+      setChatPanelHeight(clamped);
+    }
+  }, []);
+
+  const handleMouseUp = useCallback(() => {
+    if (isResizingRightRef.current) {
+      isResizingRightRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      // Force GeoGebra resize after drag ends
+      requestAnimationFrame(() => {
+        if (!rightPanelRef.current || !ggbRef.current?.setSize) return;
+        const parent = rightPanelRef.current.parentElement;
+        if (!parent) return;
+        const rect = parent.getBoundingClientRect();
+        resizeApplet(rect.width, rect.height);
+      });
+    }
+
+    if (isResizingChatRef.current) {
+      isResizingChatRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  }, [resizeApplet]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [handleMouseMove, handleMouseUp]);
+
+  // Setup ResizeObserver on right panel parent (workspace area) for GGB
+  useEffect(() => {
+    if (!rightPanelRef.current) return;
+
+    const parent = rightPanelRef.current.parentElement;
+    if (!parent) return;
+
+    const observer = new ResizeObserver((entries) => {
+      if (!ggbRef.current?.setSize) return;
+      for (const entry of entries) {
+        const rect = parent.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        if (width > 0 && height > 0) {
+          resizeApplet(width, height);
+        }
+      }
+    });
+
+    observer.observe(parent);
+    resizeObserverRef.current = observer;
+
+    return () => {
+      observer.disconnect();
+      resizeObserverRef.current = null;
+    };
+  }, [resizeApplet]);
+
+  // Listen to window resize as fallback
+  useEffect(() => {
+    const handleResize = () => {
+      if (!rightPanelRef.current || !ggbRef.current?.setSize) return;
+      const parent = rightPanelRef.current.parentElement;
+      if (!parent) return;
+
+      requestAnimationFrame(() => {
+        const rect = parent.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          resizeApplet(rect.width, rect.height);
+        }
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [resizeApplet]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (resizeTimeoutRef.current !== null) {
+        window.clearTimeout(resizeTimeoutRef.current);
+        resizeTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   // Show empty state? (no conversations and not loading)
@@ -466,86 +699,125 @@ function App() {
   const cp = getCurrentProvider(settings);
 
   return (
-    <div className="app-shell">
-      {/* Sidebar */}
-      <Sidebar
-        conversations={conversations}
-        activeConversationId={activeConvId}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        onOpenSettings={() => setShowSettings(true)}
-      />
+    <div
+      className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+      style={{ '--right-width': `${rightPanelWidth}px` } as React.CSSProperties}
+    >
+      {/* Main Content */}
+      <div className="main-container">
+        {/* Sidebar */}
+        <Sidebar
+          conversations={conversations}
+          activeConversationId={activeConvId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onOpenSettings={() => setShowSettings(true)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
+        />
 
-      {/* Main area */}
-      <main className="main-frame">
-        {/* Top bar */}
-        <div className="topbar">
-          <div className="topbar-left">
-            <span className="topbar-title">
-              {activeConv ? activeConv.title : 'GeoGebra 指令生成'}
-            </span>
-            {cp && <span className="topbar-model-badge">{cp.name} · {settings.model}</span>}
+        {/* Center: GeoGebra Workspace */}
+        <GeoGebraWorkspace
+          ref={ggbRef}
+          perspective={perspective}
+          onPerspectiveChange={setPerspective}
+          onReady={handleGeoGebraReady}
+        />
+
+        {/* Right: Script + Chat */}
+        <div className="right-panel" ref={rightPanelRef}>
+          {/* Horizontal resize handle */}
+          <div
+            className="resize-handle resize-handle-horizontal"
+            onMouseDown={handleRightMouseDown}
+          />
+
+          <div className="script-panel">
+            <ScriptEditor
+              initialCode={scriptCode}
+              onSave={handleScriptChange}
+              onExecute={handleExecuteGGB}
+              onReset={handleResetGGB}
+              onAiModify={handleScriptAiModify}
+            />
+            {/* Vertical resize handle */}
+            <div
+              className="resize-handle resize-handle-vertical"
+              onMouseDown={handleChatMouseDown}
+            />
+          </div>
+
+          <div className="chat-panel" style={{ height: chatCollapsed ? 32 : chatPanelHeight }}>
+            <div className="chat-panel-header">
+              <span className="chat-panel-title">对话</span>
+              <button
+                className="chat-panel-toggle"
+                onClick={() => setChatCollapsed((v) => !v)}
+                title={chatCollapsed ? '展开' : '收起'}
+              >
+                {chatCollapsed ? '▲' : '▼'}
+              </button>
+            </div>
+            {!chatCollapsed && (
+              <div className="chat-panel-body">
+                {showEmpty && (
+                  <div className="empty-state">
+                    <div className="empty-icon">
+                      <Triangle size={28} />
+                    </div>
+                    <h2 className="empty-title">GeoGebra 指令生成器</h2>
+                    <p className="empty-sub">输入你的几何、代数或函数描述</p>
+                    <div className="example-grid">
+                      {EXAMPLES.map((ex, i) => (
+                        <button
+                          key={i}
+                          className="example-card"
+                          onClick={() => setInput(ex.text)}
+                        >
+                          {ex.text}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!showEmpty && (
+                  <div className="messages-container">
+                    <div className="messages-list">
+                      {messages.map((msg) => (
+                        <ChatMessage
+                          key={msg.id}
+                          role={msg.role}
+                          content={msg.content}
+                          timestamp={msg.timestamp}
+                          isLoading={msg.role === 'assistant' && isLoading && msg.id === messages[messages.length - 1]?.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="input-area">
+                  <ChatInput
+                    value={input}
+                    onChange={handleInputChange}
+                    onSubmit={handleSubmit}
+                    onCancel={handleCancel}
+                    isLoading={isLoading}
+                    selectedImage={selectedImage}
+                    onImageUpload={handleImageUpload}
+                    onRemoveImage={handleRemoveImage}
+                  />
+                  {isLoading && loadingTip && (
+                    <div className="loading-tip">{loadingTip}</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Content */}
-        <div className="main-content">
-          {showEmpty && (
-            <div className="empty-state">
-              <div className="empty-icon">
-                <Triangle size={36} />
-              </div>
-              <h2 className="empty-title">GeoGebra 指令生成器</h2>
-              <p className="empty-sub">
-                输入你的几何、代数或函数描述，AI 将自动生成 GeoGebra 命令和可嵌入的 HTML 课件。
-              </p>
-              <div className="example-grid">
-                {EXAMPLES.map((ex, i) => (
-                  <button
-                    key={i}
-                    className="example-card"
-                    onClick={() => setInput(ex.text)}
-                  >
-                    {ex.text}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!showEmpty && (
-            <div className="stage">
-              <div className="messages">
-                {messages.map((msg) => (
-                  <ChatMessage
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    timestamp={msg.timestamp}
-                    html={msg.html}
-                    result={activeConv?.result}
-                    isLoading={msg.role === 'assistant' && isLoading && msg.id === messages[messages.length - 1]?.id}
-                    onExecuteGGB={handleExecuteGGB}
-                    onOpenHTMLPreview={handleOpenHTMLPreview}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Input area */}
-        <div className="input-area">
-          <ChatInput
-            value={input}
-            onChange={handleInputChange}
-            onSubmit={handleSubmit}
-            onCancel={handleCancel}
-            isLoading={isLoading}
-          />
-        </div>
-      </main>
+      </div>
 
       {/* Settings panel */}
       <SettingsPanel
@@ -554,17 +826,6 @@ function App() {
         settings={settings}
         onSave={handleSaveSettings}
       />
-
-      {/* GeoGebra Runner (right panel) */}
-      {rightPanel && (
-        <GeogebraRunner
-          html={rightPanel.html}
-          ggbCode={rightPanel.ggbCode}
-          svg={rightPanel.svg}
-          activeTab={rightPanel.activeTab}
-          onClose={handleCloseRightPanel}
-        />
-      )}
     </div>
   );
 }

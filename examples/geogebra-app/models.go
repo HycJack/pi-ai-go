@@ -154,7 +154,11 @@ func (a *App) getCachedModels(provider core.KnownProvider) []ModelInfo {
 	models := llm.GetModels(provider)
 	var result []ModelInfo
 	for _, m := range models {
-		result = append(result, ModelInfo{ID: m.ID, Name: m.ID})
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
+		result = append(result, ModelInfo{ID: m.ID, Name: name})
 	}
 	return result
 }

@@ -5,8 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"syscall"
 )
 
 // DefaultExecutionEnv is a basic ExecutionEnv implementation that
@@ -74,12 +72,7 @@ func (e *DefaultExecutionEnv) Exec(cmd string, args []string, workingDir string)
 		c.Dir = e.workingDir
 	}
 
-	// Hide the console window on Windows to avoid cmd/powershell popups.
-	if runtime.GOOS == "windows" {
-		c.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow: true,
-		}
-	}
+	c.SysProcAttr = newSysProcAttr()
 
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout

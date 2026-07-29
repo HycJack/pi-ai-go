@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useId } from 'react';
 import { X, ChevronRight, Play, Grid3X3, Sigma, Box, Eye, Download, Copy, Check, Image as ImageIcon } from 'lucide-react';
 
 type PanelTab = 'html' | 'ggb' | 'svg';
@@ -13,34 +13,24 @@ interface GeogebraRunnerProps {
 
 type GGBView = 'geometry' | '3d' | 'classic';
 
-// GeoGebra app parameters for each view mode
 const GGB_PARAMS: Record<GGBView, Record<string, string | boolean>> = {
   geometry: {
     appName: 'geometry',
-    width: '100%',
-    height: '100%',
     showToolBar: true,
     showAlgebraInput: true,
     showMenuBar: false,
-    scaleContainerClass: 'ggb-runner-body',
   },
   '3d': {
     appName: '3d',
-    width: '100%',
-    height: '100%',
     showToolBar: true,
     showAlgebraInput: true,
     showMenuBar: false,
-    scaleContainerClass: 'ggb-runner-body',
   },
   classic: {
     appName: 'classic',
-    width: '100%',
-    height: '100%',
     showToolBar: true,
     showAlgebraInput: true,
     showMenuBar: false,
-    scaleContainerClass: 'ggb-runner-body',
   },
 };
 
@@ -56,13 +46,15 @@ function saveFile(content: string, ext: string) {
   URL.revokeObjectURL(url);
 }
 
-// GeoGebra deployggb.js global types
 interface GGBAppletInstance {
   evalCommand?(cmd: string): boolean;
   evalXML?(xml: string): void;
   getXML?(): string;
   setValue?(key: string, val: number): void;
   getValue?(key: string): string;
+  setSize?(width: number, height: number): void;
+  setWidth?(width: number): void;
+  setHeight?(height: number): void;
 }
 
 interface GGBAppletConstructor {
@@ -83,7 +75,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   const [tab, setTab] = useState<PanelTab>(activeTab);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const ggbInjectedRef = useRef(false);
+  const appletRef = useRef<GGBAppletInstance | null>(null);
   const [ggbView, setGgbView] = useState<GGBView>('geometry');
   const [ggbLoaded, setGgbLoaded] = useState(false);
   const ggbCodeRef = useRef(ggbCode);
@@ -92,6 +84,10 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const ggbInjectedRef = useRef(false);
+  const appletId = useId();
+  const resizeTimeoutRef = useRef<number | null>(null);
 
   // Sync activeTab prop
   useEffect(() => {
@@ -124,13 +120,78 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
     setPanelWidth(newWidth);
   }, []);
 
+  // ─── Resize handler using ResizeObserver ───
+
+  const resizeApplet = useCallback((width: number, height: number) => {
+    if (!appletRef.current) {
+      console.log('[GGB] resizeApplet: no applet');
+      return;
+    }
+
+    const w = Math.round(width);
+    const h = Math.round(height);
+    console.log('[GGB] resizeApplet:', w, h);
+
+    // Try all available resize methods
+    if (typeof appletRef.current.setSize === 'function') {
+      appletRef.current.setSize(w, h);
+    }
+    if (typeof appletRef.current.setWidth === 'function') {
+      appletRef.current.setWidth(w);
+    }
+    if (typeof appletRef.current.setHeight === 'function') {
+      appletRef.current.setHeight(h);
+    }
+
+    // Fallback: directly resize GeoGebra's internal elements
+    // Clear previous pending resize to avoid stale callbacks
+    if (resizeTimeoutRef.current !== null) {
+      window.clearTimeout(resizeTimeoutRef.current);
+      resizeTimeoutRef.current = null;
+    }
+    
+    const timeoutId = window.setTimeout(() => {
+      if (!containerRef.current) return;
+      
+      // Try to find iframe(s) inside container
+      const iframes = containerRef.current.querySelectorAll('iframe');
+      iframes.forEach((iframe, i) => {
+        iframe.style.width = w + 'px';
+        iframe.style.height = h + 'px';
+        iframe.style.minWidth = w + 'px';
+        iframe.style.minHeight = h + 'px';
+        console.log(`[GGB] fallback iframe[${i}] resize:`, w, h);
+      });
+      
+      // Also try to resize the container itself
+      containerRef.current.style.width = w + 'px';
+      containerRef.current.style.height = h + 'px';
+      containerRef.current.style.minHeight = h + 'px';
+      console.log('[GGB] fallback container resize:', w, h);
+      
+      resizeTimeoutRef.current = null;
+    }, 50);
+    
+    resizeTimeoutRef.current = timeoutId;
+  }, []);
+
   const handleMouseUp = useCallback(() => {
     if (draggingRef.current) {
       draggingRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+
+      // 拖动结束后强制重新调整 GeoGebra 尺寸
+      requestAnimationFrame(() => {
+        if (!containerRef.current || !appletRef.current) return;
+        const parent = containerRef.current.parentElement;
+        if (!parent) return;
+
+        const rect = parent.getBoundingClientRect();
+        resizeApplet(rect.width, rect.height);
+      });
     }
-  }, []);
+  }, [resizeApplet]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
@@ -146,43 +207,120 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   // ─── Inject GeoGebra applet ───
 
   const injectGGB = useCallback(() => {
-    if (!containerRef.current || ggbInjectedRef.current) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
-    const containerId = `ggb-container-${ggbView}`;
-    container.id = containerId;
+    
+    // Check if already injected
+    if (container.getAttribute('data-injected') === 'yes') {
+      return;
+    }
 
-    // Clear any previous content
     container.innerHTML = '';
+    container.setAttribute('data-injected', 'yes');
 
     const params = {
       ...GGB_PARAMS[ggbView],
       id: `ggb-applet-${ggbView}-${Date.now()}`,
+      width: container.clientWidth,
+      height: container.clientHeight,
+      scaleContainerClass: 'ggb-runner-iframe',
       borderColor: '#ddd',
       showLogging: false,
       allowStyleBar: true,
+      appletOnLoad: (api: any) => {
+        appletRef.current = api;
+        setGgbLoaded(true);
+      }
     };
 
-    if (typeof window.GGBApplet !== 'undefined') {
-      const applet = new window.GGBApplet(params);
-      applet.inject(containerId);
-      ggbInjectedRef.current = true;
-      setGgbLoaded(true);
-    } else {
-      // Load the deploy script first
-      const script = document.createElement('script');
-      script.src = 'https://cdn.geogebra.org/apps/deployggb.js';
-      script.onload = () => {
-        if (typeof window.GGBApplet !== 'undefined') {
-          const applet = new window.GGBApplet(params);
-          applet.inject(containerId);
-          ggbInjectedRef.current = true;
-          setGgbLoaded(true);
-        }
-      };
+    const script = document.createElement('script');
+    script.src = 'https://cdn.geogebra.org/apps/deployggb.js';
+    script.onload = () => {
+      if (typeof window.GGBApplet !== 'undefined') {
+        // @ts-ignore - second argument enables legacy API with setSize
+        const applet = new window.GGBApplet(params, true);
+        applet.inject(appletId);
+      }
+    };
+    
+    // Prevent duplicate loading
+    const existingScript = document.querySelector('script[src="https://cdn.geogebra.org/apps/deployggb.js"]');
+    if (!existingScript) {
       document.head.appendChild(script);
+    } else {
+      // Script already loaded, just inject
+      if (typeof window.GGBApplet !== 'undefined') {
+        // @ts-ignore - second argument enables legacy API with setSize
+        const applet = new window.GGBApplet(params, true);
+        applet.inject(appletId);
+      }
     }
-  }, [ggbView]);
+  }, [ggbView, appletId]);
+
+  // Setup ResizeObserver when applet is loaded
+  useEffect(() => {
+    if (!ggbLoaded || !containerRef.current) return;
+
+    const parent = containerRef.current.parentElement;
+    if (!parent) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (!appletRef.current) return;
+
+      for (const entry of entries) {
+        const rect = parent.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        
+        if (width > 0 && height > 0) {
+          resizeApplet(width, height);
+        }
+      }
+    });
+
+    resizeObserver.observe(parent);
+    resizeObserverRef.current = resizeObserver;
+
+    return () => {
+      resizeObserver.disconnect();
+      resizeObserverRef.current = null;
+    };
+  }, [ggbLoaded, resizeApplet]);
+
+  // Listen to window resize as fallback
+  useEffect(() => {
+    if (!ggbLoaded) return;
+
+    const handleResize = () => {
+      if (!containerRef.current || !appletRef.current) return;
+      const parent = containerRef.current.parentElement;
+      if (!parent) return;
+
+      requestAnimationFrame(() => {
+        const rect = parent.getBoundingClientRect();
+        const cw = parent.clientWidth;
+        const ch = parent.clientHeight;
+        console.log('[GGB] window resize:', { rectW: rect.width, rectH: rect.height, clientW: cw, clientH: ch });
+        if (rect.width > 0 && rect.height > 0) {
+          resizeApplet(rect.width, rect.height);
+        }
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [ggbLoaded, resizeApplet]);
+
+  // Cleanup resize timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resizeTimeoutRef.current !== null) {
+        window.clearTimeout(resizeTimeoutRef.current);
+        resizeTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // ─── Execute GGB commands ───
 
@@ -190,9 +328,9 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
     const code = ggbCodeRef.current;
     if (!code) return;
 
-    const getApplet = () => {
-      if ((window as any).ggbApplet && typeof (window as any).ggbApplet.evalCommand === 'function') {
-        return (window as any).ggbApplet;
+    const getApplet = (): GGBAppletInstance | null => {
+      if (appletRef.current && typeof appletRef.current.evalCommand === 'function') {
+        return appletRef.current;
       }
       return null;
     };
@@ -203,16 +341,19 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
       attempts++;
       const applet = getApplet();
       if (applet) {
-        const lines = code.split('\n')
+        const cleaned = code.split('\n')
           .map((l) => l.trim())
-          .filter((l) => l && !l.startsWith('#') && !l.startsWith('//'));
-        lines.forEach((line) => {
+          .filter((l) => l && !l.startsWith('#') && !l.startsWith('//'))
+          .join('\n');
+        if (cleaned) {
           try {
-            applet.evalCommand(line);
+            if (typeof applet.evalCommand === 'function') {
+              applet.evalCommand(cleaned);
+            }
           } catch (e) {
-            console.warn('[GGB] evalCommand failed:', line, e);
+            console.warn('[GGB] evalCommand failed:', e);
           }
-        });
+        }
         clearInterval(interval);
         return;
       }
@@ -225,6 +366,10 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   // Inject when switching to ggb tab
   useEffect(() => {
     if (tab === 'ggb') {
+      // Reset injection state when switching to ggb tab
+      if (containerRef.current) {
+        containerRef.current.setAttribute('data-injected', 'no');
+      }
       ggbInjectedRef.current = false;
       setGgbLoaded(false);
       const timer = setTimeout(() => injectGGB(), 200);
@@ -235,7 +380,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
   // Execute commands after applet is loaded
   useEffect(() => {
     if (!ggbLoaded || !ggbCode) return;
-    const timer = setTimeout(() => executeGGBCommands(), 2000);
+    const timer = setTimeout(() => executeGGBCommands(), 500);
     return () => clearTimeout(timer);
   }, [ggbCode, ggbLoaded, executeGGBCommands]);
 
@@ -355,7 +500,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
           <div className="ggb-runner-body" style={{ position: 'relative', overflow: 'hidden' }}>
             <div
               ref={containerRef}
-              id={`ggb-container-${ggbView}`}
+              id={appletId}
               className="ggb-runner-iframe"
             />
           </div>

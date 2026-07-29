@@ -11,6 +11,7 @@ export interface Settings {
   model: string;
   maxTokens: number;
   temperature: number;
+  systemPrompt?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   model: 'gpt-4o-mini',
   maxTokens: 4096,
   temperature: 1.0,
+  systemPrompt: '',
 };
 
 export const PROVIDER_TYPES: { type: string; name: string; baseUrl: string }[] = [
