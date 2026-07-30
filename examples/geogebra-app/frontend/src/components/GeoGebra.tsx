@@ -83,7 +83,22 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
     },
     reset: () => {
       if (appletRef.current) {
-        appletRef.current.reset();
+        try {
+          if (typeof appletRef.current.getAllObjectNames === 'function') {
+            const names = appletRef.current.getAllObjectNames();
+            if (names && names.length > 0) {
+              for (const name of names) {
+                if (typeof appletRef.current.deleteObject === 'function') {
+                  appletRef.current.deleteObject(name);
+                } else if (typeof appletRef.current.evalCommand === 'function') {
+                  appletRef.current.evalCommand(`Delete(${name})`);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[GeoGebra] reset failed:', e);
+        }
       }
     },
     downloadGGB: () => {
@@ -195,7 +210,7 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
         initApplet();
       } else {
         // Prevent duplicate loading
-        const existingScript = document.querySelector('script[src="https://cdn.geogebra.org/apps/deployggb.js"]');
+        const existingScript = document.querySelector('script[src="/deployggb.js"]') || document.querySelector('script[src="https://cdn.geogebra.org/apps/deployggb.js"]');
         if (existingScript) {
           // Script is loading, wait for it
           const checkInterval = setInterval(() => {
@@ -210,7 +225,7 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
         }
 
         scriptElement = document.createElement('script');
-        scriptElement.src = 'https://cdn.geogebra.org/apps/deployggb.js';
+        scriptElement.src = '/deployggb.js';
         scriptElement.onload = () => {
           scriptLoadedRef.current = true;
           initApplet();

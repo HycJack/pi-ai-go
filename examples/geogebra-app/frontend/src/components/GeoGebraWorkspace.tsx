@@ -75,9 +75,21 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
       }
     },
     reset: () => {
-      if (ggbRef.current?.evalCommand) {
+      if (ggbRef.current) {
         try {
-          ggbRef.current.evalCommand('DeleteAll');
+          // Delete all objects by iterating over their names
+          if (typeof ggbRef.current.getAllObjectNames === 'function') {
+            const names = ggbRef.current.getAllObjectNames();
+            if (names && names.length > 0) {
+              for (const name of names) {
+                if (typeof ggbRef.current.deleteObject === 'function') {
+                  ggbRef.current.deleteObject(name);
+                } else if (typeof ggbRef.current.evalCommand === 'function') {
+                  ggbRef.current.evalCommand(`Delete(${name})`);
+                }
+              }
+            }
+          }
         } catch (e) {
           console.warn('[GeoGebra] reset failed:', e);
         }
@@ -211,6 +223,7 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
     if (getScriptLoaded()) return;
 
     const CDN_CANDIDATES = [
+      '/deployggb.js',
       'https://cdn.geogebra.org/apps/deployggb.js',
       'http://cdn.geogebra.org/apps/deployggb.js',
     ];

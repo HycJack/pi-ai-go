@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"pi-ai-go/agent/session"
 	"pi-ai-go/core"
 	"pi-ai-go/llm"
 
@@ -53,12 +55,12 @@ func (a *App) GeogebraMessage(jsonStr string) error {
 
 	model := a.resolveModel(providerStr, modelID, baseURL)
 
-	systemPrompt := buildGeogebraSystemPrompt()
+	systemPrompt := a.buildGeogebraSystemPrompt()
 
-	// Build messages: system + history + current user message
-	messages := []core.Message{
-		core.SystemMessage{Content: systemPrompt},
-	}
+	// Build messages: history + current user message (system prompt goes
+	// into core.Context.SystemPrompt, not the messages array, so all
+	// providers — including Anthropic — receive it correctly).
+	var messages []core.Message
 	for _, h := range req.HistoryMessages {
 		switch h.Role {
 		case "user":
@@ -86,7 +88,12 @@ func (a *App) GeogebraMessage(jsonStr string) error {
 		opts.Temperature = &t
 	}
 
-	stream, err := llm.StreamSimple(streamCtx, model, messages, opts)
+	llmCtx := core.Context{
+		SystemPrompt: systemPrompt,
+		Messages:     messages,
+	}
+
+	stream, err := llm.StreamSimpleWithContext(streamCtx, model, llmCtx, opts)
 	if err != nil {
 		LogError("[geogebra] StreamSimple error: %v", err)
 		runtime.EventsEmit(a.ctx, "geogebra-error", fmt.Sprintf("Error: %v", err))
@@ -164,7 +171,7 @@ func (a *App) GeogebraValidateAndRegenerate(jsonStr string) error {
 
 	model := a.resolveModel(providerStr, modelID, baseURL)
 
-	systemPrompt := buildGeogebraSystemPrompt()
+	systemPrompt := a.buildGeogebraSystemPrompt()
 
 	// Build a correction prompt that includes the original request, generated code, and validation errors
 	fixPrompt := "我需要你修正之前生成的 GeoGebra 命令。\n\n"
@@ -179,11 +186,8 @@ func (a *App) GeogebraValidateAndRegenerate(jsonStr string) error {
 	fixPrompt += "4. 输出格式与之前相同：```geogebra 代码块放命令，```html 代码块放 HTML"
 	correctionPrompt := fmt.Sprintf(fixPrompt, req.OriginalMessage, req.GgbCode, req.ValidationErrors)
 
-	userMsg := core.UserMessage{Content: correctionPrompt}
-
 	messages := []core.Message{
-		core.SystemMessage{Content: systemPrompt},
-		userMsg,
+		core.UserMessage{Content: correctionPrompt},
 	}
 
 	streamCtx, cancelFn := context.WithCancel(a.ctx)
@@ -203,7 +207,12 @@ func (a *App) GeogebraValidateAndRegenerate(jsonStr string) error {
 		opts.Temperature = &t
 	}
 
-	stream, err := llm.StreamSimple(streamCtx, model, messages, opts)
+	llmCtx := core.Context{
+		SystemPrompt: systemPrompt,
+		Messages:     messages,
+	}
+
+	stream, err := llm.StreamSimpleWithContext(streamCtx, model, llmCtx, opts)
 	if err != nil {
 		LogError("[geogebra-regen] StreamSimple error: %v", err)
 		runtime.EventsEmit(a.ctx, "geogebra-error", fmt.Sprintf("Error: %v", err))
@@ -354,11 +363,33 @@ func detectGeogebraCommands(text string) string {
 	return strings.Join(commands, "\n")
 }
 
-//go:embed geogebra_system_prompt.txt
-var geogebraSystemPrompt string
+// buildGeogebraSystemPrompt loads skills from the skills/ directory and
+// builds the system prompt using session.BuildSystemPrompt. Skills are
+// loaded once and cached for subsequent calls.
+func (a *App) buildGeogebraSystemPrompt() string {
+	a.skillsOnce.Do(func() {
+		skillsDir := filepath.Join("skills")
+		if abs, err := filepath.Abs(skillsDir); err == nil {
+			skillsDir = abs
+		}
+		if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
+			LogWarn("[skills] directory not found: %s", skillsDir)
+			return
+		}
+		skills, diags := session.LoadSkills(skillsDir)
+		for _, d := range diags {
+			LogWarn("[skills] %s: %s", d.Path, d.Message)
+		}
+		if len(skills) == 0 {
+			LogWarn("[skills] no skills loaded from %s", skillsDir)
+			return
+		}
+		LogInfo("[skills] loaded %d skill(s) from %s", len(skills), skillsDir)
+		a.cachedSkills = skills
+	})
 
-// buildGeogebraSystemPrompt returns the system prompt for the GeoGebra
-// instruction generator.
-func buildGeogebraSystemPrompt() string {
-	return geogebraSystemPrompt
+	return session.BuildSystemPrompt(session.SystemPromptConfig{
+		BasePrompt: "你是 GeoGebra 指令生成专家。你的任务是根据用户的描述，只生成 GeoGebra 命令和 GeoGebra 网页版课件。",
+		Skills:     a.cachedSkills,
+	})
 }

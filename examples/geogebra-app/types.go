@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"sync"
+
+	"pi-ai-go/agent/session"
 )
 
 // App is the main Wails application struct.
 type App struct {
-	ctx        context.Context
-	cancelFn   context.CancelFunc
-	settings   AppSettings
-	settingsMu sync.RWMutex
-	dataDir    string
+	ctx          context.Context
+	cancelFn     context.CancelFunc
+	settings     AppSettings
+	settingsMu   sync.RWMutex
+	dataDir      string
+	skillsOnce   sync.Once
+	cachedSkills []session.Skill
 }
 
 // AppSettings persists user configuration.

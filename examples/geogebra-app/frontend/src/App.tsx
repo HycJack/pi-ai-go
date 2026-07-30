@@ -481,6 +481,10 @@ function App() {
   // ─── New conversation ───
 
   const handleNewConversation = useCallback(() => {
+    // Reset GeoGebra canvas
+    ggbRef.current?.reset();
+    // Reset the first-ready flag so saved script re-runs on next ready
+    isGgbFirstReadyRef.current = true;
     setActiveConvId(null);
     setScriptCode('');
   }, []);
@@ -490,6 +494,9 @@ function App() {
   const handleSelectConversation = useCallback((id: string) => {
     setActiveConvId(id);
     const conv = conversations.find((c) => c.id === id);
+    // Reset GeoGebra canvas
+    ggbRef.current?.reset();
+    isGgbFirstReadyRef.current = true;
     if (conv?.result?.ggbCode) {
       setScriptCode(conv.result.ggbCode);
     } else {
