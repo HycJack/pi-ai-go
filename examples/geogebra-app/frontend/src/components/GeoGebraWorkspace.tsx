@@ -5,6 +5,7 @@ export interface GeoGebraRef {
   setPerspective: (p: string) => void;
   setSize: (width: number, height: number) => void;
   reset: () => void;
+  getAPI: () => any;
 }
 
 interface GeoGebraProps {
@@ -27,6 +28,100 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
   const [loadError, setLoadError] = useState<string | null>(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+
+  // View visibility states
+  const [showMenuBar, setShowMenuBar] = useState(false);
+  const [showToolBar, setShowToolBar] = useState(true);
+  const [showAlgebraInput, setShowAlgebraInput] = useState(true);
+  const [axesVisible, setAxesVisible] = useState(true);
+  const [gridVisible, setGridVisible] = useState(true);
+
+  const toggleMenuBar = useCallback(() => {
+    setShowMenuBar(prev => {
+      const next = !prev;
+      const api = ggbRef.current;
+      if (api?.showMenuBar) {
+        try { api.showMenuBar(next); } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleToolBar = useCallback(() => {
+    setShowToolBar(prev => {
+      const next = !prev;
+      const api = ggbRef.current;
+      if (api?.showToolBar) {
+        try { api.showToolBar(next); } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAlgebraInput = useCallback(() => {
+    setShowAlgebraInput(prev => {
+      const next = !prev;
+      const api = ggbRef.current;
+      if (api?.showAlgebraInput) {
+        try { api.showAlgebraInput(next); } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAxes = useCallback(() => {
+    setAxesVisible(prev => {
+      const next = !prev;
+      const api = ggbRef.current;
+      if (api?.setAxesVisible) {
+        try { api.setAxesVisible(next, next, next); } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleGrid = useCallback(() => {
+    setGridVisible(prev => {
+      const next = !prev;
+      const api = ggbRef.current;
+      if (api?.setGridVisible) {
+        try { api.setGridVisible(next); } catch {}
+      }
+      return next;
+    });
+  }, []);
+
+  const exportGGB = useCallback(() => {
+    const api = ggbRef.current;
+    if (!api) return;
+    try {
+      const base64 = api.getBase64?.();
+      if (base64) {
+        const link = document.createElement('a');
+        link.href = 'data:application/octet-stream;base64,' + base64;
+        link.download = 'geogebra-' + Date.now() + '.ggb';
+        link.click();
+      }
+    } catch (e) {
+      console.warn('[GeoGebra] exportGGB failed:', e);
+    }
+  }, []);
+
+  const exportPNG = useCallback(() => {
+    const api = ggbRef.current;
+    if (!api) return;
+    try {
+      const base64 = api.getPNGBase64?.(1, false, 72);
+      if (base64) {
+        const link = document.createElement('a');
+        link.href = 'data:image/png;base64,' + base64;
+        link.download = 'geogebra-' + Date.now() + '.png';
+        link.click();
+      }
+    } catch (e) {
+      console.warn('[GeoGebra] exportPNG failed:', e);
+    }
+  }, []);
 
   // Use a global flag to prevent duplicate script loading across Strict Mode double-mount
   const getScriptLoaded = () => (window as any).__geogebraScriptLoaded === true;
@@ -95,6 +190,7 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
         }
       }
     },
+    getAPI: () => ggbRef.current,
   }));
 
   const initGeoGebra = useCallback(() => {
@@ -124,6 +220,14 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
         appletOnLoad: (api: any) => {
           // Store the actual on-load API which exposes evalCommand reliably
           ggbRef.current = api;
+          // Sync view states after load
+          try {
+            if (api.showMenuBar) api.showMenuBar(showMenuBar);
+            if (api.showToolBar) api.showToolBar(showToolBar);
+            if (api.showAlgebraInput) api.showAlgebraInput(showAlgebraInput);
+            if (api.setAxesVisible) api.setAxesVisible(axesVisible, axesVisible, axesVisible);
+            if (api.setGridVisible) api.setGridVisible(gridVisible);
+          } catch {}
           try {
             onReadyStable(api);
           } catch (e) {
@@ -369,6 +473,61 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
             title="立体几何"
           >
             立体
+          </button>
+        </div>
+        <div className="toolbar-divider" />
+        <div className="view-toggles">
+          <button
+            onClick={toggleMenuBar}
+            className={`toggle-btn ${showMenuBar ? 'active' : ''}`}
+            title="菜单栏"
+          >
+            菜单
+          </button>
+          <button
+            onClick={toggleToolBar}
+            className={`toggle-btn ${showToolBar ? 'active' : ''}`}
+            title="工具栏"
+          >
+            工具
+          </button>
+          <button
+            onClick={toggleAlgebraInput}
+            className={`toggle-btn ${showAlgebraInput ? 'active' : ''}`}
+            title="代数输入栏"
+          >
+            输入
+          </button>
+          <button
+            onClick={toggleAxes}
+            className={`toggle-btn ${axesVisible ? 'active' : ''}`}
+            title="坐标轴"
+          >
+            坐标
+          </button>
+          <button
+            onClick={toggleGrid}
+            className={`toggle-btn ${gridVisible ? 'active' : ''}`}
+            title="网格"
+          >
+            网格
+          </button>
+        </div>
+        <div className="toolbar-divider" />
+        <div className="export-buttons">
+          <button
+            onClick={exportGGB}
+            className="export-btn"
+            title="导出 .ggb 文件"
+          >
+            导出GGB
+          </button>
+          <button
+            onClick={exportPNG}
+            className="export-btn"
+            title="导出 PNG 图片"
+          >
+            导出图片
           </button>
         </div>
       </div>

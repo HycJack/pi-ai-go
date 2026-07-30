@@ -1516,6 +1516,70 @@ button, input, textarea, select { font: inherit; }
   border-bottom: 1px solid var(--n-hairline-soft);
   gap: 10px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--n-hairline-soft);
+  flex-shrink: 0;
+}
+
+.view-toggles {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.toggle-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--n-hairline-soft);
+  background: transparent;
+  color: var(--n-slate);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.toggle-btn:hover {
+  color: var(--n-charcoal);
+  background: var(--n-surface-soft);
+}
+
+.toggle-btn.active {
+  background: var(--n-primary-soft);
+  color: var(--n-primary-deep);
+  font-weight: 600;
+  border-color: var(--n-primary-soft);
+}
+
+.export-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.export-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--n-hairline-soft);
+  background: var(--n-surface);
+  color: var(--n-charcoal);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.export-btn:hover {
+  background: var(--n-primary-soft);
+  color: var(--n-primary-deep);
+  border-color: var(--n-primary-soft);
 }
 
 .workspace-canvas {

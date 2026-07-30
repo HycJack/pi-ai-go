@@ -297,6 +297,28 @@ function App() {
             });
             return;
           }
+        } else if (result.ggbCode && retryCountRef.current >= 2) {
+          // Final attempt still has errors — notify the user
+          const validationErrors = validateGGB(result.ggbCode);
+          if (validationErrors) {
+            log('warn', 'geogebra-lint-final', {
+              convId: currentConvId,
+              errors: validationErrors,
+            });
+            setConversations((prev) => prev.map((c) => {
+              if (c.id !== currentConvId) return c;
+              const msgs = [...c.messages];
+              const last = msgs[msgs.length - 1];
+              if (last && last.role === 'assistant') {
+                msgs[msgs.length - 1] = {
+                  ...last,
+                  content: last.content + `\n\n⚠️ **校验提示**：以下命令可能存在问题，请手动检查：\n\n\`\`\`\n${validationErrors}\n\`\`\``,
+                  timestamp: formatTimestamp(),
+                };
+              }
+              return { ...c, messages: msgs };
+            }));
+          }
         }
       } catch (e) { /* ignore */ }
       setIsLoading(false);

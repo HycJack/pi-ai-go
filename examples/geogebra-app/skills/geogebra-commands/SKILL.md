@@ -22,6 +22,8 @@ description: Generate GeoGebra commands and interactive HTML courseware from use
 - GeoGebra 命令间用换行分隔，每条命令独立一行
 - 点坐标使用 (x, y) 或 (x, y, z) 格式
 - 支持 2D 和 3D 几何
+- **最终输出的 GeoGebra 命令代码块中不能包含任何注释**（不要出现 `//` 或 `#` 开头的注释行），只输出纯命令
+- **一行一条指令**，不要将多条命令写在同一行
 
 ## 语法基础
 
@@ -126,3 +128,122 @@ Polygon(A, B, C)     // 过三点 A, B, C 画多边形
 1. **命令名拼写错误**：GeoGebra 命令区分大小写，如 `Polygon` 不是 `polygon`
 2. **参数数量不匹配**：每个命令有固定的参数签名，如 `Circle(A, 5)` 不能写成 `Circle(A)`
 3. **使用非 GeoGebra 技术**：不要输出 SVG、Canvas、Three.js 等非 GeoGebra 绘图方案
+4. **禁止使用不存在的命令**：以下命令**不存在**，不要使用：
+
+| 错误命令 | 正确命令 | 说明 |
+|---|---|---|
+| `SetThickness` | `SetLineThickness` | 设置线宽 |
+| `SetOpacity` | `SetFilling` | 设置填充透明度（0-1） |
+| `SetBarThickness` | `SetLineThickness` | 柱状图线宽 |
+| `DeleteAll` | 逐个 `Delete(<obj>)` | 清空所有对象（API 用 `getAllObjectNames` + `deleteObject`） |
+| `SetLineWidth` | `SetLineThickness` | 线宽 |
+| `SetFill` | `SetFilling` | 填充 |
+| `SetTransparency` | `SetFilling` | 透明度 |
+
+所有可用命令请查阅 `references/commandSignatures.json`，不要自行猜测命令名。
+
+## 角度指令使用注意事项
+
+### 角度单位
+
+GeoGebra 默认使用度（°）而非弧度。角度值后面必须加 `°` 符号：
+
+```
+// 正确
+Rotate(tri, 90°, center)
+Angle((1, 0), (0, 0), (0, 1))
+
+// 错误 — 缺少 ° 符号
+Rotate(tri, 90, center)
+```
+
+如果需要用弧度，必须显式标注：
+```
+Rotate(tri, π/2, center)    // 用 π 表示弧度
+```
+
+### Angle 命令的多重签名
+
+`Angle` 命令有多种签名，注意参数顺序和含义：
+
+| 签名 | 说明 |
+|---|---|
+| `Angle(<Object>)` | 圆锥曲线的旋转角 |
+| `Angle(<Vector>, <Vector>)` | 两向量夹角 |
+| `Angle(<Line>, <Line>)` | 两直线夹角 |
+| `Angle(<Line>, <Plane>)` | 直线与平面夹角 |
+| `Angle(<Plane>, <Plane>)` | 两平面夹角 |
+| `Angle(<Point>, <Apex>, <Point>)` | 三点定义的角，**第二个点是顶点** |
+| `Angle(<Point>, <Apex>, <Angle>)` | 从顶点出发指定大小的角 |
+| `Angle(<Point>, <Point>, <Point>, <Direction>)` | 3D 中带方向的角度 |
+
+### 三点定义角度的顶点位置
+
+`Angle(A, B, C)` 中 **B 是顶点**，不是 A：
+
+```
+A = (1, 0)
+B = (0, 0)    // B 是顶点
+C = (0, 1)
+Angle(A, B, C)    // 返回 90°
+```
+
+### 多边形角度的方向性
+
+`Angle(<Polygon>)` 返回的内角/外角取决于多边形顶点的方向（顺时针/逆时针）：
+
+```
+// 逆时针 — 返回内角
+poly1 = Polygon((4, 1), (2, 4), (1, 1))
+Angle(poly1)
+
+// 顺时针 — 可能返回外角
+poly2 = Polygon((1, 1), (2, 4), (4, 1))
+Angle(poly2)
+```
+
+### 3D 角度与方向
+
+3D 中使用 `Direction` 参数可以绕过标准角度显示区间：
+
+```
+// 3D 中带方向的角度
+Angle((1, -1, 0), (0, 0, 0), (-1, -1, 0), zAxis)
+```
+
+### Rotate 命令的角度
+
+`Rotate` 旋转方向为**逆时针**，角度必须带 `°`：
+
+```
+// 逆时针旋转 90°
+Rotate(tri, 90°, center)
+
+// 3D 绕轴旋转
+Rotate(tri, 45°, xAxis)
+```
+
+### 角平分线
+
+`AngleBisector` 返回两条角平分线（内角平分线和外角平分线）：
+
+```
+// 两条直线的角平分线 — 返回两条线
+AngleBisector(x + y = 1, x - y = 2)
+
+// 三点定义的角平分线 — 第二个点是顶点
+AngleBisector((1, 1), (4, 4), (7, 1))
+```
+
+### 希腊字母与角度变量
+
+GeoGebra 中 `α` (alpha)、`β` (beta)、`γ` (gamma) 常用作角度变量名。注意 `Gamma` 命令是 Gamma 分布函数，不是角度命令：
+
+```
+// 角度变量
+α = 45°
+Rotate(tri, α, center)
+
+// Gamma 分布 — 不要混淆
+Gamma(2, 1, 0.5)
+```
