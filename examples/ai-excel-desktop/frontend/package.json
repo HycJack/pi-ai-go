@@ -10,17 +10,22 @@
   },
   "dependencies": {
     "ag-grid-community": "^31.0.0",
+    "katex": "^0.18.4",
     "lucide-react": "^0.460.0",
+    "mermaid": "^11.16.1",
     "papaparse": "^5.4.1",
     "plotly.js-dist-min": "^3.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
     "streamdown": "^2.5.0",
     "three": "^0.185.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@esbuild/win32-x64": "^0.28.2",
+    "@types/katex": "^0.16.8",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState, useCallback, Component } from "react";
 import Plotly from "plotly.js-dist-min";
 import { Streamdown } from "streamdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   ArrowDown,
   Copy,
@@ -108,7 +111,7 @@ export function MessageContent({ children, from }) {
   return (
     <div className="min-w-0 max-w-full text-[13px] text-foreground">
       {typeof children === "string" ? (
-        <Streamdown animated isStreaming={false}>
+        <Streamdown animated isStreaming={false} mermaid={{ config: { theme: "dark" } }} plugins={{ math: mathPlugin }}>
           {children}
         </Streamdown>
       ) : (
@@ -117,6 +120,16 @@ export function MessageContent({ children, from }) {
     </div>
   );
 }
+
+// ============================================================================
+// mathPlugin - 用于 Streamdown 的 KaTeX 数学支持
+// ============================================================================
+const mathPlugin = {
+  name: "katex",
+  type: "math",
+  remarkPlugin: remarkMath,
+  rehypePlugin: rehypeKatex,
+};
 
 // ============================================================================
 // MessageActions
