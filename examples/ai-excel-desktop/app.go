@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"os"
@@ -60,6 +61,15 @@ type ChartConfig struct {
 	Sample int      `json:"sample"`
 }
 
+// WordDoc 表示一个 Word 文档的内容
+type WordDoc struct {
+	Name    string `json:"name"`
+	Size    int64  `json:"size"`
+	HTML    string `json:"html"`
+	Warning string `json:"warning,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
 // ============================================================================
 // 文件操作
 // ============================================================================
@@ -67,10 +77,11 @@ type ChartConfig struct {
 // OpenFileDialog 打开文件选择对话框
 func (a *App) OpenFileDialog() (*FileInfo, error) {
 	selection, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择 Excel 或 CSV 文件",
+		Title: "选择 Excel、CSV 或 Word 文件",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "Excel 文件 (*.xlsx;*.xls)", Pattern: "*.xlsx;*.xls"},
 			{DisplayName: "CSV 文件 (*.csv)", Pattern: "*.csv"},
+			{DisplayName: "Word 文件 (*.docx)", Pattern: "*.docx"},
 			{DisplayName: "所有文件 (*.*)", Pattern: "*"},
 		},
 	})
@@ -111,6 +122,9 @@ func (a *App) LoadFile(path string) (*FileInfo, error) {
 	case ".csv":
 		fi.Sheets = []string{"Sheet1"}
 		fi.Selected = "Sheet1"
+	case ".docx":
+		fi.Sheets = []string{"content"}
+		fi.Selected = "content"
 	default:
 		return nil, fmt.Errorf("不支持的文件格式: %s", ext)
 	}
@@ -139,6 +153,21 @@ func (a *App) LoadSheet(sheetName string) (*SheetData, error) {
 		data, err = a.readExcel(fi.Path, sheetName)
 	case ".csv":
 		data, err = a.readCSV(fi.Path)
+	case ".docx":
+		content, err := os.ReadFile(fi.Path)
+		if err != nil {
+			return nil, fmt.Errorf("读取 Word 失败: %v", err)
+		}
+		// 返回 base64 编码的二进制内容，前端用 mammoth 解析
+		b64 := base64.StdEncoding.EncodeToString(content)
+		data = &SheetData{
+			Name:    "content",
+			Headers: []string{"content"},
+			Rows:    [][]interface{}{{b64}},
+			Total:   1,
+			Types:   map[string]string{"content": "docx"},
+		}
+		return data, nil
 	default:
 		return nil, fmt.Errorf("不支持的格式")
 	}

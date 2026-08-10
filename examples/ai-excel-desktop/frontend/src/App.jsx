@@ -22,6 +22,7 @@ import { EventsOn, EventsOff } from "../wailsjs/runtime/runtime";
 import { DataTable } from "./components/DataTable";
 import { AISidebar } from "./components/AISidebar";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { WordEditor } from "./components/WordEditor";
 
 let idCounter = 0;
 const genId = () => `m${++idCounter}`;
@@ -46,6 +47,7 @@ export default function App() {
   const sendingRef = useRef(false);
 
   const dataLoaded = headers.length > 0;
+  const isWordDoc = fileInfo?.name?.toLowerCase().endsWith(".docx");
 
   // ===== 监听 agent 事件流 =====
   useEffect(() => {
@@ -457,6 +459,13 @@ export default function App() {
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {!dataLoaded ? (
             <UploadView onOpen={openFile} onSample={generateSample} loading={loading} />
+          ) : isWordDoc ? (
+            <WordEditor
+              file={null}
+              docxBase64={rows[0]?.content}
+              fileName={fileInfo?.name}
+              onClose={() => clearAll()}
+            />
           ) : (
             <DataView
               headers={headers} rows={rows} types={types}

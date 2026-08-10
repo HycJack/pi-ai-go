@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "ag-grid-community": "^31.0.0",
+    "docx": "^9.7.1",
+    "file-saver": "^2.0.5",
     "katex": "^0.18.4",
     "lucide-react": "^0.460.0",
+    "mammoth": "^1.12.1",
     "mermaid": "^11.16.1",
     "papaparse": "^5.4.1",
     "plotly.js-dist-min": "^3.7.0",
