@@ -1,5 +1,5 @@
 // ai-elements 风格的对话组件 + 内联图表块 + 全屏弹窗
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, Component } from "react";
 import Plotly from "plotly.js-dist-min";
 import { Streamdown } from "streamdown";
 import {
@@ -263,9 +263,48 @@ export function PromptInput({
 let chartKeyCounter = 0;
 
 // ============================================================================
+// ErrorBoundary - 捕获子组件异常，防止整个应用崩溃
+// ============================================================================
+class ChartErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[ChartErrorBoundary]", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="my-2 rounded-xl border border-danger/30 bg-danger/5 p-3">
+          <p className="text-xs text-danger">
+            图表渲染失败: {this.state.error?.message || "未知错误"}
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ============================================================================
 // ChartBlock - 内联图表（Plotly）+ 全屏放大
 // ============================================================================
 export function ChartBlock({ chartConfig, chartData }) {
+  if (!chartConfig) return null;
+  console.log("[ChartBlock] render type=%s x=%s y=%j rows=%d",
+    chartConfig.type, chartConfig.xAxis, chartConfig.yAxes, chartData?.length);
+  return (
+    <ChartErrorBoundary>
+      <ChartBlockInner chartConfig={chartConfig} chartData={chartData} />
+    </ChartErrorBoundary>
+  );
+}
+
+function ChartBlockInner({ chartConfig, chartData }) {
   const inlineRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   // 每个实例生成一次唯一 ID
@@ -291,7 +330,6 @@ export function ChartBlock({ chartConfig, chartData }) {
   }, [chartConfig, chartData, ids.inline]);
 
   // 展开时渲染/更新全屏图表 — 改为使用 FullScreenModal 子组件
-  if (!chartConfig) return null;
 
   return (
     <>

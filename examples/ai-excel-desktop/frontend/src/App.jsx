@@ -171,10 +171,17 @@ export default function App() {
         const cfg = typeof cfgJson === "string" ? JSON.parse(cfgJson) : cfgJson;
         let cd = rows;
         if (!cd || cd.length === 0) {
+          console.warn("[chart-config] rows is empty, skipping");
           toast("图表数据为空，跳过", "error");
           return;
         }
+        // 过滤掉 undefined/null 的行
+        cd = cd.filter(Boolean);
         if (cfg.sample > 0 && cd.length > cfg.sample) cd = sampleData(cd, cfg.sample);
+        if (cd.length === 0) {
+          toast("采样后数据为空", "error");
+          return;
+        }
         // 把图表配置追加到当前流式消息的 chartBlocks 数组
         const id = currentStreamRef.current;
         if (id) {
@@ -183,10 +190,14 @@ export default function App() {
             const blocks = [...(m.chartBlocks || []), { config: cfg, data: cd }];
             return { ...m, chartBlocks: blocks };
           }));
+          console.log("[chart-config] appended block type=%s rows=%d", cfg.type, cd.length);
+        } else {
+          console.warn("[chart-config] no active stream id");
         }
         toast(`已生成 ${cfg.type} 图表`, "success");
       } catch (e) {
-        toast("图表配置解析失败: " + e, "error");
+        console.error("[chart-config] error:", e);
+        toast("图表配置解析失败: " + (e?.message || e), "error");
       }
     }));
 
