@@ -1,5 +1,5 @@
 // WordEditor - 基于 @docx-editor.dev/react 的 Word 文档编辑器
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Component } from "react";
 import {
   DocxEditorRoot,
   DocxEditorViewport,
@@ -11,8 +11,57 @@ import {
 import {
   Loader2,
   FileText,
+  Save,
   X,
+  AlertTriangle,
 } from "lucide-react";
+
+// ============================================================================
+// WordEditorErrorBoundary - 捕获 DocxEditor 内部运行时错误
+// ============================================================================
+class WordEditorErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("[WordEditor ErrorBoundary]", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 bg-white p-8">
+          <AlertTriangle className="h-10 w-10 text-red-400" />
+          <div className="text-center">
+            <h3 className="text-base font-semibold text-gray-800">Word 编辑器加载失败</h3>
+            <p className="mt-1 text-sm text-gray-500">{this.state.error?.message || String(this.state.error)}</p>
+          </div>
+          <div className="flex gap-3">
+            {this.props.onClose && (
+              <button
+                onClick={this.props.onClose}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                关闭
+              </button>
+            )}
+            <button
+              onClick={() => this.setState({ error: null, errorInfo: null })}
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ============================================================================
 // WordEditor - 主组件
@@ -130,6 +179,7 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
       )}
 
       {/* DocxEditor */}
+      <WordEditorErrorBoundary onClose={onClose}>
       <div className="min-h-0 flex-1 overflow-hidden">
         <DocxEditorRoot
           document={docBytes}
@@ -160,6 +210,7 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
           </div>
         </DocxEditorRoot>
       </div>
+      </WordEditorErrorBoundary>
     </div>
   );
 }
