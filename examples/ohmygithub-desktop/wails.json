@@ -1,0 +1,14 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "ohmygithub-desktop",
+  "outputfilename": "ohmygithub-desktop",
+  "frontend:install": "npm install",
+  "compileDaemonPID": 924,
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "HycJack",
+    "email": "772403255@qq.com"
+  }
+}

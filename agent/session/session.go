@@ -72,7 +72,7 @@ func (s *Session) initializeDefaultRef() error {
 	checkoutEntry.CheckoutTarget.Type = "ref"
 	checkoutEntry.CheckoutTarget.Name = s.defaultRef
 
-	return s.Append(refEntry, checkoutEntry)
+	return s.appendInternal(refEntry, checkoutEntry)
 }
 
 func (s *Session) ID() string {
@@ -81,26 +81,34 @@ func (s *Session) ID() string {
 	return s.id
 }
 
+// Append adds entries to the session via the mutation queue (thread-safe).
 func (s *Session) Append(entries ...SessionTreeEntry) error {
 	return s.queue.enqueue(func() error {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-
-		if s.storage != nil {
-			if err := s.storage.Append(entries); err != nil {
-				return &SessionError{Code: ErrStorage, Message: "failed to append entries", Err: err}
-			}
-		}
-
-		for _, e := range entries {
-			if e.Type == EntrySessionInfo && e.SessionID != "" {
-				s.id = e.SessionID
-			}
-		}
-
-		s.entries = append(s.entries, entries...)
-		return nil
+		return s.appendInternal(entries...)
 	})
+}
+
+// appendInternal is the inner implementation of Append that skips the mutation
+// queue. It is called by higher-level operations (Fork, Checkout, Rebase, ...)
+// that already hold the queue slot, avoiding recursive enqueue deadlock.
+func (s *Session) appendInternal(entries ...SessionTreeEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.storage != nil {
+		if err := s.storage.Append(entries); err != nil {
+			return &SessionError{Code: ErrStorage, Message: "failed to append entries", Err: err}
+		}
+	}
+
+	for _, e := range entries {
+		if e.Type == EntrySessionInfo && e.SessionID != "" {
+			s.id = e.SessionID
+		}
+	}
+
+	s.entries = append(s.entries, entries...)
+	return nil
 }
 
 func (s *Session) Entries() []SessionTreeEntry {
@@ -260,7 +268,7 @@ func (s *Session) Checkout(target string) error {
 			return &SessionError{Code: ErrNotFound, Message: "session target not found: " + target}
 		}
 
-		if err := s.Append(checkoutEntry); err != nil {
+		if err := s.appendInternal(checkoutEntry); err != nil {
 			return err
 		}
 
@@ -314,7 +322,7 @@ func (s *Session) Fork(name RefName, opts *SessionForkOptions) error {
 			entries = append(entries, checkoutEntry)
 		}
 
-		if err := s.Append(entries...); err != nil {
+		if err := s.appendInternal(entries...); err != nil {
 			return err
 		}
 
@@ -422,7 +430,7 @@ func (s *Session) Rebase(name RefName, onto string) (*RebaseResult, error) {
 		}
 		newEntries = append(newEntries, refEntry)
 
-		if err := s.Append(newEntries...); err != nil {
+		if err := s.appendInternal(newEntries...); err != nil {
 			return err
 		}
 

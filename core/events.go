@@ -39,6 +39,16 @@ type EventStream[T any, R any] struct {
 	closed      bool              // 是否已关闭
 	mu          sync.Mutex        // 保护并发访问
 	droppedCount int              // 丢弃的事件计数
+
+	// OnDropped, if set, is called when Push drops an event because the
+	// channel buffer is full. The default behavior is to log every 10th
+	// drop. The callback is invoked OUTSIDE the stream's mutex, so it is
+	// safe to do non-trivial work (e.g. emit a metric or surface a
+	// diagnostic to the user) without risking deadlock.
+	//
+	// || 当 Push 因缓冲区满而丢弃事件时调用。默认行为是每 10 次记一次日志。
+	// || 回调在锁外调用，可以安全地执行耗时操作（如发指标或上报诊断）。
+	OnDropped func(droppedCount int, lastEvent T)
 }
 
 // streamEvt is the internal event type used by EventStream.
@@ -53,9 +63,20 @@ type streamEvt[T any] struct {
 // || 创建新的 EventStream
 func NewEventStream[T any, R any]() *EventStream[T, R] {
 	return &EventStream[T, R]{
-		ch:   make(chan streamEvt[T], 64), // 缓冲大小 64
-		done: make(chan struct{}),
-		stop: make(chan struct{}),
+		ch:        make(chan streamEvt[T], 64), // 缓冲大小 64
+		done:      make(chan struct{}),
+		stop:      make(chan struct{}),
+		OnDropped: defaultOnDropped[T],
+	}
+}
+
+// defaultOnDropped is the built-in OnDropped handler that logs every
+// 10th drop. It is set as the default so existing callers see the same
+// log output as before.
+// || 默认的 OnDropped 处理函数：每 10 次丢弃记录一次日志。
+func defaultOnDropped[T any](count int, _ T) {
+	if count == 1 || count%10 == 0 {
+		log.Printf("EventStream: dropped %d events due to full buffer", count)
 	}
 }
 
@@ -80,10 +101,15 @@ func (s *EventStream[T, R]) Push(event T) bool {
 		return true
 	default:
 		s.droppedCount++
-		if s.droppedCount == 1 || s.droppedCount%10 == 0 {
-			log.Printf("EventStream: dropped %d events due to full buffer", s.droppedCount)
-		}
+		droppedCount := s.droppedCount
+		onDropped := s.OnDropped
 		s.mu.Unlock()
+		// Invoke the callback OUTSIDE the mutex to avoid deadlocks
+		// when the callback tries to inspect / mutate the stream.
+		// || 在锁外调用回调，避免回调访问 stream 时死锁。
+		if onDropped != nil {
+			onDropped(droppedCount, event)
+		}
 		return false
 	}
 }

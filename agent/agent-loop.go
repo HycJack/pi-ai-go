@@ -103,12 +103,15 @@ func runLoop(ctx context.Context, config AgentLoopConfig, messages []core.Messag
 							duration = -duration
 						}
 						stream.Error(core.WrapTimeout(core.TimeoutSourceAgent, duration, ctx.Err()))
+						finalize()
+						return
 					} else {
 						stream.Error(core.WrapTimeout(core.TimeoutSourceAgent, 0, ctx.Err()))
+						finalize()
+						return
 					}
-				} else {
-					stream.Error(ctx.Err())
 				}
+				// context.Canceled — graceful stop, not a stream error
 				finalize()
 				return
 			}

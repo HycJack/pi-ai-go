@@ -17,6 +17,7 @@ export enum TokenType {
     EQUALS = 'EQUALS',          // =
     SEMICOLON = 'SEMICOLON',    // ;
     NEWLINE = 'NEWLINE',        // \n
+    OPERATOR = 'OPERATOR',      // + - * /
     
     // 特殊
     EOF = 'EOF',
@@ -123,6 +124,12 @@ export class Lexer {
                 this.line++;
                 this.column = 1;
                 return this.createToken(TokenType.NEWLINE, '\n', position);
+            case '+':
+            case '-':
+            case '*':
+            case '/':
+                this.advance();
+                return this.createToken(TokenType.OPERATOR, char, position);
             default:
                 this.advance();
                 return this.createToken(TokenType.UNKNOWN, char, position);

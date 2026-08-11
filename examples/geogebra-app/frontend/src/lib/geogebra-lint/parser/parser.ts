@@ -71,7 +71,8 @@ export class Parser {
             }
         }
         
-        const endPos = this.previous().position;
+        // 空输入时（只有 EOF），创建虚拟位置
+        const endPos = this.current > 0 ? this.previous().position : startPos;
         
         return {
             type: 'Program',
@@ -179,11 +180,61 @@ export class Parser {
     }
     
     /**
-     * 解析表达式
+     * 解析表达式（入口，带二元运算符优先级）
      */
     private parseExpression(): Expression {
+        return this.parseBinaryExpression(0);
+    }
+
+    /**
+     * 运算符优先级表
+     */
+    private getPrecedence(operator: string): number {
+        switch (operator) {
+            case '*':
+            case '/':
+                return 2;
+            case '+':
+            case '-':
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * 二元表达式解析（Pratt parsing）
+     */
+    private parseBinaryExpression(minPrecedence: number): Expression {
+        let left = this.parsePrimary();
+
+        while (this.check(TokenType.OPERATOR)) {
+            const opToken = this.getCurrentToken();
+            const precedence = this.getPrecedence(opToken.value);
+            if (precedence < minPrecedence) {
+                break;
+            }
+            this.advance(); // 消费运算符
+            const right = this.parseBinaryExpression(precedence + 1);
+            const endPos = this.previous().position;
+            left = {
+                type: 'BinaryExpression',
+                operator: opToken.value,
+                left,
+                right,
+                loc: this.createLocation(left.loc.start, endPos)
+            };
+        }
+
+        return left;
+    }
+
+    /**
+     * 解析基础表达式（无运算符）
+     */
+    private parsePrimary(): Expression {
         const token = this.getCurrentToken();
-        
+
         switch (token.type) {
             case TokenType.NUMBER:
                 return this.parseNumberLiteral();
@@ -204,7 +255,7 @@ export class Parser {
                 );
         }
     }
-    
+
     /**
      * 解析标识符或函数调用
      */
