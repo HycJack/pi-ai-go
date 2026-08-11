@@ -1,13 +1,7 @@
 // WordEditor - 基于 @docx-editor.dev/react 的 Word 文档编辑器
 import { useState, useRef, useCallback, useEffect, Component } from "react";
-import {
-  DocxEditorRoot,
-  DocxEditorViewport,
-  DocxEditorContent,
-  DocxEditorLoading,
-  DocxEditorToolbar,
-  PageIndicator,
-} from "@docx-editor.dev/react";
+import { DocxEditor } from "@docx-editor.dev/react";
+import "@docx-editor.dev/core/styles/editor.css";
 import {
   Loader2,
   FileText,
@@ -38,7 +32,9 @@ class WordEditorErrorBoundary extends Component {
           <AlertTriangle className="h-10 w-10 text-red-400" />
           <div className="text-center">
             <h3 className="text-base font-semibold text-gray-800">Word 编辑器加载失败</h3>
-            <p className="mt-1 text-sm text-gray-500">{this.state.error?.message || String(this.state.error)}</p>
+            <p className="mt-1 max-w-md text-sm text-gray-500">
+              {this.state.error?.message || String(this.state.error)}
+            </p>
           </div>
           <div className="flex gap-3">
             {this.props.onClose && (
@@ -114,11 +110,21 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
     loadDocument();
   }, [file, docxBase64, propFileName]);
 
-  // 保存文档
+  // 保存文档 — 使用 editor.save() 获取最新字节
   const handleSave = useCallback(async () => {
     try {
-      if (!docBytes) return;
-      const blob = new Blob([docBytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const editor = editorRef.current;
+      let blob;
+      if (editor && typeof editor.save === "function") {
+        // 从编辑器实例拿最新字节（返回 ArrayBuffer）
+        const arrayBuffer = await editor.save();
+        blob = new Blob([arrayBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      } else if (docBytes) {
+        // 后备：用初始字节
+        blob = new Blob([docBytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      } else {
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -135,9 +141,9 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex h-full items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-3 text-gray-400">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
           <span className="text-sm">正在加载 Word 文档...</span>
         </div>
       </div>
@@ -180,39 +186,17 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
 
       {/* DocxEditor */}
       <WordEditorErrorBoundary onClose={onClose}>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <DocxEditorRoot
-          document={docBytes}
-          mode="edit"
-          zoom={{ value: 100, type: "fixed"}}
-          onReady={(editor) => { editorRef.current = editor; }}
-        >
-          <DocxEditorToolbar
-            preset
-            onSave={handleSave}
-            className="border-b border-gray-200 bg-white shadow-sm"
-          />
-          <DocxEditorLoading>
-            <div className="flex h-full items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-gray-400">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-                <span className="text-sm">渲染文档...</span>
-              </div>
-            </div>
-          </DocxEditorLoading>
-          <div className="flex min-h-0 flex-1 flex-col">
-            <DocxEditorViewport className="flex-1 overflow-auto bg-[#f3f4f6]">
-              <DocxEditorContent />
-            </DocxEditorViewport>
-            <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-1.5">
-              <PageIndicator className="text-xs text-gray-400" />
-            </div>
-          </div>
-        </DocxEditorRoot>
-      </div>
+        <div className="min-h-0 flex-1 overflow-hidden bg-[#f3f4f6]">
+          {docBytes && (
+            <DocxEditor
+              document={docBytes}
+              mode="edit"
+              zoom={100}
+              onReady={(editor) => { editorRef.current = editor; }}
+            />
+          )}
+        </div>
       </WordEditorErrorBoundary>
     </div>
   );
 }
-
-

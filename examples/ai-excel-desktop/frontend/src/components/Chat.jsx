@@ -111,7 +111,7 @@ export function MessageContent({ children, from }) {
   return (
     <div className="min-w-0 max-w-full text-[13px] text-foreground">
       {typeof children === "string" ? (
-        <Streamdown animated isStreaming={false} mermaid={{ config: { theme: "dark" } }} plugins={{ math: mathPlugin }}>
+        <Streamdown animated isStreaming={false} mermaid={{ config: { theme: "default" } }} plugins={{ math: mathPlugin }}>
           {children}
         </Streamdown>
       ) : (
@@ -347,7 +347,7 @@ function ChartBlockInner({ chartConfig, chartData }) {
   return (
     <>
       {/* 内联预览 */}
-      <div className="my-2 overflow-hidden rounded-xl border border-border/60 bg-black/20">
+      <div className="my-2 overflow-hidden rounded-xl border border-border/60 bg-secondary/30">
         <div className="flex items-center justify-between bg-secondary/30 px-2.5 py-1.5">
           <div className="flex items-center gap-1.5 text-[11px] text-foreground-muted">
             <BarChart3 className="h-3 w-3 text-primary" />
@@ -406,10 +406,10 @@ function FullScreenModal({ chartConfig, chartData, ids, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col bg-black/90"
+      className="fixed inset-0 z-[9999] flex flex-col bg-black/80"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+      <div className="flex items-center justify-between border-b border-border bg-background-elevated px-5 py-3">
         <div className="flex items-center gap-2.5 text-sm font-medium text-foreground">
           <BarChart3 className="h-4 w-4 text-primary" />
           {chartConfig.title || `${chartConfig.type} 图表`}
@@ -420,7 +420,7 @@ function FullScreenModal({ chartConfig, chartData, ids, onClose }) {
         </div>
         <button
           onClick={onClose}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-white/10 hover:text-foreground"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted transition-colors hover:bg-secondary hover:text-foreground"
         >
           <X className="h-5 w-5" />
         </button>

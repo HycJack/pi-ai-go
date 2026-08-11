@@ -6,57 +6,57 @@
 @tailwind utilities;
 
 /* ============================================================
-   设计令牌 — 高级深色主题（Linear / Vercel / Raycast 风格）
-   配色：深炭灰底 + 微妙蓝紫渐变 + 精致边框光晕
+   设计令牌 — 亮色主题（Linear / Vercel / Raycast 风格）
+   配色：纯白底 + 微妙蓝紫渐变 + 精致边框光晕
    ============================================================ */
 :root {
-  /* 基础色阶（slate 深色系，带轻微蓝调） */
-  --background: 222 47% 6%;          /* #0a0d14 主背景 */
-  --background-elevated: 222 44% 9%;  /* #11151f 抬升层 */
-  --foreground: 210 40% 96%;         /* 主文字 */
-  --foreground-muted: 215 16% 65%;  /* 次要文字 */
+  /* 基础色阶（slate 亮色系） */
+  --background: 0 0% 100%;            /* #ffffff 主背景 */
+  --background-elevated: 210 40% 98%; /* #f8fafc 抬升层 */
+  --foreground: 222 47% 11%;          /* #0f172a 主文字 */
+  --foreground-muted: 215 16% 47%;   /* #64748b 次要文字 */
 
-  --card: 222 44% 9%;                /* 卡片背景 */
-  --card-foreground: 210 40% 96%;
+  --card: 0 0% 100%;                  /* 卡片背景 */
+  --card-foreground: 222 47% 11%;
 
-  /* 主色：电光蓝紫（高级感渐变） */
-  --primary: 245 80% 67%;            /* #6366f1 */
+  /* 主色：靛蓝紫（高级感渐变） */
+  --primary: 245 80% 60%;             /* #6366f1 */
   --primary-foreground: 0 0% 100%;
-  --primary-glow: 245 80% 67% / 0.4;
+  --primary-glow: 245 80% 60% / 0.25;
 
-  /* 辅色：青蓝（数据/图表点缀） */
-  --accent: 199 89% 60%;             /* #38bdf8 */
+  /* 辅色：天蓝（数据/图表点缀） */
+  --accent: 199 89% 48%;              /* #0ea5e9 */
   --accent-foreground: 0 0% 100%;
 
   /* 次级表面 */
-  --secondary: 222 40% 13%;          /* #1a1f2e */
-  --secondary-foreground: 210 40% 96%;
+  --secondary: 210 40% 96%;           /* #f1f5f9 */
+  --secondary-foreground: 222 47% 11%;
 
-  --muted: 222 40% 13%;
-  --muted-foreground: 215 16% 58%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
 
-  --border: 222 30% 18%;             /* #252b3d 边框 */
-  --border-subtle: 222 30% 15%;      /* 更淡的分割线 */
-  --input: 222 30% 16%;
-  --ring: 245 80% 67%;
+  --border: 214 32% 91%;              /* #e2e8f0 边框 */
+  --border-subtle: 214 32% 93%;       /* 更淡的分割线 */
+  --input: 214 32% 91%;
+  --ring: 245 80% 60%;
   --radius: 0.75rem;
 
   /* 语义色 */
-  --success: 152 56% 56%;            /* 翠绿 */
-  --warning: 38 92% 50%;             /* 琥珀 */
-  --danger: 0 72% 56%;               /* 珊瑚红 */
-  --info: 199 89% 60%;
+  --success: 142 71% 45%;             /* 翠绿 */
+  --warning: 38 92% 50%;              /* 琥珀 */
+  --danger: 0 72% 51%;                /* 珊瑚红 */
+  --info: 199 89% 48%;
 
   /* 渐变 */
   --gradient-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
-  --gradient-brand-subtle: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.1) 100%);
-  --gradient-surface: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 100%);
+  --gradient-brand-subtle: linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.05) 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 100%);
 
   /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.5);
-  --shadow-glow: 0 0 24px rgba(99,102,241,0.25);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.08);
+  --shadow-glow: 0 0 24px rgba(99,102,241,0.15);
 }
 
 * {
@@ -84,8 +84,8 @@ body {
 /* 背景纹理：微妙径向渐变光晕 */
 #root {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.12), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,92,246,0.08), transparent),
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.06), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,92,246,0.04), transparent),
     hsl(var(--background));
 }
 
@@ -108,15 +108,15 @@ body {
 }
 
 /* ============================================================
-   AG-Grid 深色主题
+   AG-Grid 亮色主题
    ============================================================ */
 .ag-theme-alpine {
   --ag-background-color: transparent;
-  --ag-header-background-color: hsl(var(--secondary) / 0.6);
-  --ag-odd-row-background-color: hsl(var(--secondary) / 0.3);
+  --ag-header-background-color: hsl(var(--secondary));
+  --ag-odd-row-background-color: hsl(var(--secondary) / 0.5);
   --ag-header-foreground-color: hsl(var(--foreground-muted));
   --ag-foreground-color: hsl(var(--foreground));
-  --ag-border-color: hsl(var(--border-subtle));
+  --ag-border-color: hsl(var(--border));
   --ag-cell-horizontal-padding: 14px;
   --ag-row-height: 38px;
   --ag-header-height: 40px;
@@ -130,7 +130,7 @@ body {
   letter-spacing: 0.04em;
 }
 .ag-theme-alpine .ag-row-hover {
-  background-color: hsl(var(--primary) / 0.06) !important;
+  background-color: hsl(var(--primary) / 0.04) !important;
 }
 .ag-theme-alpine .ag-cell-focus {
   border-color: hsl(var(--primary)) !important;
@@ -153,9 +153,9 @@ body {
 
 /* 玻璃面板 — 抬升表面 */
 .glass-panel {
-  background: hsl(var(--card) / 0.7);
+  background: hsl(var(--card) / 0.8);
   backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid hsl(var(--border) / 0.6);
+  border: 1px solid hsl(var(--border));
   box-shadow: var(--shadow-lg);
 }
 
@@ -205,7 +205,7 @@ select.input {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 50%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.5), transparent 50%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -216,11 +216,11 @@ select.input {
 .btn-primary {
   background: var(--gradient-brand);
   color: white;
-  box-shadow: 0 4px 14px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  box-shadow: 0 4px 14px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
   transition: all 0.2s ease;
 }
 .btn-primary:hover {
-  box-shadow: 0 6px 20px rgba(99,102,241,0.5), inset 0 1px 0 rgba(255,255,255,0.2);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
   transform: translateY(-1px);
 }
 .btn-primary:active {
@@ -288,8 +288,8 @@ select.input {
   color: white;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid rgba(255,255,255,0.1);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.15);
   animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   backdrop-filter: blur(12px);
 }

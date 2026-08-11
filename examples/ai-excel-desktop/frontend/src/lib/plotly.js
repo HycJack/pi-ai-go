@@ -1,11 +1,11 @@
 // Plotly.js 辅助函数：trace 和 layout 构建（共享给 ChartView 和 ChartBlock）
 import Plotly from "plotly.js-dist-min";
 
-export const DARK_BG = "rgba(0,0,0,0)";
-export const FG = "rgba(226,232,240,0.85)";
-export const FG_MUTED = "rgba(148,163,184,0.7)";
-export const GRID = "rgba(59,63,111,0.4)";
-export const ZERO = "rgba(99,102,241,0.3)";
+export const DARK_BG = "rgba(255,255,255,0)";
+export const FG = "rgba(15,23,42,0.9)";
+export const FG_MUTED = "rgba(100,116,139,0.85)";
+export const GRID = "rgba(226,232,240,0.8)";
+export const ZERO = "rgba(99,102,241,0.4)";
 export const COLORS = ["#6366f1","#a855f7","#ec4899","#22c55e","#f59e0b","#3b82f6","#14b8a6","#ef4444"];
 export const PIE_COLORS = ["#6366f1","#a855f7","#ec4899","#22c55e","#f59e0b","#ef4444","#3b82f6","#14b8a6"];
 
@@ -37,8 +37,8 @@ export function buildChartTraces(config, data) {
         color: ys,
         colorscale: [[0,"#6366f1"],[0.5,"#a855f7"],[1,"#ec4899"]],
         colorbar: { title: { text: yCol, font: { size: 10, color: FG_MUTED } }, tickfont: { size: 9, color: FG_MUTED } },
-        opacity: 0.8,
-        line: { color: "rgba(255,255,255,0.1)", width: 0.5 },
+        opacity: 0.85,
+        line: { color: "rgba(255,255,255,0.6)", width: 0.5 },
       },
     });
     return traces;
@@ -70,7 +70,7 @@ export function buildChartTraces(config, data) {
     const keys = Object.keys(groups).slice(0, 12);
     traces.push({
       type: "pie", labels: keys, values: keys.map((k) => groups[k]),
-      marker: { colors: PIE_COLORS, line: { color: "rgba(0,0,0,0.3)", width: 1 } },
+      marker: { colors: PIE_COLORS, line: { color: "rgba(255,255,255,0.8)", width: 1 } },
       textinfo: "label+percent", textfont: { size: 11, color: FG },
       hoverinfo: "label+value+percent", automargin: true,
     });
@@ -82,13 +82,13 @@ export function buildChartTraces(config, data) {
     const c = COLORS[i % COLORS.length];
     const y = data.map((r) => parseFloat(r[yCol]) || 0);
     if (type === "bar") {
-      traces.push({ type: "bar", x: labels, y, name: yCol, marker: { color: c, line: { color: "rgba(255,255,255,0.1)", width: 0.5 } } });
+      traces.push({ type: "bar", x: labels, y, name: yCol, marker: { color: c, line: { color: "rgba(255,255,255,0.6)", width: 0.5 } } });
     } else if (type === "area") {
       traces.push({ type: "scatter", mode: "lines+markers", x: labels, y, name: yCol, fill: "tozeroy", line: { color: c, width: 2, shape: "spline" }, marker: { color: c, size: 4 } });
     } else if (type === "line") {
       traces.push({ type: "scatter", mode: "lines+markers", x: labels, y, name: yCol, line: { color: c, width: 2, shape: "spline" }, marker: { color: c, size: 4 } });
     } else {
-      traces.push({ type: "scatter", mode: "markers", x: labels, y, name: yCol, marker: { color: c, size: 6, opacity: 0.7, line: { color: "rgba(255,255,255,0.15)", width: 0.5 } } });
+      traces.push({ type: "scatter", mode: "markers", x: labels, y, name: yCol, marker: { color: c, size: 6, opacity: 0.7, line: { color: "rgba(255,255,255,0.8)", width: 0.5 } } });
     }
   });
   return traces;
