@@ -1,6 +1,7 @@
 // WordEditor - 基于 @docx-editor.dev/react 的 Word 文档编辑器
 import { useState, useRef, useCallback, useEffect, Component } from "react";
 import { DocxEditor } from "@docx-editor.dev/react";
+import { zhCN } from "@docx-editor.dev/i18n";
 import "@docx-editor.dev/core/styles/editor.css";
 import {
   Loader2,
@@ -192,6 +193,8 @@ export function WordEditor({ file, docxBase64, fileName: propFileName, onClose }
               document={docBytes}
               mode="edit"
               zoom={100}
+              i18n={zhCN}
+              colorMode="light"
               onReady={(editor) => { editorRef.current = editor; }}
             />
           )}
