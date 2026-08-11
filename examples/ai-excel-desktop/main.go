@@ -17,7 +17,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "AI Excel 工作台",
+		Title:     "AI 文档工作台",
 		Width:     1440,
 		Height:    960,
 		MinWidth:  1024,

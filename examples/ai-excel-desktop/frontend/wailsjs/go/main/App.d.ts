@@ -14,6 +14,8 @@ export function ExportExcel(arg1:Array<string>,arg2:Array<any>):Promise<string>;
 
 export function GetDataSummary():Promise<string>;
 
+export function GetDocType():Promise<string>;
+
 export function GetFileInfo():Promise<main.FileInfo>;
 
 export function GetModels(arg1:Record<string, any>):Promise<Array<main.ModelInfo>>;

@@ -1,10 +1,13 @@
-// AI Excel 工作台 - 主应用（接入 pi-ai-go agent 流程）
+// AI 文档工作台 - 主应用（接入 pi-ai-go agent 流程）
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   FolderOpen,
   Database,
   Download,
   FileSpreadsheet,
+  FileText,
+  Presentation,
+  FileType,
   Trash2,
   BarChart3,
   Table2,
@@ -47,7 +50,9 @@ export default function App() {
   const sendingRef = useRef(false);
 
   const dataLoaded = headers.length > 0;
-  const isWordDoc = fileInfo?.name?.toLowerCase().endsWith(".docx");
+  const docType = getDocType(fileInfo?.name);
+  const isSpreadsheet = docType === "excel" || docType === "csv";
+  const isWordDoc = docType === "word";
 
   // ===== 监听 agent 事件流 =====
   useEffect(() => {
@@ -419,14 +424,14 @@ export default function App() {
             <BarChart3 className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-[15px] font-semibold tracking-tight gradient-text">AI Excel 工作台</h1>
+            <h1 className="text-[15px] font-semibold tracking-tight gradient-text">AI 文档工作台</h1>
             <p className="text-[11px] text-foreground-muted">Wails · Go · pi-ai-go Agent · React</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {fileInfo && (
             <span className="hidden items-center gap-1.5 rounded-lg border border-border bg-secondary/50 px-2.5 py-1 text-xs text-foreground-muted md:inline-flex">
-              <FileSpreadsheet className="h-3 w-3 text-accent" />
+              <DocIcon docType={docType} className="h-3 w-3 text-accent" />
               {fileInfo.name}
             </span>
           )}
@@ -466,7 +471,7 @@ export default function App() {
               fileName={fileInfo?.name}
               onClose={() => clearAll()}
             />
-          ) : (
+          ) : isSpreadsheet ? (
             <DataView
               headers={headers} rows={rows} types={types}
               sheets={sheets} currentSheet={currentSheet}
@@ -474,6 +479,8 @@ export default function App() {
               onExportExcel={exportExcel} onExportCSV={exportCSV} onClear={clearAll}
               numericCount={numericCount} textCount={textCount}
             />
+          ) : (
+            <DocPlaceholder docType={docType} fileName={fileInfo?.name} onClose={clearAll} />
           )}
         </main>
 
@@ -540,9 +547,9 @@ function UploadView({ onOpen, onSample, loading }) {
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-gradient shadow-glow">
             <Database className="h-7 w-7 text-white" />
           </div>
-          <h2 className="mb-1.5 text-2xl font-semibold tracking-tight">导入数据文件</h2>
+          <h2 className="mb-1.5 text-2xl font-semibold tracking-tight">AI 文档工作台</h2>
           <p className="text-sm text-foreground-muted">
-            Go 后端高性能解析 · AG-Grid 虚拟滚动 · AI Agent 自动分析
+            打开文档，AI 助手帮你分析、编辑、总结、生成图表
           </p>
         </div>
 
@@ -563,7 +570,7 @@ function UploadView({ onOpen, onSample, loading }) {
             点击选择文件
           </p>
           <p className="relative mt-1 text-xs text-foreground-muted">
-            支持 .xlsx / .xls / .csv
+            支持 Excel / CSV / Word / PPT / PDF / 文本
           </p>
         </button>
 
@@ -677,5 +684,67 @@ function Tag({ color, children }) {
     <span className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${colors[color]}`}>
       {children}
     </span>
+  );
+}
+
+// ============================================================================
+// 文档类型辅助
+// ============================================================================
+function getDocType(fileName) {
+  if (!fileName) return "unknown";
+  const ext = fileName.toLowerCase().split(".").pop();
+  switch (ext) {
+    case "xlsx": case "xls": return "excel";
+    case "csv": return "csv";
+    case "docx": return "word";
+    case "pptx": return "ppt";
+    case "pdf": return "pdf";
+    case "txt": case "md": return "text";
+    default: return "unknown";
+  }
+}
+
+function DocIcon({ docType, className }) {
+  const Icon = {
+    excel: FileSpreadsheet,
+    csv: FileSpreadsheet,
+    word: FileText,
+    ppt: Presentation,
+    pdf: FileType,
+    text: FileText,
+    unknown: FileText,
+  }[docType] || FileText;
+  return <Icon className={className} />;
+}
+
+// 未实现的文档类型占位符
+function DocPlaceholder({ docType, fileName, onClose }) {
+  const labels = {
+    ppt: "PowerPoint 演示文稿",
+    pdf: "PDF 文档",
+    text: "文本文件",
+    unknown: "文档",
+  };
+  const label = labels[docType] || "文档";
+  return (
+    <div className="flex flex-1 items-center justify-center p-6">
+      <div className="surface-glow surface-elevated fade-in w-full max-w-md p-10 text-center">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-subtle">
+          <DocIcon docType={docType} className="h-8 w-8 text-primary" />
+        </div>
+        <h2 className="mb-1.5 text-xl font-semibold tracking-tight">{label}</h2>
+        <p className="mb-1 text-sm text-foreground-muted break-all">{fileName}</p>
+        <p className="mt-4 text-xs text-foreground-muted">
+          该文档类型的查看器正在开发中。当前可通过右侧 AI 助手对话处理文档内容。
+        </p>
+        <button
+          onClick={onClose}
+          className="btn-ghost mt-6 inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-medium"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          关闭文档
+        </button>
+      </div>
+    </div>
   );
 }

@@ -77,11 +77,14 @@ type WordDoc struct {
 // OpenFileDialog 打开文件选择对话框
 func (a *App) OpenFileDialog() (*FileInfo, error) {
 	selection, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择 Excel、CSV 或 Word 文件",
+		Title: "选择文档文件",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "Excel 文件 (*.xlsx;*.xls)", Pattern: "*.xlsx;*.xls"},
 			{DisplayName: "CSV 文件 (*.csv)", Pattern: "*.csv"},
 			{DisplayName: "Word 文件 (*.docx)", Pattern: "*.docx"},
+			{DisplayName: "PowerPoint 文件 (*.pptx)", Pattern: "*.pptx"},
+			{DisplayName: "PDF 文件 (*.pdf)", Pattern: "*.pdf"},
+			{DisplayName: "文本文件 (*.txt;*.md)", Pattern: "*.txt;*.md"},
 			{DisplayName: "所有文件 (*.*)", Pattern: "*"},
 		},
 	})
@@ -122,7 +125,7 @@ func (a *App) LoadFile(path string) (*FileInfo, error) {
 	case ".csv":
 		fi.Sheets = []string{"Sheet1"}
 		fi.Selected = "Sheet1"
-	case ".docx":
+	case ".docx", ".pptx", ".pdf", ".txt", ".md":
 		fi.Sheets = []string{"content"}
 		fi.Selected = "content"
 	default:
@@ -153,19 +156,19 @@ func (a *App) LoadSheet(sheetName string) (*SheetData, error) {
 		data, err = a.readExcel(fi.Path, sheetName)
 	case ".csv":
 		data, err = a.readCSV(fi.Path)
-	case ".docx":
+	case ".docx", ".pptx", ".pdf", ".txt", ".md":
 		content, err := os.ReadFile(fi.Path)
 		if err != nil {
-			return nil, fmt.Errorf("读取 Word 失败: %v", err)
+			return nil, fmt.Errorf("读取文件失败: %v", err)
 		}
-		// 返回 base64 编码的二进制内容，前端用 mammoth 解析
+		// 返回 base64 编码的二进制内容，前端按类型解析
 		b64 := base64.StdEncoding.EncodeToString(content)
 		data = &SheetData{
 			Name:    "content",
 			Headers: []string{"content"},
 			Rows:    [][]interface{}{{b64}},
 			Total:   1,
-			Types:   map[string]string{"content": "docx"},
+			Types:   map[string]string{"content": ext[1:]},
 		}
 		return data, nil
 	default:
@@ -613,4 +616,31 @@ func (a *App) GetFileInfo() *FileInfo {
 	a.dataMu.RLock()
 	defer a.dataMu.RUnlock()
 	return a.fileInfo
+}
+
+// GetDocType 返回当前文档类型: excel | csv | word | ppt | pdf | text | unknown
+func (a *App) GetDocType() string {
+	a.dataMu.RLock()
+	fi := a.fileInfo
+	a.dataMu.RUnlock()
+	if fi == nil {
+		return "unknown"
+	}
+	ext := strings.ToLower(filepath.Ext(fi.Path))
+	switch ext {
+	case ".xlsx", ".xls":
+		return "excel"
+	case ".csv":
+		return "csv"
+	case ".docx":
+		return "word"
+	case ".pptx":
+		return "ppt"
+	case ".pdf":
+		return "pdf"
+	case ".txt", ".md":
+		return "text"
+	default:
+		return "unknown"
+	}
 }

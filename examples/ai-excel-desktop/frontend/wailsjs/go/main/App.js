@@ -26,6 +26,10 @@ export function GetDataSummary() {
   return window['go']['main']['App']['GetDataSummary']();
 }
 
+export function GetDocType() {
+  return window['go']['main']['App']['GetDocType']();
+}
+
 export function GetFileInfo() {
   return window['go']['main']['App']['GetFileInfo']();
 }

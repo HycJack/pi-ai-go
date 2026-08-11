@@ -58,8 +58,8 @@ export function AISidebar({
               <Sparkles className="h-4 w-4 text-white" />
             </div>
             <div className="overflow-hidden">
-              <h2 className="truncate text-[13px] font-semibold tracking-tight">AI 数据助手</h2>
-              <p className="truncate text-[11px] text-foreground-muted">pi-ai-go Agent · 工具调用</p>
+              <h2 className="truncate text-[13px] font-semibold tracking-tight">AI 文档助手</h2>
+              <p className="truncate text-[11px] text-foreground-muted">pi-ai-go Agent · 多文档支持</p>
             </div>
           </div>
           <button
@@ -75,11 +75,11 @@ export function AISidebar({
         <Conversation className="min-h-0">
           {messages.length === 0 ? (
             <ConversationEmptyState
-              title="AI 数据助手"
+              title="AI 文档助手"
               description={
                 dataLoaded
-                  ? "描述你想做的分析，AI 会调用工具查询数据并生成图表"
-                  : "请先加载数据文件"
+                  ? "描述你想做的事，AI 会调用工具分析数据、生成图表、编辑文档"
+                  : "请先加载文档文件"
               }
             />
           ) : (
@@ -141,10 +141,10 @@ export function AISidebar({
           onChange={undefined}
           onSubmit={onSend}
           isLoading={isLoading}
-          placeholder={dataLoaded ? "描述你想做的分析..." : "请先加载数据"}
+          placeholder={dataLoaded ? "描述你想做的事..." : "请先加载文档"}
           suggestions={
             dataLoaded
-              ? ["分析这份数据的概况", "绘制销售额的折线图", "显示数值列的分布直方图", "对比各分类的柱状图"]
+              ? ["总结这个文档的内容", "分析这份数据的概况", "绘制销售额的折线图", "对比各分类的柱状图"]
               : []
           }
         />

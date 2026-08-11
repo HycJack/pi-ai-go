@@ -40,7 +40,7 @@ func (a *App) AgentMessage(jsonStr string) error {
 	}
 
 	systemPrompt := a.buildSystemPrompt()
-	tools := a.excelTools()
+	tools := a.toolsForDocType()
 
 	config := agent.AgentLoopConfig{
 		Model:              model,
@@ -144,37 +144,69 @@ func (a *App) AgentMessage(jsonStr string) error {
 	return nil
 }
 
-// buildSystemPrompt 构建 agent 的系统提示词。
+// buildSystemPrompt 根据 当前文档类型构建 agent 的系统提示词。
 func (a *App) buildSystemPrompt() string {
+	docType := a.GetDocType()
 	var sb strings.Builder
-	sb.WriteString("你是 AI Excel 工作台的智能数据分析助手。\n")
-	sb.WriteString("你可以访问用户已加载的 Excel/CSV 数据，并通过工具调用完成数据分析与图表生成。\n\n")
-	sb.WriteString("## 你的能力\n")
-	sb.WriteString("- 使用 `get_data_summary` 查看当前数据集的概览（列名、类型、行数）\n")
-	sb.WriteString("- 使用 `get_column_stats` 获取指定列的统计信息（最小值/最大值/均值/中位数/标准差/唯一值数）\n")
-	sb.WriteString("- 使用 `get_sample_rows` 预览前 N 行数据\n")
-	sb.WriteString("- 使用 `generate_chart` 生成图表（会自动渲染到画布）\n\n")
-	sb.WriteString("## 工作流程\n")
-	sb.WriteString("1. 先用 `get_data_summary` 了解数据结构\n")
-	sb.WriteString("2. 根据用户需求，必要时用 `get_column_stats` 确认列的类型与分布\n")
-	sb.WriteString("3. 用 `generate_chart` 生成图表，参数包括 type/xAxis/yAxes/title/bin\n")
-	sb.WriteString("4. 用自然语言向用户解释你的分析结果与图表配置\n\n")
-	sb.WriteString("## generate_chart 参数说明\n")
-	sb.WriteString("- type: bar(柱状图) | line(折线图) | pie(饼图) | scatter(散点图) | histogram(直方图) | area(面积图) | scatter3d(三维散点图)\n")
-	sb.WriteString("- xAxis: X 轴列名\n")
-	sb.WriteString("- yAxes: Y 轴列名数组（scatter3d: 第1个Y轴, 第2个Z轴）\n")
-	sb.WriteString("- title: 图表标题\n")
-	sb.WriteString("- bin: 直方图分箱数（默认 20，仅 histogram 有效）\n")
-	sb.WriteString("- sample: 采样行数（数据量大时使用，0 表示不采样）\n\n")
-	sb.WriteString("## 三维散点图 scatter3d\n")
-	sb.WriteString("- 展示三个数值列的关系，如发热量/灰分/全水的三维分布\n")
-	sb.WriteString("- 需3个数值列: xAxis(X轴), yAxes[0](Y轴), yAxes[1]或zAxis(Z轴)\n")
-	sb.WriteString("- 点按Y值从蓝→紫→粉渐变着色，支持鼠标拖拽旋转\n\n")
+	sb.WriteString("你是 AI 文档工作台的智能助手。\n")
+	sb.WriteString("你可以访问用户已加载的文档，并通过工具调用完成分析、编辑与图表生成。\n\n")
+
+	switch docType {
+	case "excel", "csv":
+		sb.WriteString("## 当前文档类型：表格数据 (" + docType + ")\n")
+		sb.WriteString("你可以使用以下工具：\n")
+		sb.WriteString("- `get_data_summary` 查看数据集概览（列名、类型、行数）\n")
+		sb.WriteString("- `get_column_stats` 获取指定列的统计信息（最小值/最大值/均值/中位数/标准差/唯一值数）\n")
+		sb.WriteString("- `get_sample_rows` 预览前 N 行数据\n")
+		sb.WriteString("- `generate_chart` 生成图表（会自动渲染到画布）\n\n")
+		sb.WriteString("## 工作流程\n")
+		sb.WriteString("1. 先用 `get_data_summary` 了解数据结构\n")
+		sb.WriteString("2. 根据用户需求，必要时用 `get_column_stats` 确认列的类型与分布\n")
+		sb.WriteString("3. 用 `generate_chart` 生成图表\n")
+		sb.WriteString("4. 用自然语言向用户解释你的分析结果与图表配置\n\n")
+		sb.WriteString("## generate_chart 参数说明\n")
+		sb.WriteString("- type: bar(柱状图) | line(折线图) | pie(饼图) | scatter(散点图) | histogram(直方图) | area(面积图) | scatter3d(三维散点图)\n")
+		sb.WriteString("- xAxis: X 轴列名\n")
+		sb.WriteString("- yAxes: Y 轴列名数组（scatter3d: 第1个Y轴, 第2个Z轴）\n")
+		sb.WriteString("- title: 图表标题\n")
+		sb.WriteString("- bin: 直方图分箱数（默认 20，仅 histogram 有效）\n")
+		sb.WriteString("- sample: 采样行数（数据量大时使用，0 表示不采样）\n\n")
+	case "word":
+		sb.WriteString("## 当前文档类型：Word 文档\n")
+		sb.WriteString("用户已加载 Word 文档，你可以在右侧编辑器中查看与编辑。\n")
+		sb.WriteString("你可以帮助用户：撰写、润色、翻译、总结文档内容，回答关于文档的问题。\n")
+		sb.WriteString("如需生成新的 Word 内容，直接以 markdown 输出，用户可复制使用。\n\n")
+	case "ppt":
+		sb.WriteString("## 当前文档类型：PowerPoint 演示文稿\n")
+		sb.WriteString("用户已加载 PPT 文件。你可以帮助用户：设计幻灯片结构、撰写演讲稿、总结要点、优化排版建议。\n\n")
+	case "pdf":
+		sb.WriteString("## 当前文档类型：PDF 文档\n")
+		sb.WriteString("用户已加载 PDF 文件。你可以帮助用户：总结内容、提取关键信息、翻译、回答关于文档的问题。\n\n")
+	case "text":
+		sb.WriteString("## 当前文档类型：文本文件\n")
+		sb.WriteString("用户已加载文本/Markdown 文件。你可以帮助用户：编辑、润色、格式化、翻译、总结。\n\n")
+	default:
+		sb.WriteString("## 当前未加载文档\n")
+		sb.WriteString("请引导用户点击\"打开文件\"加载文档。支持 Excel/CSV/Word/PPT/PDF/文本。\n\n")
+	}
+
 	sb.WriteString("## 输出规范\n")
 	sb.WriteString("- 使用简洁、专业的中文回复\n")
 	sb.WriteString("- 代码与配置使用 markdown 格式\n")
 	sb.WriteString("- 不要在回复中使用 emoji\n")
 	return sb.String()
+}
+
+// toolsForDocType 根据当前文档类型返回相应的工具集。
+func (a *App) toolsForDocType() []agent.AgentTool {
+	docType := a.GetDocType()
+	switch docType {
+	case "excel", "csv":
+		return a.excelTools()
+	default:
+		// Word/PPT/PDF/Text 等文档类型暂无自定义工具，纯对话模式
+		return []agent.AgentTool{}
+	}
 }
 
 // buildAgentMessages 从 AgentRequest 构建消息历史。
