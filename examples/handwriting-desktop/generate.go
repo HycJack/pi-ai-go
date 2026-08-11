@@ -19,12 +19,12 @@ import (
 
 var (
 	builtinFontsMu   sync.Mutex
-	builtinFontsOnce  bool
-	builtinFontsList  []FontInfo
+	builtinFontsOnce bool
+	builtinFontsList []FontInfo
 )
 
 // releaseBuiltinFonts 把内置字体释放到字体目录（首次运行）。
-// 这里我们只放一个 goregular 作为示例，用户可自行添加 TTF。
+// 释放霞鹜文楷（支持中文，手写风格）与 goregular（西文回退）。
 func (a *App) releaseBuiltinFonts() {
 	builtinFontsMu.Lock()
 	defer builtinFontsMu.Unlock()
@@ -33,11 +33,18 @@ func (a *App) releaseBuiltinFonts() {
 	}
 	builtinFontsOnce = true
 
-	// 写入内置 goregular 字体
-	target := filepath.Join(a.fontAssetsDir, "GoRegular.ttf")
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		// 使用 goregular.TTF
-		if err := os.WriteFile(target, goregularTTF, 0644); err != nil {
+	// 优先释放霞鹜文楷（默认字体，支持中文，TTF 格式同时兼容 gopdf）
+	cjkTarget := filepath.Join(a.fontAssetsDir, "LXGWWenKai-Regular.ttf")
+	if _, err := os.Stat(cjkTarget); os.IsNotExist(err) {
+		if err := os.WriteFile(cjkTarget, lxgwWenKaiTTF, 0644); err != nil {
+			LogError("[fonts] failed to write LXGWWenKai-Regular.ttf: %v", err)
+		}
+	}
+
+	// 同时释放 goregular 作为西文回退
+	goTarget := filepath.Join(a.fontAssetsDir, "GoRegular.ttf")
+	if _, err := os.Stat(goTarget); os.IsNotExist(err) {
+		if err := os.WriteFile(goTarget, goregularTTF, 0644); err != nil {
 			LogError("[fonts] failed to write GoRegular.ttf: %v", err)
 		}
 	}

@@ -71,7 +71,7 @@ export default function App() {
 
   // 字体
   const [fonts, setFonts] = useState([]);
-  const [selectedFont, setSelectedFont] = useState("GoRegular.ttf");
+  const [selectedFont, setSelectedFont] = useState("LXGWWenKai-Regular.ttf");
 
   // 预览
   const [previewImages, setPreviewImages] = useState([]);
@@ -167,7 +167,14 @@ export default function App() {
       setWordSpacing(Number(localStorage.getItem("hw_wordSpacing")) || DEFAULTS.wordSpacing);
       setIsUnderlined(localStorage.getItem("hw_isUnderlined") !== "false");
       setEnableEnglishSpacing(localStorage.getItem("hw_enableEnglishSpacing") === "true");
-      setSelectedFont(localStorage.getItem("hw_selectedFont") || "GoRegular.ttf");
+      // 迁移：旧默认 GoRegular.ttf 不支持中文，强制切换到霞鹜文楷
+      const savedFont = localStorage.getItem("hw_selectedFont");
+      if (!savedFont || savedFont === "GoRegular.ttf" || savedFont === "NotoSansCJKsc-Regular.otf") {
+        setSelectedFont("LXGWWenKai-Regular.ttf");
+        saveSetting("selectedFont", "LXGWWenKai-Regular.ttf");
+      } else {
+        setSelectedFont(savedFont);
+      }
     } catch {}
   };
 
@@ -330,7 +337,7 @@ export default function App() {
                 onChange={(e) => { setSelectedFont(e.target.value); saveSetting("selectedFont", e.target.value); }}>
                 {fonts.length > 0 ? fonts.map((f, i) => (
                   <option key={i} value={f.name}>{f.name}</option>
-                )) : <option value="GoRegular.ttf">GoRegular.ttf (内置)</option>}
+                )) : <option value="LXGWWenKai-Regular.ttf">LXGWWenKai-Regular.ttf (内置)</option>}
               </select>
             </div>
           </section>

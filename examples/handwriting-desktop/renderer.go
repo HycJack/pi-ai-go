@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
@@ -155,7 +154,7 @@ func (r *Renderer) renderChunk(text string) ([]byte, error) {
 
 // layoutLine 表示一行已布局的文本及其对齐方式。
 type layoutLine struct {
-	text     string
+	text       string
 	rightAlign bool
 }
 
@@ -416,7 +415,7 @@ func (r *Renderer) gauss(sigma, mean float64) float64 {
 
 // ─── 字体与背景加载 ───
 
-// loadFontBytes 优先用用户上传的 base64，其次用内置字体名。
+// loadFontBytes 优先用用户上传的 base64，其次用字体目录中的字体文件，最后回退到内置思源黑体。
 func loadFontBytes(fontOption, fontFileBase64 string) ([]byte, error) {
 	if fontFileBase64 != "" {
 		data, err := base64.StdEncoding.DecodeString(fontFileBase64)
@@ -433,14 +432,15 @@ func loadFontBytes(fontOption, fontFileBase64 string) ([]byte, error) {
 		if data, err := os.ReadFile(candidate); err == nil {
 			return data, nil
 		}
-		// 尝试加上 .ttf 后缀
-		candidate2 := filepath.Join(fontDir, fontOption+".ttf")
-		if data, err := os.ReadFile(candidate2); err == nil {
-			return data, nil
+		// 尝试加上 .ttf / .otf 后缀
+		for _, suffix := range []string{".ttf", ".otf"} {
+			if data, err := os.ReadFile(filepath.Join(fontDir, fontOption+suffix)); err == nil {
+				return data, nil
+			}
 		}
 	}
-	// 回退：使用内置 gofont（goregular）—— TTF 格式，可直接用 opentype 解析。
-	return goregular.TTF, nil
+	// 回退：使用内置霞鹜文楷（LXGW WenKai）—— 支持中文，TTF 格式。
+	return lxgwWenKaiTTF, nil
 }
 
 // loadBackground 加载用户上传的背景，或按 width/height 生成横线背景。
