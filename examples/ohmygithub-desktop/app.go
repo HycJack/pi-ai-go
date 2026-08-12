@@ -1486,7 +1486,13 @@ func (a *App) GetRepoContents(repo, path string) (string, error) {
 	escapedPath := url.PathEscape(path)
 	escapedPath = strings.ReplaceAll(escapedPath, "%2F", "/")
 
-	endpoint := fmt.Sprintf("/repos/%s/contents/%s", url.PathEscape(repo), escapedPath)
+	// path 为空时请求仓库根目录，endpoint 不带尾部斜杠（GitHub API 会 404）
+	var endpoint string
+	if escapedPath == "" {
+		endpoint = fmt.Sprintf("/repos/%s/contents", url.PathEscape(repo))
+	} else {
+		endpoint = fmt.Sprintf("/repos/%s/contents/%s", url.PathEscape(repo), escapedPath)
+	}
 	data, err := a.githubAPI("GET", endpoint, nil)
 	if err != nil {
 		return "", err

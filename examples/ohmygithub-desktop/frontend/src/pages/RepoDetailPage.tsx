@@ -107,6 +107,10 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const loadRootContents = useCallback(async () => {
     try {
       const str = await API.GetRepoContents(repoFullName, '');
+      if (!str) {
+        setRootNodes([]);
+        return;
+      }
       const items: FileContent[] = JSON.parse(str);
       // GitHub 风格排序：文件夹在前，然后按名称
       const sorted = [...items].sort((a, b) => {
@@ -123,7 +127,8 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
         loading: false,
       })));
     } catch (e: any) {
-      addToast('Failed to load contents: ' + (e?.message || 'error'), 'error');
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Failed to load contents: ' + msg, 'error');
     }
   }, [repoFullName, addToast]);
 
@@ -131,6 +136,7 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const loadChildren = useCallback(async (node: TreeNode): Promise<TreeNode[]> => {
     try {
       const str = await API.GetRepoContents(repoFullName, node.path);
+      if (!str) return [];
       const items: FileContent[] = JSON.parse(str);
       return items
         .filter(item => item.type === 'dir' || item.type === 'file')
@@ -148,7 +154,8 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
           loading: false,
         }));
     } catch (e: any) {
-      addToast('Failed to load folder: ' + (e?.message || 'error'), 'error');
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Failed to load folder: ' + msg, 'error');
       return [];
     }
   }, [repoFullName, addToast]);
