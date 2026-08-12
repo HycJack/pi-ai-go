@@ -6,7 +6,7 @@ import { GetPullRequests, GetPRDiff, GetPRFiles } from '../../wailsjs/go/main/Ap
 import { GetIssues } from '../../wailsjs/go/main/App';
 import { GetWorkflowRuns, GetWorkflowRunJobs, GetWorkflowLogs } from '../../wailsjs/go/main/App';
 import { GetMyRepos, SearchRepos, SyncRepos } from '../../wailsjs/go/main/App';
-import { GetRepoContents } from '../../wailsjs/go/main/App';
+import { GetRepoContents, GetRepo } from '../../wailsjs/go/main/App';
 import { OpenExternal, ShowMessage } from '../../wailsjs/go/main/App';
 import {
   GetStarredRepos,
@@ -44,6 +44,7 @@ export const API = {
   SearchRepos,
   SyncRepos,
   GetRepoContents,
+  GetRepo,
   OpenExternal,
   ShowMessage,
   GetStarredRepos,
@@ -115,6 +116,7 @@ export interface Repo {
   forks: number;
   openIssues: number;
   private: boolean;
+  htmlUrl?: string;
   updatedAt: string;
 }
 

@@ -23,6 +23,8 @@ export function GetPRFiles(arg1:string,arg2:number):Promise<string>;
 
 export function GetPullRequests(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function GetRepo(arg1:string):Promise<string>;
+
 export function GetRepoContents(arg1:string,arg2:string):Promise<string>;
 
 export function GetSettings():Promise<string>;

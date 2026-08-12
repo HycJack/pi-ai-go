@@ -116,6 +116,7 @@ type Repo struct {
 	Forks       int    `json:"forks"`
 	OpenIssues  int    `json:"openIssues"`
 	Private     bool   `json:"private"`
+	HTMLURL     string `json:"htmlUrl"`
 	UpdatedAt   string `json:"updatedAt"`
 }
 
@@ -1331,6 +1332,54 @@ func (a *App) SearchRepos(query string) (string, error) {
 	}
 
 	result, _ := json.Marshal(SearchResult{TotalCount: raw.TotalCount, Items: items})
+	return string(result), nil
+}
+
+// GetRepo 直接调用 GitHub API /repos/{owner}/{repo} 获取单个仓库信息。
+// 比 SearchRepos 更可靠（搜索索引可能有延迟，私有仓库可能搜不到）。
+func (a *App) GetRepo(repoFullName string) (string, error) {
+	safeRepo, err := escapeRepoPath(repoFullName)
+	if err != nil {
+		return "", err
+	}
+	data, err := a.githubAPI("GET", fmt.Sprintf("/repos/%s", safeRepo), nil)
+	if err != nil {
+		return "", err
+	}
+
+	var raw struct {
+		Name  string `json:"name"`
+		Owner struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		FullName    string `json:"full_name"`
+		Description string `json:"description"`
+		Language    string `json:"language"`
+		Stars       int    `json:"stargazers_count"`
+		Forks       int    `json:"forks_count"`
+		OpenIssues  int    `json:"open_issues_count"`
+		Private     bool   `json:"private"`
+		HTMLURL     string `json:"html_url"`
+		UpdatedAt   string `json:"updated_at"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return "", err
+	}
+
+	repo := Repo{
+		Name:        raw.Name,
+		Owner:       raw.Owner.Login,
+		FullName:    raw.FullName,
+		Description: raw.Description,
+		Language:    raw.Language,
+		Stars:       raw.Stars,
+		Forks:       raw.Forks,
+		OpenIssues:  raw.OpenIssues,
+		Private:     raw.Private,
+		HTMLURL:     raw.HTMLURL,
+		UpdatedAt:   raw.UpdatedAt,
+	}
+	result, _ := json.Marshal(repo)
 	return string(result), nil
 }
 

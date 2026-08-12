@@ -46,6 +46,10 @@ export function GetPullRequests(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetPullRequests'](arg1, arg2, arg3);
 }
 
+export function GetRepo(arg1) {
+  return window['go']['main']['App']['GetRepo'](arg1);
+}
+
 export function GetRepoContents(arg1, arg2) {
   return window['go']['main']['App']['GetRepoContents'](arg1, arg2);
 }

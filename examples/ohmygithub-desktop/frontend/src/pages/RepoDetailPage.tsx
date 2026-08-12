@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, Repo, FileContent } from '../lib/api';
+import CodeViewer from '../components/CodeViewer';
 
 interface RepoDetailPageProps {
   repoFullName: string;
@@ -28,21 +29,95 @@ const languageColors: Record<string, string> = {
 
 // 文件扩展名 → 是否可渲染为文本
 const textExtensions = new Set([
-  'md', 'txt', 'json', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'go', 'rs',
-  'py', 'java', 'c', 'h', 'cpp', 'hpp', 'cs', 'rb', 'php', 'sh', 'bash',
-  'css', 'scss', 'less', 'html', 'xml', 'sql', 'toml', 'ini', 'cfg', 'conf',
-  'env', 'gitignore', 'dockerfile', 'makefile', 'mod', 'sum', 'lock',
+  'md', 'markdown', 'mdown', 'mkd', 'txt', 'log', 'json', 'jsonc',
+  'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'js', 'mjs', 'cjs',
+  'ts', 'mts', 'cts', 'tsx', 'jsx', 'go', 'rs', 'py', 'java', 'kt',
+  'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'hxx', 'cs', 'fs', 'rb', 'php',
+  'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+  'css', 'scss', 'sass', 'less', 'html', 'htm', 'xml', 'svg',
+  'sql', 'graphql', 'gql', 'env', 'gitignore', 'npmignore',
+  'dockerfile', 'makefile', 'mod', 'sum', 'lock',
+  'vue', 'svelte', 'lua', 'r', 'clj', 'ex', 'erl', 'hs', 'ml', 'nim', 'zig',
+  'csv', 'tsv', 'mmd', 'mermaid',
+  'readme', 'license', 'editorconfig', 'prettierrc', 'eslintrc',
 ]);
 
-// 文件扩展名 → 图标
+// 文件名/扩展名 → 图标（更精细的 GitHub 风格映射）
 function fileIcon(name: string, isDir: boolean): string {
-  if (isDir) return '📁';
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  if (ext === 'md') return '📝';
-  if (['js', 'ts', 'tsx', 'jsx'].includes(ext)) return '📜';
-  if (['json', 'yaml', 'yml', 'toml'].includes(ext)) return '⚙️';
-  if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return '🖼️';
-  if (['go', 'rs', 'py', 'java', 'c', 'cpp'].includes(ext)) return '🔧';
+  if (isDir) {
+    // 常见目录特殊图标
+    const lower = name.toLowerCase();
+    if (lower === 'src' || lower === 'source') return '📂';
+    if (lower === 'test' || lower === 'tests' || lower === '__tests__') return '🧪';
+    if (lower === 'docs' || lower === 'doc') return '📚';
+    if (lower === '.github' || lower === '.gitlab') return '🐱';
+    if (lower === 'node_modules') return '📦';
+    if (lower === 'dist' || lower === 'build') return '🏗️';
+    if (lower === 'assets' || lower === 'public' || lower === 'static') return '🖼️';
+    return '📁';
+  }
+  const lower = name.toLowerCase();
+  // 特殊文件名
+  if (lower === 'license' || lower === 'license.md' || lower === 'license.txt') return '📜';
+  if (lower === 'readme.md' || lower === 'readme') return '📖';
+  if (lower === '.gitignore' || lower === '.npmignore') return '🚫';
+  if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return '🐳';
+  if (lower === 'makefile') return '🔨';
+  if (lower === 'package.json' || lower === 'package-lock.json') return '📦';
+  if (lower === 'go.mod' || lower === 'go.sum') return '🐹';
+  if (lower === 'cargo.toml' || lower === 'cargo.lock') return '🦀';
+  if (lower === '.env' || lower.startsWith('.env.')) return '🔑';
+
+  const ext = lower.split('.').pop() || '';
+  // 文档类
+  if (['md', 'markdown', 'mdown', 'mkd'].includes(ext)) return '📝';
+  if (['txt', 'log'].includes(ext)) return '📄';
+  if (['pdf'].includes(ext)) return '📕';
+  // 配置类
+  if (['json', 'jsonc'].includes(ext)) return '🔧';
+  if (['yaml', 'yml', 'toml', 'ini', 'cfg', 'conf'].includes(ext)) return '⚙️';
+  if (['xml', 'svg'].includes(ext)) return '🔗';
+  // Web 前端
+  if (['html', 'htm'].includes(ext)) return '🌐';
+  if (['css', 'scss', 'sass', 'less'].includes(ext)) return '🎨';
+  if (['vue', 'svelte'].includes(ext)) return '⚛️';
+  // JS/TS
+  if (['js', 'mjs', 'cjs'].includes(ext)) return '🟨';
+  if (['jsx'].includes(ext)) return '⚛️';
+  if (['ts', 'mts', 'cts'].includes(ext)) return '🔷';
+  if (['tsx'].includes(ext)) return '⚛️';
+  // 后端语言
+  if (ext === 'go') return '🐹';
+  if (ext === 'rs') return '🦀';
+  if (ext === 'py') return '🐍';
+  if (ext === 'java') return '☕';
+  if (ext === 'kt') return '🟪';
+  if (ext === 'swift') return '🦅';
+  if (ext === 'rb') return '💎';
+  if (ext === 'php') return '🐘';
+  if (['c', 'h'].includes(ext)) return '🔵';
+  if (['cpp', 'cc', 'cxx', 'hpp', 'hxx'].includes(ext)) return '➕';
+  if (ext === 'cs') return '🟢';
+  if (ext === 'fs') return '🟣';
+  // Shell/脚本
+  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return '🐚';
+  if (ext === 'ps1') return '💠';
+  if (ext === 'bat' || ext === 'cmd') return '🪟';
+  // 数据/查询
+  if (ext === 'sql') return '🗄️';
+  if (['graphql', 'gql'].includes(ext)) return '◈';
+  // 图片
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) return '🖼️';
+  // 音视频
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '🎵';
+  if (['mp4', 'webm', 'avi', 'mov', 'mkv'].includes(ext)) return '🎬';
+  // 压缩包
+  if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return '🗜️';
+  // Mermaid / 图表
+  if (['mmd', 'mermaid'].includes(ext)) return '🌊';
+  // 数据
+  if (['csv', 'tsv'].includes(ext)) return '📊';
+  // 默认
   return '📄';
 }
 
@@ -88,16 +163,16 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const [loading, setLoading] = useState(true);
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
 
-  // 加载仓库元信息
+  // 加载仓库元信息（直接调用 /repos/{owner}/{repo}，比搜索 API 更可靠）
   const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
-      const str = await API.SearchRepos(`repo:${repoFullName}`);
-      const result = JSON.parse(str);
-      const found = result.items?.find((r: Repo) => r.fullName === repoFullName);
-      setRepo(found || result.items?.[0] || null);
+      const str = await API.GetRepo(repoFullName);
+      const repoData: Repo = JSON.parse(str);
+      setRepo(repoData);
     } catch (e: any) {
-      addToast('Failed to load repo detail: ' + (e?.message || 'error'), 'error');
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Failed to load repo detail: ' + msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -459,14 +534,7 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
                 <div className="spinner" />
               </div>
             ) : fileContent ? (
-              <pre style={{
-                margin: 0, padding: 16,
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                fontFamily: 'var(--font-mono)', fontSize: 12,
-                color: 'var(--text-primary)', lineHeight: 1.5,
-              }}>
-                {fileContent}
-              </pre>
+              <CodeViewer fileName={currentFile.name} content={fileContent} />
             ) : (
               <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>📄</div>
