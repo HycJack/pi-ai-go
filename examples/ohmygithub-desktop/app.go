@@ -1189,16 +1189,16 @@ func (a *App) GetMyRepos(sort string) (string, error) {
 	cached, cachedAt, err := loadCachedRepos(a.db, repoKindMine)
 	if err == nil && len(cached) > 0 {
 		// 检查是否需要后台同步
-		lastSync, _, _ := getSyncState(a.db, repoKindMine)
+		lastSync, lastFullSync, _, _ := getSyncState(a.db, repoKindMine)
 		if needsSync(lastSync) && tryLockSync(repoKindMine) {
-			go a.syncMyRepos(sort)
+			go a.syncMyRepos(sort, lastFullSync)
 			return marshalCachedResponse(cached, cachedAt, true)
 		}
 		return marshalCachedResponse(cached, cachedAt, false)
 	}
 
 	// 无缓存：前台全量拉取
-	if err := a.syncMyRepos(sort); err != nil {
+	if err := a.syncMyRepos(sort, 0); err != nil {
 		return "", err
 	}
 	cached, cachedAt, _ = loadCachedRepos(a.db, repoKindMine)
@@ -1219,10 +1219,22 @@ func (a *App) fetchMyReposFromAPI(sort string) (string, error) {
 	return string(result), nil
 }
 
-// syncMyRepos 全量同步 my repos 到 SQLite
-func (a *App) syncMyRepos(sort string) error {
+// syncMyRepos 同步 my repos 到 SQLite。
+// lastFullSync 用于判断走全量校正还是 since 增量：为 0 或超过 7 天则全量替换，
+// 否则用 since=lastFullSync 拉取变更项做 UPSERT。
+func (a *App) syncMyRepos(sort string, lastFullSync int64) error {
 	defer unlockSync(repoKindMine)
-	data, err := a.githubAPIPaged(fmt.Sprintf("/user/repos?sort=%s&type=all", sort), 100, 10)
+
+	full := needsFullSync(lastFullSync)
+	var data []byte
+	var err error
+	if full {
+		data, err = a.githubAPIPaged(fmt.Sprintf("/user/repos?sort=%s&type=all", sort), 100, 10)
+	} else {
+		// GitHub /user/repos 的 since 参数基于 updated_at，需用 ISO8601 时间戳
+		since := time.Unix(lastFullSync, 0).UTC().Format(time.RFC3339)
+		data, err = a.githubAPIPaged(fmt.Sprintf("/user/repos?sort=%s&type=all&since=%s", sort, url.QueryEscape(since)), 100, 10)
+	}
 	if err != nil {
 		return err
 	}
@@ -1230,7 +1242,10 @@ func (a *App) syncMyRepos(sort string) error {
 	if err != nil {
 		return err
 	}
-	return cacheRepos(a.db, repoKindMine, items)
+	if full {
+		return cacheRepos(a.db, repoKindMine, items, true)
+	}
+	return cacheReposIncremental(a.db, repoKindMine, items)
 }
 
 // parseRepoList 解析 GitHub API 返回的 repo 列表 JSON
@@ -1330,7 +1345,7 @@ func (a *App) GetStarredRepos() (string, error) {
 	// 缓存优先
 	cached, cachedAt, err := loadCachedRepos(a.db, repoKindStarred)
 	if err == nil && len(cached) > 0 {
-		lastSync, _, _ := getSyncState(a.db, repoKindStarred)
+		lastSync, _, _, _ := getSyncState(a.db, repoKindStarred)
 		if needsSync(lastSync) && tryLockSync(repoKindStarred) {
 			go a.syncStarredRepos()
 			return a.marshalStarredResponse(cached, cachedAt, true)
@@ -1359,7 +1374,8 @@ func (a *App) fetchStarredReposFromAPI() (string, error) {
 	return a.marshalStarredResponse(items, 0, false)
 }
 
-// syncStarredRepos 全量同步 starred repos 到 SQLite
+// syncStarredRepos 全量同步 starred repos 到 SQLite。
+// GitHub /user/starred 不支持 since 参数，始终走全量替换。
 func (a *App) syncStarredRepos() error {
 	defer unlockSync(repoKindStarred)
 	data, err := a.githubAPIPaged("/user/starred?sort=pushed", 100, 20)
@@ -1370,7 +1386,7 @@ func (a *App) syncStarredRepos() error {
 	if err != nil {
 		return err
 	}
-	return cacheRepos(a.db, repoKindStarred, items)
+	return cacheRepos(a.db, repoKindStarred, items, true)
 }
 
 // marshalStarredResponse 将仓库列表 + 分组信息 + cachedAt 序列化为 JSON
@@ -1416,16 +1432,17 @@ func (a *App) marshalStarredResponse(items []RepoCacheItem, cachedAt int64, sync
 	return string(result), nil
 }
 
-// SyncRepos 供前端调用的手动强制同步 API。
+// SyncRepos 供前端调用的手动强制同步 API（强制全量校正）。
 // kind: "mine" | "starred" | "" (both)
 func (a *App) SyncRepos(kind string) error {
 	if a.db == nil {
 		return fmt.Errorf("cache db not available")
 	}
 	kind = strings.TrimSpace(strings.ToLower(kind))
+	// 传入 lastFullSync=0 强制 needsFullSync 返回 true，从而走全量分支
 	if kind == "" || kind == "mine" {
 		if tryLockSync(repoKindMine) {
-			if err := a.syncMyRepos("updated"); err != nil {
+			if err := a.syncMyRepos("updated", 0); err != nil {
 				return err
 			}
 		}

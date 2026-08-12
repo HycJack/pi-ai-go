@@ -24,6 +24,11 @@ const (
 // syncInterval 后台增量同步的最小间隔。超过此时间再次访问时触发后台同步。
 const syncInterval = 24 * time.Hour
 
+// fullSyncInterval 全量校正的最小间隔。超过此时间后下一次同步走全量分支。
+// my repos 用 since 参数做日常增量（仅拉更新的），但删除/转 private 等变更
+// 无法通过 since 发现，因此定期执行一次全量替换校正。
+const fullSyncInterval = 7 * 24 * time.Hour
+
 // RepoCacheItem 仓库缓存项（对应 repos 表的一行）。
 // JSON tag 与前端 Repo 类型对齐，前端可安全断言为 Repo。
 type RepoCacheItem struct {
@@ -73,6 +78,14 @@ func needsSync(lastSync int64) bool {
 		return true
 	}
 	return time.Since(time.Unix(lastSync, 0)) > syncInterval
+}
+
+// needsFullSync 判断是否需要走全量校正分支（lastFullSync 为 0 或超过 fullSyncInterval）。
+func needsFullSync(lastFullSync int64) bool {
+	if lastFullSync == 0 {
+		return true
+	}
+	return time.Since(time.Unix(lastFullSync, 0)) > fullSyncInterval
 }
 
 // ============================================================================
@@ -125,14 +138,24 @@ func initDB(dbPath string) (*sql.DB, error) {
 	CREATE INDEX IF NOT EXISTS idx_repos_updated ON repos(kind, updated_at DESC);
 
 	CREATE TABLE IF NOT EXISTS sync_state (
-		kind        TEXT PRIMARY KEY,
-		last_sync   INTEGER,
-		total_count INTEGER DEFAULT 0
+		kind            TEXT PRIMARY KEY,
+		last_sync       INTEGER,
+		last_full_sync  INTEGER DEFAULT 0,
+		total_count     INTEGER DEFAULT 0
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
+	}
+
+	// 兼容旧库：sync_state 表若缺少 last_full_sync 列则补上。
+	var hasFullSyncCol int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sync_state') WHERE name='last_full_sync'`).Scan(&hasFullSyncCol); err == nil && hasFullSyncCol == 0 {
+		if _, err := db.Exec(`ALTER TABLE sync_state ADD COLUMN last_full_sync INTEGER DEFAULT 0`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("alter sync_state: %w", err)
+		}
 	}
 
 	return db, nil
@@ -143,7 +166,8 @@ func initDB(dbPath string) (*sql.DB, error) {
 // ============================================================================
 
 // cacheRepos 全量替换某个 kind 的缓存（事务：先删后插），并更新 sync_state。
-func cacheRepos(db *sql.DB, kind string, items []RepoCacheItem) error {
+// full=true 时同步刷新 last_full_sync 时间戳。
+func cacheRepos(db *sql.DB, kind string, items []RepoCacheItem, full bool) error {
 	if db == nil {
 		return fmt.Errorf("db is nil")
 	}
@@ -176,7 +200,62 @@ func cacheRepos(db *sql.DB, kind string, items []RepoCacheItem) error {
 		}
 	}
 
-	if _, err := tx.Exec("INSERT OR REPLACE INTO sync_state (kind, last_sync, total_count) VALUES (?, ?, ?)", kind, now, len(items)); err != nil {
+	if full {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO sync_state (kind, last_sync, last_full_sync, total_count) VALUES (?, ?, ?, ?)`, kind, now, now, len(items)); err != nil {
+			return err
+		}
+	} else {
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO sync_state (kind, last_sync, total_count) VALUES (?, ?, COALESCE((SELECT total_count FROM sync_state WHERE kind=?), 0))`, kind, now, kind); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// cacheReposIncremental 增量合并缓存：对返回的 repo 列表做 UPSERT（不删除已有项），
+// 适用于 GitHub /user/repos?since=... 这种只返回变更项的接口。
+// full=false 仅刷新 last_sync；删除/转 private 等变更需依赖定期全量校正。
+func cacheReposIncremental(db *sql.DB, kind string, items []RepoCacheItem) error {
+	if db == nil {
+		return fmt.Errorf("db is nil")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT INTO repos
+		(full_name, kind, name, owner, description, language, stars, forks, open_issues, private, html_url, updated_at, cached_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(full_name, kind) DO UPDATE SET
+			name=excluded.name, owner=excluded.owner, description=excluded.description,
+			language=excluded.language, stars=excluded.stars, forks=excluded.forks,
+			open_issues=excluded.open_issues, private=excluded.private, html_url=excluded.html_url,
+			updated_at=excluded.updated_at, cached_at=excluded.cached_at`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Unix()
+	for _, r := range items {
+		private := 0
+		if r.Private {
+			private = 1
+		}
+		if _, err := stmt.Exec(r.FullName, kind, r.Name, r.Owner, r.Description, r.Language, r.Stars, r.Forks, r.OpenIssues, private, r.HTMLURL, r.UpdatedAt, now); err != nil {
+			return err
+		}
+	}
+
+	// 增量同步只更新 last_sync，保留 last_full_sync 和 total_count
+	if _, err := tx.Exec(`INSERT OR REPLACE INTO sync_state (kind, last_sync, last_full_sync, total_count)
+		VALUES (?, ?,
+			COALESCE((SELECT last_full_sync FROM sync_state WHERE kind=?), 0),
+			(SELECT COUNT(*) FROM repos WHERE kind=?))`,
+		kind, now, kind, kind); err != nil {
 		return err
 	}
 
@@ -213,14 +292,29 @@ func loadCachedRepos(db *sql.DB, kind string) ([]RepoCacheItem, int64, error) {
 	return items, cachedAt, rows.Err()
 }
 
-// getSyncState 读取同步状态（lastSync unix 秒，totalCount 缓存条数）。
-func getSyncState(db *sql.DB, kind string) (lastSync int64, totalCount int, err error) {
+// getSyncState 读取同步状态：lastSync 最后一次同步（unix 秒），lastFullSync 最后一次
+// 全量校正，totalCount 缓存条数。任一为 0 表示从未执行对应操作。
+func getSyncState(db *sql.DB, kind string) (lastSync int64, lastFullSync int64, totalCount int, err error) {
 	if db == nil {
-		return 0, 0, fmt.Errorf("db is nil")
+		return 0, 0, 0, fmt.Errorf("db is nil")
 	}
-	err = db.QueryRow("SELECT last_sync, total_count FROM sync_state WHERE kind = ?", kind).Scan(&lastSync, &totalCount)
+	var ls, lf sql.NullInt64
+	var tc sql.NullInt64
+	err = db.QueryRow("SELECT last_sync, last_full_sync, total_count FROM sync_state WHERE kind = ?", kind).Scan(&ls, &lf, &tc)
 	if err == sql.ErrNoRows {
-		return 0, 0, nil
+		return 0, 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if ls.Valid {
+		lastSync = ls.Int64
+	}
+	if lf.Valid {
+		lastFullSync = lf.Int64
+	}
+	if tc.Valid {
+		totalCount = int(tc.Int64)
 	}
 	return
 }

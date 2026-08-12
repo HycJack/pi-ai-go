@@ -129,6 +129,8 @@ function App() {
     issues: 'Issues',
     actions: 'Actions',
     repositories: 'Repositories',
+    starred: 'Starred',
+    'repo-detail': 'Repository',
   };
 
   return (
@@ -144,6 +146,16 @@ function App() {
 
       <div className="main-area">
         <div className="main-header">
+          {activePage !== 'overview' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { setActivePage('overview'); setActiveRepo(''); }}
+              title="返回 Overview"
+              style={{ marginRight: 8, padding: '4px 10px' }}
+            >
+              ← 返回
+            </button>
+          )}
           <h2>{pageTitle[activePage]}</h2>
           {activeRepo && <span className="subtitle">{activeRepo}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -200,6 +212,7 @@ function App() {
               addToast={addToast}
               onNavigate={setActivePage}
               onOpenExternal={handleOpenExternal}
+              onBack={() => { setActivePage('repositories'); }}
             />
           )}
         </div>
