@@ -21,14 +21,15 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
     try {
       const [notifStr, prStr, issueStr, repoStr] = await Promise.all([
         API.GetNotifications().catch(() => '[]'),
-        API.GetPullRequests('open', 'updated').catch(() => '[]'),
-        API.GetIssues('open', 'updated').catch(() => '[]'),
-        API.GetMyRepos('updated').catch(() => '[]'),
+        API.GetPullRequests('open', 'updated', '').catch(() => '[]'),
+        API.GetIssues('open', 'updated', '').catch(() => '[]'),
+        API.GetMyRepos('updated').catch(() => '{"data":[]}'),
       ]);
       const notifs = JSON.parse(notifStr);
       const prs = JSON.parse(prStr);
       const issues = JSON.parse(issueStr);
-      const repos = JSON.parse(repoStr);
+      const repoResp = JSON.parse(repoStr);
+      const repos = Array.isArray(repoResp) ? repoResp : (repoResp.data || []);
 
       setStats({
         notifications: notifs.length,

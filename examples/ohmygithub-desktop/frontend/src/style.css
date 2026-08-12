@@ -59,6 +59,49 @@
   --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'JetBrains Mono', monospace;
 }
 
+/* Light theme — 通过 data-theme="light" 切换 */
+:root[data-theme="light"] {
+  --bg-base: #ffffff;
+  --bg-elevated: #f6f8fa;
+  --bg-elevated-hover: #eaeef2;
+  --bg-overlay: #eaeef2;
+  --bg-inset: #f6f8fa;
+  --bg-active: #d8dee4;
+  --bg-primary: #1f883d;
+  --bg-primary-hover: #1a7f37;
+  --bg-accent: #0969da;
+  --bg-accent-hover: #0550ae;
+  --bg-danger: #cf222e;
+  --bg-danger-hover: #a40e26;
+
+  --text-primary: #1f2328;
+  --text-secondary: #59636e;
+  --text-tertiary: #818b98;
+  --text-link: #0969da;
+  --text-success: #1a7f37;
+  --text-danger: #cf222e;
+  --text-warning: #9a6700;
+  --text-accent: #0550ae;
+
+  --border-default: #d1d9e0;
+  --border-muted: #d1d9e0b3;
+  --border-accent: #0969da;
+
+  --sidebar-bg: #f6f8fa;
+  --sidebar-item-hover: #eaeef2;
+  --sidebar-item-active: #d8dee4;
+
+  --preview-bg: #f6f8fa;
+  --header-bg: #f6f8fa;
+
+  --code-bg: #f6f8fa;
+  --code-text: #1f2328;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -208,6 +251,22 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 500;
+}
+
+.nav-item .nav-badge {
+  margin-left: 8px;
+  background: var(--bg-danger);
+  color: white;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .sidebar-footer {
@@ -633,12 +692,33 @@ body {
 }
 
 /* Diff view */
+.diff-content {
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .diff-line {
-  padding: 0 12px;
+  display: flex;
+  padding: 0 8px;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre;
+}
+
+.diff-line .diff-line-no {
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.diff-line .diff-line-content {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .diff-line.added {
@@ -653,6 +733,12 @@ body {
 
 .diff-line.context {
   color: var(--text-secondary);
+}
+
+.diff-line.hunk {
+  background: rgba(88, 166, 255, 0.08);
+  color: var(--text-accent);
+  font-weight: 500;
 }
 
 /* ===== Account Selector ===== */

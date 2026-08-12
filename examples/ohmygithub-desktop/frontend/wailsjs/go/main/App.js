@@ -10,8 +10,20 @@ export function AddBookmark(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddBookmark'](arg1, arg2, arg3);
 }
 
-export function GetIssues(arg1, arg2) {
-  return window['go']['main']['App']['GetIssues'](arg1, arg2);
+export function AddRepoToStarGroup(arg1, arg2) {
+  return window['go']['main']['App']['AddRepoToStarGroup'](arg1, arg2);
+}
+
+export function CreateStarGroup(arg1) {
+  return window['go']['main']['App']['CreateStarGroup'](arg1);
+}
+
+export function DeleteStarGroup(arg1) {
+  return window['go']['main']['App']['DeleteStarGroup'](arg1);
+}
+
+export function GetIssues(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetIssues'](arg1, arg2, arg3);
 }
 
 export function GetMyRepos(arg1) {
@@ -30,8 +42,8 @@ export function GetPRFiles(arg1, arg2) {
   return window['go']['main']['App']['GetPRFiles'](arg1, arg2);
 }
 
-export function GetPullRequests(arg1, arg2) {
-  return window['go']['main']['App']['GetPullRequests'](arg1, arg2);
+export function GetPullRequests(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetPullRequests'](arg1, arg2, arg3);
 }
 
 export function GetRepoContents(arg1, arg2) {
@@ -40,6 +52,14 @@ export function GetRepoContents(arg1, arg2) {
 
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
+}
+
+export function GetStarGroups() {
+  return window['go']['main']['App']['GetStarGroups']();
+}
+
+export function GetStarredRepos() {
+  return window['go']['main']['App']['GetStarredRepos']();
 }
 
 export function GetWorkflowLogs(arg1, arg2) {
@@ -74,8 +94,20 @@ export function RemoveBookmark(arg1) {
   return window['go']['main']['App']['RemoveBookmark'](arg1);
 }
 
+export function RemoveRepoFromStarGroup(arg1, arg2) {
+  return window['go']['main']['App']['RemoveRepoFromStarGroup'](arg1, arg2);
+}
+
+export function RenameStarGroup(arg1, arg2) {
+  return window['go']['main']['App']['RenameStarGroup'](arg1, arg2);
+}
+
 export function ReorderBookmarks(arg1) {
   return window['go']['main']['App']['ReorderBookmarks'](arg1);
+}
+
+export function ReorderStarGroups(arg1) {
+  return window['go']['main']['App']['ReorderStarGroups'](arg1);
 }
 
 export function SearchRepos(arg1) {
@@ -86,8 +118,20 @@ export function ShowMessage(arg1, arg2) {
   return window['go']['main']['App']['ShowMessage'](arg1, arg2);
 }
 
+export function StarRepo(arg1) {
+  return window['go']['main']['App']['StarRepo'](arg1);
+}
+
 export function SwitchAccount(arg1) {
   return window['go']['main']['App']['SwitchAccount'](arg1);
+}
+
+export function SyncRepos(arg1) {
+  return window['go']['main']['App']['SyncRepos'](arg1);
+}
+
+export function UnstarRepo(arg1) {
+  return window['go']['main']['App']['UnstarRepo'](arg1);
 }
 
 export function UpdateSettings(arg1) {

@@ -20,11 +20,11 @@ declare namespace Go {
       function MarkNotificationRead(id: string): Promise<void>;
       function MarkAllNotificationsRead(): Promise<void>;
 
-      function GetPullRequests(state: string, sort: string): Promise<string>;
+      function GetPullRequests(state: string, sort: string, repo: string): Promise<string>;
       function GetPRDiff(repo: string, number: number): Promise<string>;
       function GetPRFiles(repo: string, number: number): Promise<string>;
 
-      function GetIssues(state: string, sort: string): Promise<string>;
+      function GetIssues(state: string, sort: string, repo: string): Promise<string>;
 
       function GetWorkflowRuns(repo: string): Promise<string>;
       function GetWorkflowRunJobs(repo: string, runID: number): Promise<string>;
@@ -32,6 +32,17 @@ declare namespace Go {
 
       function GetMyRepos(sort: string): Promise<string>;
       function SearchRepos(query: string): Promise<string>;
+      function GetStarredRepos(): Promise<string>;
+      function SyncRepos(kind: string): Promise<void>;
+      function GetStarGroups(): Promise<string>;
+      function CreateStarGroup(name: string): Promise<string>;
+      function DeleteStarGroup(id: string): Promise<void>;
+      function RenameStarGroup(id: string, name: string): Promise<void>;
+      function AddRepoToStarGroup(groupID: string, repoFullName: string): Promise<void>;
+      function RemoveRepoFromStarGroup(groupID: string, repoFullName: string): Promise<void>;
+      function ReorderStarGroups(ids: string[]): Promise<void>;
+      function StarRepo(repoFullName: string): Promise<void>;
+      function UnstarRepo(repoFullName: string): Promise<void>;
 
       function GetRepoContents(repo: string, path: string): Promise<string>;
 

@@ -102,10 +102,24 @@ export default function SettingsModal({ settings, onSave, onClose, addToast }: S
                 <div className="spinner" style={{ width: 20, height: 20 }} />
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <input className="input" value={newToken} onChange={e => setNewToken(e.target.value)}
-                  placeholder="Paste GitHub Personal Access Token..." style={{ flex: 1 }} />
-                <button className="btn btn-primary" onClick={handleAddAccount}>Add</button>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="input" value={newToken} onChange={e => setNewToken(e.target.value)}
+                    placeholder="Paste GitHub Personal Access Token..." style={{ flex: 1 }} />
+                  <button className="btn btn-primary" onClick={handleAddAccount}>Add</button>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.5 }}>
+                  创建 token 时请勾选以下 scope： <code style={{ color: 'var(--text-link)' }}>repo</code>、
+                  <code style={{ color: 'var(--text-link)' }}> notifications</code>、
+                  <code style={{ color: 'var(--text-link)' }}> read:user</code>、
+                  <code style={{ color: 'var(--text-link)' }}> workflow</code>
+                  <br />
+                  <a href="https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop"
+                    onClick={(e) => { e.preventDefault(); API.OpenExternal('https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop'); }}
+                    style={{ color: 'var(--text-link)', textDecoration: 'underline', cursor: 'pointer' }}>
+                    点此直接创建带正确权限的 token ↗
+                  </a>
+                </p>
               </div>
             )}
           </div>

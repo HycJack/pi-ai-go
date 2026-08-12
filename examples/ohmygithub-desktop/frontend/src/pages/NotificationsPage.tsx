@@ -15,10 +15,26 @@ export default function NotificationsPage({ onSelect, addToast }: NotificationsP
     setLoading(true);
     try {
       const str = await API.GetNotifications();
+      if (!str) {
+        setNotifications([]);
+        return;
+      }
       const data = JSON.parse(str);
-      setNotifications(data);
-    } catch (e) {
-      addToast('Failed to load notifications: ' + (e as any)?.message, 'error');
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      // Wails 返回的 error 可能不是标准 Error，提取多种可能的字段
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      console.error('GetNotifications failed:', e);
+      // 针对常见错误给出可操作提示
+      if (msg.includes('403') || msg.includes('Resource not accessible')) {
+        addToast('Token 缺少 notifications 权限。请到 Settings 删除账号后重新添加，创建 token 时勾选 "notifications" scope', 'error');
+      } else if (msg.includes('401') || msg.toLowerCase().includes('bad credentials')) {
+        addToast('Token 无效或已过期，请到 Settings 重新添加 token', 'error');
+      } else if (msg.includes('no GitHub account')) {
+        addToast('请先在 Settings 添加 GitHub token', 'error');
+      } else {
+        addToast('Failed to load notifications: ' + msg, 'error');
+      }
       setNotifications([]);
     } finally {
       setLoading(false);

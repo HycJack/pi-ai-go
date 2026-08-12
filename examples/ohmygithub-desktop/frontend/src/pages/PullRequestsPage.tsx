@@ -4,9 +4,10 @@ import { API, PullRequest, formatRelativeTime } from '../lib/api';
 interface PullRequestsPageProps {
   onSelect: (item: any) => void;
   addToast: (message: string, type?: string) => void;
+  activeRepo?: string;
 }
 
-export default function PullRequestsPage({ onSelect, addToast }: PullRequestsPageProps) {
+export default function PullRequestsPage({ onSelect, addToast, activeRepo }: PullRequestsPageProps) {
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'open' | 'closed' | 'all'>('open');
@@ -15,7 +16,7 @@ export default function PullRequestsPage({ onSelect, addToast }: PullRequestsPag
   const loadPRs = useCallback(async () => {
     setLoading(true);
     try {
-      const str = await API.GetPullRequests(filter, sort);
+      const str = await API.GetPullRequests(filter, sort, activeRepo || '');
       setPrs(JSON.parse(str));
     } catch (e) {
       addToast('Failed to load pull requests', 'error');
@@ -23,7 +24,7 @@ export default function PullRequestsPage({ onSelect, addToast }: PullRequestsPag
     } finally {
       setLoading(false);
     }
-  }, [filter, sort, addToast]);
+  }, [filter, sort, activeRepo, addToast]);
 
   useEffect(() => { loadPRs(); }, [loadPRs]);
 
@@ -50,6 +51,11 @@ export default function PullRequestsPage({ onSelect, addToast }: PullRequestsPag
           <option value="created">Recently created</option>
         </select>
         <div style={{ flex: 1 }} />
+        {activeRepo && (
+          <span className="filter-label" style={{ color: 'var(--text-accent)' }}>
+            Scope: {activeRepo}
+          </span>
+        )}
         <button className="btn btn-ghost btn-sm" onClick={loadPRs}>Refresh</button>
       </div>
 

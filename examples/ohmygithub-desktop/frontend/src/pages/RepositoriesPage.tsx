@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API, Repo } from '../lib/api';
+import { API, Repo, CachedRepoResponse } from '../lib/api';
 
 interface RepositoriesPageProps {
   searchQuery: string;
@@ -11,6 +11,8 @@ interface RepositoriesPageProps {
 export default function RepositoriesPage({ searchQuery, onSearchChange, onSelect, addToast }: RepositoriesPageProps) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [cachedAt, setCachedAt] = useState(0);
   const [sort, setSort] = useState<'updated' | 'created' | 'full_name'>('updated');
   const [searchResults, setSearchResults] = useState<{ totalCount: number; items: Repo[] } | null>(null);
   const [searching, setSearching] = useState(false);
@@ -19,13 +21,32 @@ export default function RepositoriesPage({ searchQuery, onSearchChange, onSelect
     setLoading(true);
     try {
       const str = await API.GetMyRepos(sort);
-      setRepos(JSON.parse(str));
-    } catch (e) {
-      addToast('Failed to load repositories', 'error');
+      const resp: CachedRepoResponse<Repo> = JSON.parse(str);
+      setRepos(Array.isArray(resp.data) ? resp.data : []);
+      setCachedAt(resp.cachedAt || 0);
+      setSyncing(resp.syncing || false);
+    } catch (e: any) {
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Failed to load repositories: ' + msg, 'error');
+      setRepos([]);
     } finally {
       setLoading(false);
     }
   }, [sort, addToast]);
+
+  // 手动强制同步：调用 SyncRepos 后重新读取缓存
+  const handleForceSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await API.SyncRepos('mine');
+      await loadRepos();
+      addToast('Repositories synced', 'success');
+    } catch (e: any) {
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Sync failed: ' + msg, 'error');
+      setSyncing(false);
+    }
+  }, [loadRepos, addToast]);
 
   useEffect(() => { loadRepos(); }, [loadRepos]);
 
@@ -87,7 +108,17 @@ export default function RepositoriesPage({ searchQuery, onSearchChange, onSelect
           <option value="full_name">Name</option>
         </select>
         <div style={{ flex: 1 }} />
+        {!searchResults && (
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {repos.length} repos
+            {cachedAt > 0 && <span style={{ marginLeft: 8 }}>· cached {new Date(cachedAt * 1000).toLocaleString()}</span>}
+            {syncing && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>· syncing…</span>}
+          </span>
+        )}
         {searchResults && <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{searchResults.totalCount} results</span>}
+        <button className="btn btn-ghost btn-sm" onClick={handleForceSync} disabled={syncing} title="Force sync from GitHub">
+          {syncing ? 'Syncing…' : 'Sync'}
+        </button>
         <button className="btn btn-ghost btn-sm" onClick={loadRepos}>Refresh</button>
       </div>
 

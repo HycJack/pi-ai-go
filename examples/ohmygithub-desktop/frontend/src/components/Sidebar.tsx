@@ -1,5 +1,5 @@
 import React from 'react';
-import { API, AppSettings, GitHubAccount } from '../lib/api';
+import { API, AppSettings, GitHubAccount, Notification } from '../lib/api';
 
 interface SidebarProps {
   activePage: string;
@@ -17,6 +17,7 @@ const navItems = [
   { id: 'issues', label: 'Issues', icon: 'circle-dot' },
   { id: 'actions', label: 'Actions', icon: 'play-circle' },
   { id: 'repositories', label: 'Repositories', icon: 'book' },
+  { id: 'starred', label: 'Starred', icon: 'star' },
 ];
 
 const Icon = ({ name }: { name: string }) => {
@@ -27,6 +28,7 @@ const Icon = ({ name }: { name: string }) => {
     'circle-dot': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z',
     'play-circle': 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z',
     book: 'M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 18H6V4h2v8l2.5-1.5L13 12V4h5v16z',
+    star: 'M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.401 8.169L12 18.896l-7.335 3.868 1.401-8.169L.132 9.21l8.2-1.192z',
     bookmark: 'M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z',
     add: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
     close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
@@ -46,6 +48,7 @@ const pageMapping: Record<string, string> = {
   issues: 'issues',
   actions: 'actions',
   repositories: 'repositories',
+  starred: 'starred',
 };
 
 export default function Sidebar({ activePage, onNavigate, settings, onOpenSettings, onUpdateSettings, addToast }: SidebarProps) {
@@ -53,6 +56,25 @@ export default function Sidebar({ activePage, onNavigate, settings, onOpenSettin
   const [editingBookmark, setEditingBookmark] = React.useState(false);
   const [newBmTitle, setNewBmTitle] = React.useState('');
   const [newBmUrl, setNewBmUrl] = React.useState('');
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  // 拉取未读通知数（仅在已登录时）
+  React.useEffect(() => {
+    const active = settings.accounts[settings.activeAccount];
+    if (!active?.token) return;
+    let cancelled = false;
+    const fetchUnread = async () => {
+      try {
+        const str = await API.GetNotifications();
+        if (cancelled) return;
+        const list = JSON.parse(str) as Notification[];
+        setUnreadCount(list.filter(n => !n.read).length);
+      } catch { /* ignore */ }
+    };
+    fetchUnread();
+    const t = setInterval(fetchUnread, 60000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [settings.activeAccount, settings.accounts]);
 
   const handleAddBookmark = async () => {
     if (!newBmTitle.trim() || !newBmUrl.trim()) return;
@@ -73,6 +95,24 @@ export default function Sidebar({ activePage, onNavigate, settings, onOpenSettin
       const str = await API.GetSettings();
       onUpdateSettings(JSON.parse(str));
     } catch { addToast('Failed to remove bookmark', 'error'); }
+  };
+
+  // Bookmark 点击：
+  // - "owner/repo" 形式：跳到 GitHub 仓库页面
+  // - 完整 URL：用 OpenExternal 打开外部浏览器
+  const handleBookmarkClick = async (bm: { id: string; title: string; url: string }) => {
+    const url = bm.url.trim();
+    if (!url) return;
+    // 简单的 owner/repo 格式（无斜杠开头的两段路径）
+    const repoMatch = url.match(/^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)$/);
+    const fullUrl = repoMatch
+      ? `https://github.com/${repoMatch[0]}`
+      : (url.startsWith('http') ? url : `https://${url}`);
+    try {
+      await API.OpenExternal(fullUrl);
+    } catch {
+      addToast('Failed to open bookmark URL', 'error');
+    }
   };
 
   const activeAccount: GitHubAccount | undefined = settings.accounts[settings.activeAccount];
@@ -103,7 +143,10 @@ export default function Sidebar({ activePage, onNavigate, settings, onOpenSettin
           <div key={item.id} className={`nav-item ${activePage === pageMapping[item.id] ? 'active' : ''}`}
             onClick={() => onNavigate(item.id)}>
             <Icon name={item.icon} />
-            {item.label}
+            <span style={{ flex: 1 }}>{item.label}</span>
+            {item.id === 'notifications' && unreadCount > 0 && (
+              <span className="nav-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            )}
           </div>
         ))}
         <div style={{ marginTop: 24 }}>
@@ -123,10 +166,10 @@ export default function Sidebar({ activePage, onNavigate, settings, onOpenSettin
             </div>
           )}
           {showBookmarks && settings.bookmarks.map((bm) => (
-            <div key={bm.id} className="bookmark-item">
+            <div key={bm.id} className="bookmark-item" onClick={() => handleBookmarkClick(bm)} title={bm.url}>
               <Icon name="bookmark" />
-              <span>{bm.title}</span>
-              <span className="remove-btn" onClick={() => handleRemoveBookmark(bm.id)}>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bm.title}</span>
+              <span className="remove-btn" onClick={(e) => { e.stopPropagation(); handleRemoveBookmark(bm.id); }}>
                 <Icon name="close" />
               </span>
             </div>

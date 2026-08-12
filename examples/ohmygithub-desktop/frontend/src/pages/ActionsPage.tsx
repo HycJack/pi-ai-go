@@ -3,10 +3,11 @@ import { API, WorkflowRun, Job, formatRelativeTime } from '../lib/api';
 
 interface ActionsPageProps {
   addToast: (message: string, type?: string) => void;
+  initialRepo?: string;
 }
 
-export default function ActionsPage({ addToast }: ActionsPageProps) {
-  const [repoInput, setRepoInput] = useState('octocat/Hello-World');
+export default function ActionsPage({ addToast, initialRepo }: ActionsPageProps) {
+  const [repoInput, setRepoInput] = useState(initialRepo || 'octocat/Hello-World');
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<WorkflowRun | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -32,7 +33,7 @@ export default function ActionsPage({ addToast }: ActionsPageProps) {
     setLoadingJobs(true);
     setLogs('');
     try {
-      const str = await API.GetWorkflowRunJobs(run.htmlUrl.replace('https://github.com/', '').replace('/actions/runs/' + run.id, ''), run.id);
+      const str = await API.GetWorkflowRunJobs(repoInput.trim(), run.id);
       setJobs(JSON.parse(str));
     } catch {
       setJobs([]);

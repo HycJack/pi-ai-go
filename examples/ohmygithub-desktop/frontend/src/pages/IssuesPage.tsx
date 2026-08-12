@@ -4,9 +4,10 @@ import { API, Issue, formatRelativeTime } from '../lib/api';
 interface IssuesPageProps {
   onSelect: (item: any) => void;
   addToast: (message: string, type?: string) => void;
+  activeRepo?: string;
 }
 
-export default function IssuesPage({ onSelect, addToast }: IssuesPageProps) {
+export default function IssuesPage({ onSelect, addToast, activeRepo }: IssuesPageProps) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'open' | 'closed' | 'all'>('open');
@@ -15,7 +16,7 @@ export default function IssuesPage({ onSelect, addToast }: IssuesPageProps) {
   const loadIssues = useCallback(async () => {
     setLoading(true);
     try {
-      const str = await API.GetIssues(filter, sort);
+      const str = await API.GetIssues(filter, sort, activeRepo || '');
       setIssues(JSON.parse(str));
     } catch (e) {
       addToast('Failed to load issues', 'error');
@@ -23,7 +24,7 @@ export default function IssuesPage({ onSelect, addToast }: IssuesPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [filter, sort, addToast]);
+  }, [filter, sort, activeRepo, addToast]);
 
   useEffect(() => { loadIssues(); }, [loadIssues]);
 
@@ -41,6 +42,11 @@ export default function IssuesPage({ onSelect, addToast }: IssuesPageProps) {
           <option value="created">Recently created</option>
         </select>
         <div style={{ flex: 1 }} />
+        {activeRepo && (
+          <span className="filter-label" style={{ color: 'var(--text-accent)' }}>
+            Scope: {activeRepo}
+          </span>
+        )}
         <button className="btn btn-ghost btn-sm" onClick={loadIssues}>Refresh</button>
       </div>
 

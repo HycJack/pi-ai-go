@@ -7,11 +7,13 @@ import IssuesPage from './pages/IssuesPage';
 import ActionsPage from './pages/ActionsPage';
 import OverviewPage from './pages/OverviewPage';
 import RepositoriesPage from './pages/RepositoriesPage';
+import StarredReposPage from './pages/StarredReposPage';
+import RepoDetailPage from './pages/RepoDetailPage';
 import SettingsModal from './components/SettingsModal';
 import PreviewPanel from './components/PreviewPanel';
 import Toast from './components/Toast';
 
-type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories';
+type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories' | 'starred' | 'repo-detail';
 type NavHandler = (page: string) => void;
 
 function App() {
@@ -29,13 +31,45 @@ function App() {
     loadSettings();
   }, []);
 
+  // Apply theme / font size / code font to document root
+  useEffect(() => {
+    if (!settings) return;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+    if (settings.fontSize && settings.fontSize > 0) {
+      root.style.setProperty('--app-font-size', `${settings.fontSize}px`);
+      root.style.fontSize = `${settings.fontSize}px`;
+    }
+    if (settings.codeFont) {
+      root.style.setProperty('--font-mono', `'${settings.codeFont}', monospace`);
+    }
+  }, [settings]);
+
   const loadSettings = async () => {
     try {
       const str = await API.GetSettings();
-      const s = JSON.parse(str);
+      const s = JSON.parse(str) as AppSettings;
+      // 防御性处理：确保数组字段非 null，避免后续 .map() 崩溃
+      if (!Array.isArray(s.accounts)) s.accounts = [];
+      if (!Array.isArray(s.bookmarks)) s.bookmarks = [];
+      if (!Array.isArray(s.starGroups)) s.starGroups = [];
+      if (typeof s.fontSize !== 'number' || s.fontSize <= 0) s.fontSize = 14;
+      if (!s.theme) s.theme = 'dark';
       setSettings(s);
     } catch (e) {
       console.error('Failed to load settings:', e);
+      // 加载失败时使用默认设置，避免一直卡在 loading
+      setSettings({
+        accounts: [],
+        activeAccount: 0,
+        theme: 'dark',
+        fontSize: 14,
+        codeFont: 'JetBrains Mono, Fira Code, monospace',
+        bookmarks: [],
+        starGroups: [],
+        windowWidth: 0,
+        windowHeight: 0,
+      });
     }
   };
 
@@ -56,6 +90,14 @@ function App() {
     setPreviewOpen(false);
     setSelectedItem(null);
   }, []);
+
+  const handleOpenExternal = useCallback(async (url: string) => {
+    try {
+      await API.OpenExternal(url);
+    } catch {
+      addToast('Failed to open URL', 'error');
+    }
+  }, [addToast]);
 
   const handleUpdateSettings = useCallback(async (newSettings: AppSettings) => {
     try {
@@ -128,20 +170,36 @@ function App() {
             <NotificationsPage onSelect={handleSelectItem} addToast={addToast} />
           )}
           {activePage === 'pull-requests' && (
-            <PullRequestsPage onSelect={handleSelectItem} addToast={addToast} />
+            <PullRequestsPage onSelect={handleSelectItem} addToast={addToast} activeRepo={activeRepo} />
           )}
           {activePage === 'issues' && (
-            <IssuesPage onSelect={handleSelectItem} addToast={addToast} />
+            <IssuesPage onSelect={handleSelectItem} addToast={addToast} activeRepo={activeRepo} />
           )}
           {activePage === 'actions' && (
-            <ActionsPage addToast={addToast} />
+            <ActionsPage addToast={addToast} initialRepo={activeRepo} />
           )}
           {activePage === 'repositories' && (
             <RepositoriesPage
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              onSelect={(repo: Repo) => { setActiveRepo(repo.fullName); setActivePage('pull-requests'); }}
+              onSelect={(repo: Repo) => { setActiveRepo(repo.fullName); setActivePage('repo-detail'); }}
               addToast={addToast}
+            />
+          )}
+          {activePage === 'starred' && settings && (
+            <StarredReposPage
+              addToast={addToast}
+              starGroups={settings.starGroups || []}
+              onGroupsChange={loadSettings}
+              onSelectRepo={(repo) => { setActiveRepo(repo.fullName); setActivePage('repo-detail'); }}
+            />
+          )}
+          {activePage === 'repo-detail' && activeRepo && (
+            <RepoDetailPage
+              repoFullName={activeRepo}
+              addToast={addToast}
+              onNavigate={setActivePage}
+              onOpenExternal={handleOpenExternal}
             />
           )}
         </div>

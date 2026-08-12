@@ -5,9 +5,21 @@ import { GetNotifications, MarkNotificationRead, MarkAllNotificationsRead } from
 import { GetPullRequests, GetPRDiff, GetPRFiles } from '../../wailsjs/go/main/App';
 import { GetIssues } from '../../wailsjs/go/main/App';
 import { GetWorkflowRuns, GetWorkflowRunJobs, GetWorkflowLogs } from '../../wailsjs/go/main/App';
-import { GetMyRepos, SearchRepos } from '../../wailsjs/go/main/App';
+import { GetMyRepos, SearchRepos, SyncRepos } from '../../wailsjs/go/main/App';
 import { GetRepoContents } from '../../wailsjs/go/main/App';
 import { OpenExternal, ShowMessage } from '../../wailsjs/go/main/App';
+import {
+  GetStarredRepos,
+  GetStarGroups,
+  CreateStarGroup,
+  DeleteStarGroup,
+  RenameStarGroup,
+  AddRepoToStarGroup,
+  RemoveRepoFromStarGroup,
+  ReorderStarGroups,
+  StarRepo,
+  UnstarRepo,
+} from '../../wailsjs/go/main/App';
 
 export const API = {
   GetSettings,
@@ -30,9 +42,20 @@ export const API = {
   GetWorkflowLogs,
   GetMyRepos,
   SearchRepos,
+  SyncRepos,
   GetRepoContents,
   OpenExternal,
   ShowMessage,
+  GetStarredRepos,
+  GetStarGroups,
+  CreateStarGroup,
+  DeleteStarGroup,
+  RenameStarGroup,
+  AddRepoToStarGroup,
+  RemoveRepoFromStarGroup,
+  ReorderStarGroups,
+  StarRepo,
+  UnstarRepo,
 };
 
 // Types
@@ -100,6 +123,13 @@ export interface SearchResult {
   items: Repo[];
 }
 
+// 后端 GetMyRepos / GetStarredRepos 返回的统一缓存响应格式
+export interface CachedRepoResponse<T = Repo> {
+  data: T[];
+  cachedAt: number; // unix 秒，0 表示无缓存（实时拉取）
+  syncing: boolean; // 后台同步进行中
+}
+
 export interface WorkflowRun {
   id: number;
   name: string;
@@ -157,6 +187,7 @@ export interface AppSettings {
   fontSize: number;
   codeFont: string;
   bookmarks: Bookmark[];
+  starGroups: StarGroup[];
   windowWidth: number;
   windowHeight: number;
 }
@@ -173,6 +204,18 @@ export interface Bookmark {
   url: string;
   icon: string;
   order: number;
+}
+
+export interface StarGroup {
+  id: string;
+  name: string;
+  repos: string[]; // "owner/name" 列表
+  order: number;
+}
+
+// StarredRepo = Repo + 所属分组 ID 列表
+export interface StarredRepo extends Repo {
+  groups: string[];
 }
 
 export function formatRelativeTime(dateStr: string): string {

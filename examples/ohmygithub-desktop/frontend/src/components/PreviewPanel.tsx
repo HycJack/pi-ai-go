@@ -7,19 +7,52 @@ interface PreviewPanelProps {
   onClose: () => void;
 }
 
+interface DiffFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch: string;
+}
+
 export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps) {
-  const [diffContent, setDiffContent] = useState<string>('');
-  const [fileContent, setFileContent] = useState<string>('');
+  const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
+  const [rawDiff, setRawDiff] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setDiffContent('');
-    setFileContent('');
+    setDiffFiles([]);
+    setRawDiff('');
     if (!item) return;
 
-    if (item._type === 'pr' && item._diff) {
-      setDiffContent(item._diff);
+    let cancelled = false;
+    if (item._type === 'pr') {
+      setLoading(true);
+      // 优先用结构化文件 diff；失败时回退到原始 diff
+      API.GetPRFiles(item.repo, item.number)
+        .then((str: string) => {
+          if (cancelled) return;
+          try {
+            const files = JSON.parse(str) as DiffFile[];
+            setDiffFiles(files);
+          } catch { /* ignore */ }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // 回退到原始 diff
+          if (item._diff) {
+            setRawDiff(item._diff as string);
+          } else {
+            API.GetPRDiff(item.repo, item.number)
+              .then((d: string) => { if (!cancelled) setRawDiff(d); })
+              .catch(() => { /* ignore */ });
+          }
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    } else if (item._type === 'pr-raw' && item._diff) {
+      setRawDiff(item._diff as string);
     }
+    return () => { cancelled = true; };
   }, [item]);
 
   if (!open || !item) return null;
@@ -27,6 +60,67 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
   const pr = item as PullRequest;
   const issue = item as Issue;
   const notif = item as Notification;
+
+  const renderDiffLine = (line: string, key: number) => {
+    let cls = 'diff-line context';
+    if (line.startsWith('+')) cls = 'diff-line added';
+    else if (line.startsWith('-')) cls = 'diff-line removed';
+    else if (line.startsWith('@@')) cls = 'diff-line hunk';
+    return (
+      <div key={key} className={cls}>
+        <span className="diff-line-no">{line.charAt(0) === ' ' ? ' ' : line.charAt(0)}</span>
+        <span className="diff-line-content">{line.charAt(0) === ' ' || line.charAt(0) === '+' || line.charAt(0) === '-' || line.startsWith('@@') ? line : line}</span>
+      </div>
+    );
+  };
+
+  const renderPatch = (patch: string) => {
+    const lines = patch.split('\n');
+    return (
+      <div className="diff-content">
+        {lines.map((line, i) => renderDiffLine(line, i))}
+      </div>
+    );
+  };
+
+  const renderDiff = () => {
+    if (loading) {
+      return <div className="loading-spinner"><div className="spinner" /></div>;
+    }
+    if (diffFiles.length > 0) {
+      return (
+        <div>
+          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+            {diffFiles.length} files changed ·{' '}
+            <span style={{ color: 'var(--text-success)' }}>+{diffFiles.reduce((s, f) => s + f.additions, 0)}</span>{' '}
+            <span style={{ color: 'var(--text-danger)' }}>−{diffFiles.reduce((s, f) => s + f.deletions, 0)}</span>
+          </div>
+          {diffFiles.map((f, i) => (
+            <div key={i} className="code-block" style={{ marginBottom: 8 }}>
+              <div className="code-header">
+                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{f.filename}</span>
+                <span style={{ marginLeft: 8, fontSize: 11 }} className={`status-badge ${f.status === 'added' ? 'success' : f.status === 'removed' ? 'failure' : 'neutral'}`}>{f.status}</span>
+                <span style={{ marginLeft: 'auto', color: 'var(--text-success)' }}>+{f.additions}</span>
+                <span style={{ color: 'var(--text-danger)' }}>−{f.deletions}</span>
+              </div>
+              {f.patch && renderPatch(f.patch)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (rawDiff) {
+      return (
+        <div className="code-block">
+          <div className="code-header">Raw diff</div>
+          <div className="code-content" style={{ maxHeight: 600, overflow: 'auto', whiteSpace: 'pre' }}>
+            {rawDiff}
+          </div>
+        </div>
+      );
+    }
+    return <div className="empty-state" style={{ padding: 16 }}><p>No diff available</p></div>;
+  };
 
   const renderDetail = () => {
     if (item._type === 'pr') {
@@ -68,6 +162,9 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
               Open on GitHub
             </button>
           </div>
+
+          <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>Changes</h3>
+          {renderDiff()}
         </div>
       );
     }
@@ -104,6 +201,11 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
               ))}
             </div>
           )}
+          <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+            <button className="btn btn-sm" onClick={() => API.OpenExternal(`https://github.com/${issue.repo}/issues/${issue.number}`)}>
+              Open on GitHub
+            </button>
+          </div>
           {issue.body && (
             <div className="detail-body">{issue.body}</div>
           )}
@@ -122,6 +224,11 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
               <span>{formatRelativeTime(notif.updatedAt)}</span>
             </div>
           </div>
+          {notif.url && (
+            <button className="btn btn-sm" onClick={() => API.OpenExternal(notif.url)}>
+              Open on GitHub
+            </button>
+          )}
         </div>
       );
     }

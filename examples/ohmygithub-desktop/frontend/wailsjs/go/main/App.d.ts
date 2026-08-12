@@ -5,7 +5,13 @@ export function AddAccount(arg1:string):Promise<string>;
 
 export function AddBookmark(arg1:string,arg2:string,arg3:string):Promise<string>;
 
-export function GetIssues(arg1:string,arg2:string):Promise<string>;
+export function AddRepoToStarGroup(arg1:string,arg2:string):Promise<void>;
+
+export function CreateStarGroup(arg1:string):Promise<string>;
+
+export function DeleteStarGroup(arg1:string):Promise<void>;
+
+export function GetIssues(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetMyRepos(arg1:string):Promise<string>;
 
@@ -15,11 +21,15 @@ export function GetPRDiff(arg1:string,arg2:number):Promise<string>;
 
 export function GetPRFiles(arg1:string,arg2:number):Promise<string>;
 
-export function GetPullRequests(arg1:string,arg2:string):Promise<string>;
+export function GetPullRequests(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetRepoContents(arg1:string,arg2:string):Promise<string>;
 
 export function GetSettings():Promise<string>;
+
+export function GetStarGroups():Promise<string>;
+
+export function GetStarredRepos():Promise<string>;
 
 export function GetWorkflowLogs(arg1:string,arg2:number):Promise<string>;
 
@@ -37,12 +47,24 @@ export function RemoveAccount(arg1:number):Promise<void>;
 
 export function RemoveBookmark(arg1:string):Promise<void>;
 
+export function RemoveRepoFromStarGroup(arg1:string,arg2:string):Promise<void>;
+
+export function RenameStarGroup(arg1:string,arg2:string):Promise<void>;
+
 export function ReorderBookmarks(arg1:Array<string>):Promise<void>;
+
+export function ReorderStarGroups(arg1:Array<string>):Promise<void>;
 
 export function SearchRepos(arg1:string):Promise<string>;
 
 export function ShowMessage(arg1:string,arg2:string):Promise<void>;
 
+export function StarRepo(arg1:string):Promise<void>;
+
 export function SwitchAccount(arg1:number):Promise<void>;
+
+export function SyncRepos(arg1:string):Promise<void>;
+
+export function UnstarRepo(arg1:string):Promise<void>;
 
 export function UpdateSettings(arg1:string):Promise<void>;
