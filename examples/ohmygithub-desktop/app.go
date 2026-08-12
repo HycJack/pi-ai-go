@@ -1457,13 +1457,27 @@ func (a *App) SyncRepos(kind string) error {
 	return nil
 }
 
+// escapeRepoPath 将 "owner/name" 格式的仓库标识转为 URL 安全路径段。
+// 不能整体 PathEscape（会把 "/" 编码成 %2F 导致 GitHub 404），需分别 escape owner 和 name。
+func escapeRepoPath(repo string) (string, error) {
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid repo format %q, expected owner/name", repo)
+	}
+	return url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]), nil
+}
+
 // StarRepo / UnstarRepo 转发到 GitHub API，同步用户 star 状态。
 func (a *App) StarRepo(repoFullName string) error {
 	repoFullName = strings.TrimSpace(repoFullName)
 	if repoFullName == "" {
 		return fmt.Errorf("repo name cannot be empty")
 	}
-	_, err := a.githubAPI("PUT", fmt.Sprintf("/user/starred/%s", url.PathEscape(repoFullName)), nil)
+	safeRepo, err := escapeRepoPath(repoFullName)
+	if err != nil {
+		return err
+	}
+	_, err = a.githubAPI("PUT", fmt.Sprintf("/user/starred/%s", safeRepo), nil)
 	return err
 }
 
@@ -1472,7 +1486,11 @@ func (a *App) UnstarRepo(repoFullName string) error {
 	if repoFullName == "" {
 		return fmt.Errorf("repo name cannot be empty")
 	}
-	_, err := a.githubAPI("DELETE", fmt.Sprintf("/user/starred/%s", url.PathEscape(repoFullName)), nil)
+	safeRepo, err := escapeRepoPath(repoFullName)
+	if err != nil {
+		return err
+	}
+	_, err = a.githubAPI("DELETE", fmt.Sprintf("/user/starred/%s", safeRepo), nil)
 	return err
 }
 
@@ -1481,17 +1499,21 @@ func (a *App) UnstarRepo(repoFullName string) error {
 // ============================================================================
 
 func (a *App) GetRepoContents(repo, path string) (string, error) {
-	// URL escape path 中的特殊字符（如空格、中文），避免请求失败。
-	// 注意：path 中的 "/" 不能被 escape，所以用 PathEscape 后再把 %2F 还原。
+	safeRepo, err := escapeRepoPath(repo)
+	if err != nil {
+		return "", err
+	}
+
+	// path 中的特殊字符需 escape，但 "/" 不能被编码（否则变成单段路径）
 	escapedPath := url.PathEscape(path)
 	escapedPath = strings.ReplaceAll(escapedPath, "%2F", "/")
 
 	// path 为空时请求仓库根目录，endpoint 不带尾部斜杠（GitHub API 会 404）
 	var endpoint string
 	if escapedPath == "" {
-		endpoint = fmt.Sprintf("/repos/%s/contents", url.PathEscape(repo))
+		endpoint = fmt.Sprintf("/repos/%s/contents", safeRepo)
 	} else {
-		endpoint = fmt.Sprintf("/repos/%s/contents/%s", url.PathEscape(repo), escapedPath)
+		endpoint = fmt.Sprintf("/repos/%s/contents/%s", safeRepo, escapedPath)
 	}
 	data, err := a.githubAPI("GET", endpoint, nil)
 	if err != nil {
