@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { API, AppSettings, formatRelativeTime } from '../lib/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { API, AppSettings, formatRelativeTime, SyncStateEntry } from '../lib/api';
 
 interface OverviewPageProps {
   settings: AppSettings;
@@ -10,10 +10,28 @@ interface OverviewPageProps {
 export default function OverviewPage({ settings, onNavigate, addToast }: OverviewPageProps) {
   const [stats, setStats] = useState({ notifications: 0, openPRs: 0, openIssues: 0, repos: 0 });
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [syncStates, setSyncStates] = useState<SyncStateEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(Date.now());
 
+  // 每 30 秒刷新同步状态 + 倒计时
   useEffect(() => {
-    loadStats();
+    loadSyncState();
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      loadSyncState();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const loadSyncState = useCallback(async () => {
+    try {
+      const str = await API.GetSyncState();
+      const entries: SyncStateEntry[] = JSON.parse(str);
+      setSyncStates(entries);
+    } catch {
+      // 静默失败
+    }
   }, []);
 
   const loadStats = async () => {
@@ -112,6 +130,84 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
               </button>
             </div>
           </div>
+
+          {/* 同步状态卡片 */}
+          {syncStates.length > 0 && (
+            <div className="dashboard-card" style={{ marginBottom: 24 }}>
+              <div className="dashboard-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Sync Status</span>
+                <button className="btn btn-ghost btn-sm" onClick={loadSyncState}>Refresh</button>
+              </div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
+                {syncStates.map(s => {
+                  const isSyncing = s.syncing;
+                  const lastSyncDate = s.lastSync > 0 ? new Date(s.lastSync * 1000) : null;
+                  const lastFullDate = s.lastFullSync > 0 ? new Date(s.lastFullSync * 1000) : null;
+                  const nextIn = s.nextSyncIn;
+                  const kindLabel = s.kind === 'mine' ? 'My Repos' : s.kind === 'starred' ? 'Starred' : s.kind;
+
+                  return (
+                    <div key={s.kind} style={{
+                      flex: '1 1 200px', minWidth: 200,
+                      padding: 12, borderRadius: 8,
+                      border: '1px solid var(--border-muted)',
+                      background: 'var(--bg-secondary, var(--bg-elevated))',
+                    }}>
+                      {/* 标题行 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{kindLabel}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>· {s.totalCount} repos</span>
+                        {isSyncing && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent)' }}>
+                            <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} />
+                            Syncing
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 进度条 */}
+                      <div style={{
+                        height: 4, borderRadius: 2, overflow: 'hidden',
+                        background: 'var(--border-muted)', marginBottom: 8,
+                      }}>
+                        <div style={{
+                          height: '100%', borderRadius: 2,
+                          background: isSyncing ? 'var(--accent)' : (s.needsSync || s.needsFull ? 'var(--warn, #f0ad4e)' : 'var(--success, #28a745)'),
+                          transition: 'width 0.5s ease',
+                          width: isSyncing ? '60%' : (s.needsSync || s.needsFull ? '100%' : nextIn > 0 ? '100%' : '100%'),
+                        }} />
+                      </div>
+
+                      {/* 状态文字 */}
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {isSyncing ? (
+                          <span>正在同步...</span>
+                        ) : s.needsSync || s.needsFull ? (
+                          <span style={{ color: 'var(--warn, #f0ad4e)' }}>
+                            {s.needsFull ? '需要全量校正' : '需要增量同步'}
+                          </span>
+                        ) : lastSyncDate ? (
+                          <span>最后同步: {formatRelativeTime(lastSyncDate.toISOString())}</span>
+                        ) : (
+                          <span>尚未同步</span>
+                        )}
+                        {nextIn > 0 && !isSyncing && !s.needsSync && !s.needsFull && (
+                          <span style={{ color: 'var(--text-tertiary)' }}>
+                            下次同步: {Math.floor(nextIn / 60)}m {nextIn % 60}s 后
+                          </span>
+                        )}
+                        {lastFullDate && (
+                          <span style={{ color: 'var(--text-tertiary)' }}>
+                            全量校正: {formatRelativeTime(lastFullDate.toISOString())}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="dashboard-card">
             <div className="dashboard-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

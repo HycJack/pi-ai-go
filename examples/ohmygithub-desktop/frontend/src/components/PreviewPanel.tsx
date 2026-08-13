@@ -1,5 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { API, PullRequest, Issue, Notification, formatRelativeTime } from '../lib/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import rehypeHighlight from 'rehype-highlight';
+import CodeMirror from '@uiw/react-codemirror';
+import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
+import { javascript } from '@codemirror/lang-javascript';
+import { python } from '@codemirror/lang-python';
+import { go } from '@codemirror/lang-go';
+import { rust } from '@codemirror/lang-rust';
+import { java } from '@codemirror/lang-java';
+import { cpp } from '@codemirror/lang-cpp';
+import { css } from '@codemirror/lang-css';
+import { html } from '@codemirror/lang-html';
+import { json } from '@codemirror/lang-json';
+import { sql } from '@codemirror/lang-sql';
+import { markdown } from '@codemirror/lang-markdown';
+import { yaml } from '@codemirror/lang-yaml';
+import { php } from '@codemirror/lang-php';
+import MermaidBlock from './MermaidBlock';
+
+function useIsDarkTheme(): boolean {
+  const [isDark, setIsDark] = useState(
+    typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') !== 'light' : true
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.getAttribute('data-theme') !== 'light');
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
 
 interface PreviewPanelProps {
   open: boolean;
@@ -15,10 +52,235 @@ interface DiffFile {
   patch: string;
 }
 
+function getDiffLanguageExtension(fileName: string): any[] {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const lower = fileName.toLowerCase();
+  if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return [];
+  if (lower === 'makefile') return [];
+
+  const map: Record<string, () => any[]> = {
+    js: () => [javascript({ jsx: false })],
+    mjs: () => [javascript({ jsx: false })],
+    cjs: () => [javascript({ jsx: false })],
+    jsx: () => [javascript({ jsx: true })],
+    ts: () => [javascript({ jsx: false, typescript: true })],
+    mts: () => [javascript({ jsx: false, typescript: true })],
+    cts: () => [javascript({ jsx: false, typescript: true })],
+    tsx: () => [javascript({ jsx: true, typescript: true })],
+    py: () => [python()],
+    go: () => [go()],
+    rs: () => [rust()],
+    java: () => [java()],
+    c: () => [cpp()],
+    h: () => [cpp()],
+    cpp: () => [cpp()],
+    cc: () => [cpp()],
+    cxx: () => [cpp()],
+    hpp: () => [cpp()],
+    hxx: () => [cpp()],
+    cs: () => [cpp()],
+    css: () => [css()],
+    scss: () => [css()],
+    sass: () => [css()],
+    less: () => [css()],
+    html: () => [html()],
+    htm: () => [html()],
+    xml: () => [html()],
+    svg: () => [html()],
+    vue: () => [html()],
+    svelte: () => [html()],
+    json: () => [json()],
+    jsonc: () => [json()],
+    sql: () => [sql()],
+    md: () => [markdown()],
+    markdown: () => [markdown()],
+    mdown: () => [markdown()],
+    mkd: () => [markdown()],
+    yml: () => [yaml()],
+    yaml: () => [yaml()],
+    toml: () => [yaml()],
+    php: () => [php()],
+  };
+  return map[ext]?.() || [];
+}
+
+interface ParsedPatch {
+  removed: string;
+  added: string;
+  hunks: { header: string; removed: string[]; added: string[] }[];
+}
+
+function parsePatch(patch: string): ParsedPatch {
+  const lines = patch.split('\n');
+  const hunks: ParsedPatch['hunks'] = [];
+  const removedLines: string[] = [];
+  const addedLines: string[] = [];
+  let currentHunk: { header: string; removed: string[]; added: string[] } | null = null;
+
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      currentHunk = { header: line, removed: [], added: [] };
+      hunks.push(currentHunk);
+      continue;
+    }
+    if (!currentHunk) continue;
+    if (line.startsWith('-')) {
+      currentHunk.removed.push(line.slice(1));
+      removedLines.push(line.slice(1));
+    } else if (line.startsWith('+')) {
+      currentHunk.added.push(line.slice(1));
+      addedLines.push(line.slice(1));
+    } else if (line.startsWith(' ') || line === '') {
+      currentHunk.removed.push(line.slice(1));
+      currentHunk.added.push(line.slice(1));
+    }
+  }
+
+  return {
+    removed: removedLines.join('\n'),
+    added: addedLines.join('\n'),
+    hunks,
+  };
+}
+
+function DiffFileView({ file, viewMode }: { file: DiffFile; viewMode: 'unified' | 'split' }) {
+  const isDark = useIsDarkTheme();
+  const extensions = useMemo(() => getDiffLanguageExtension(file.filename), [file.filename]);
+  const parsed = useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  if (viewMode === 'split' && (parsed.removed.length > 0 || parsed.added.length > 0)) {
+    return (
+      <div className="code-block" style={{ marginBottom: 8 }}>
+        <div className="code-header">
+          <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{file.filename}</span>
+          <span style={{ marginLeft: 8, fontSize: 11 }} className={`status-badge ${file.status === 'added' ? 'success' : file.status === 'removed' ? 'failure' : 'neutral'}`}>{file.status}</span>
+          <span style={{ marginLeft: 'auto', color: 'var(--text-success)' }}>+{file.additions}</span>
+          <span style={{ color: 'var(--text-danger)' }}>−{file.deletions}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {parsed.hunks.length > 0 ? parsed.hunks.map((hunk, i) => (
+            <div key={i} style={{ borderBottom: i < parsed.hunks.length - 1 ? '1px solid var(--border-subtle)' : undefined }}>
+              <div style={{
+                padding: '4px 8px', fontSize: 11, fontFamily: 'var(--font-mono)',
+                background: 'var(--bg-overlay)', color: 'var(--text-tertiary)',
+              }}>
+                {hunk.header}
+              </div>
+              <div style={{ display: 'flex', gap: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <CodeMirror
+                    value={hunk.removed.join('\n')}
+                    extensions={extensions}
+                    theme={isDark ? githubDark : githubLight}
+                    editable={false}
+                    basicSetup={{
+                      lineNumbers: false,
+                      highlightActiveLine: false,
+                      highlightActiveLineGutter: false,
+                      foldGutter: false,
+                      autocompletion: false,
+                      searchKeymap: false,
+                    }}
+                    style={{
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      height: 'auto',
+                    }}
+                  />
+                </div>
+                <div style={{ width: 4, background: 'var(--border-muted)' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <CodeMirror
+                    value={hunk.added.join('\n')}
+                    extensions={extensions}
+                    theme={isDark ? githubDark : githubLight}
+                    editable={false}
+                    basicSetup={{
+                      lineNumbers: false,
+                      highlightActiveLine: false,
+                      highlightActiveLineGutter: false,
+                      foldGutter: false,
+                      autocompletion: false,
+                      searchKeymap: false,
+                    }}
+                    style={{
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      height: 'auto',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )) : null}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="code-block" style={{ marginBottom: 8 }}>
+      <div className="code-header">
+        <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{file.filename}</span>
+        <span style={{ marginLeft: 8, fontSize: 11 }} className={`status-badge ${file.status === 'added' ? 'success' : file.status === 'removed' ? 'failure' : 'neutral'}`}>{file.status}</span>
+        <span style={{ marginLeft: 'auto', color: 'var(--text-success)' }}>+{file.additions}</span>
+        <span style={{ color: 'var(--text-danger)' }}>−{file.deletions}</span>
+      </div>
+      <div className="diff-content">
+        {file.patch.split('\n').map((line, i) => {
+          let cls = 'diff-line context';
+          if (line.startsWith('+')) cls = 'diff-line added';
+          else if (line.startsWith('-')) cls = 'diff-line removed';
+          else if (line.startsWith('@@')) cls = 'diff-line hunk';
+          const prefix = line.charAt(0);
+          const content = line.startsWith('@@') ? line : line.slice(1);
+          return (
+            <div key={i} className={cls}>
+              <span className="diff-line-no">{line.startsWith('@@') ? ' ' : prefix === ' ' ? ' ' : prefix}</span>
+              <span className="diff-line-content">{content}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps) {
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [rawDiff, setRawDiff] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'unified' | 'split'>('split');
+
+  const MarkdownPre = React.useCallback(({ children, ...props }: any) => {
+    const childArray = React.Children.toArray(children);
+    const firstChild = childArray[0];
+    if (React.isValidElement(firstChild)) {
+      const codeProps: any = firstChild.props || {};
+      const className: string = codeProps.className || '';
+      const match = /language-mermaid/.exec(className);
+      if (match) {
+        const code = String(codeProps.children ?? '').replace(/\n$/, '');
+        return <MermaidBlock chart={code} />;
+      }
+    }
+    return <pre {...props}>{children}</pre>;
+  }, []);
+
+  const renderMarkdownBody = React.useCallback((body: string) => {
+    if (!body) return null;
+    return (
+      <div className="markdown-body" style={{ padding: '8px 0' }}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+          components={{ pre: MarkdownPre }}
+        >
+          {body}
+        </ReactMarkdown>
+      </div>
+    );
+  }, [MarkdownPre]);
 
   useEffect(() => {
     setDiffFiles([]);
@@ -28,7 +290,6 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
     let cancelled = false;
     if (item._type === 'pr') {
       setLoading(true);
-      // 优先用结构化文件 diff；失败时回退到原始 diff
       API.GetPRFiles(item.repo, item.number)
         .then((str: string) => {
           if (cancelled) return;
@@ -39,7 +300,6 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
         })
         .catch(() => {
           if (cancelled) return;
-          // 回退到原始 diff
           if (item._diff) {
             setRawDiff(item._diff as string);
           } else {
@@ -61,50 +321,39 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
   const issue = item as Issue;
   const notif = item as Notification;
 
-  const renderDiffLine = (line: string, key: number) => {
-    let cls = 'diff-line context';
-    if (line.startsWith('+')) cls = 'diff-line added';
-    else if (line.startsWith('-')) cls = 'diff-line removed';
-    else if (line.startsWith('@@')) cls = 'diff-line hunk';
-    return (
-      <div key={key} className={cls}>
-        <span className="diff-line-no">{line.charAt(0) === ' ' ? ' ' : line.charAt(0)}</span>
-        <span className="diff-line-content">{line.charAt(0) === ' ' || line.charAt(0) === '+' || line.charAt(0) === '-' || line.startsWith('@@') ? line : line}</span>
-      </div>
-    );
-  };
-
-  const renderPatch = (patch: string) => {
-    const lines = patch.split('\n');
-    return (
-      <div className="diff-content">
-        {lines.map((line, i) => renderDiffLine(line, i))}
-      </div>
-    );
-  };
-
   const renderDiff = () => {
     if (loading) {
       return <div className="loading-spinner"><div className="spinner" /></div>;
     }
     if (diffFiles.length > 0) {
+      const totalAdditions = diffFiles.reduce((s, f) => s + f.additions, 0);
+      const totalDeletions = diffFiles.reduce((s, f) => s + f.deletions, 0);
       return (
         <div>
-          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-            {diffFiles.length} files changed ·{' '}
-            <span style={{ color: 'var(--text-success)' }}>+{diffFiles.reduce((s, f) => s + f.additions, 0)}</span>{' '}
-            <span style={{ color: 'var(--text-danger)' }}>−{diffFiles.reduce((s, f) => s + f.deletions, 0)}</span>
+          <div style={{
+            marginBottom: 8, fontSize: 12, display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {diffFiles.length} files changed ·{' '}
+              <span style={{ color: 'var(--text-success)' }}>+{totalAdditions}</span>{' '}
+              <span style={{ color: 'var(--text-danger)' }}>−{totalDeletions}</span>
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                className={`btn btn-ghost btn-sm ${viewMode === 'unified' ? 'btn-primary' : ''}`}
+                style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={() => setViewMode('unified')}
+              >Unified</button>
+              <button
+                className={`btn btn-ghost btn-sm ${viewMode === 'split' ? 'btn-primary' : ''}`}
+                style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={() => setViewMode('split')}
+              >Split (code-highlighted)</button>
+            </div>
           </div>
           {diffFiles.map((f, i) => (
-            <div key={i} className="code-block" style={{ marginBottom: 8 }}>
-              <div className="code-header">
-                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{f.filename}</span>
-                <span style={{ marginLeft: 8, fontSize: 11 }} className={`status-badge ${f.status === 'added' ? 'success' : f.status === 'removed' ? 'failure' : 'neutral'}`}>{f.status}</span>
-                <span style={{ marginLeft: 'auto', color: 'var(--text-success)' }}>+{f.additions}</span>
-                <span style={{ color: 'var(--text-danger)' }}>−{f.deletions}</span>
-              </div>
-              {f.patch && renderPatch(f.patch)}
-            </div>
+            <DiffFileView key={i} file={f} viewMode={viewMode} />
           ))}
         </div>
       );
@@ -163,6 +412,8 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
             </button>
           </div>
 
+          {pr.body && renderMarkdownBody(pr.body)}
+
           <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>Changes</h3>
           {renderDiff()}
         </div>
@@ -206,9 +457,7 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
               Open on GitHub
             </button>
           </div>
-          {issue.body && (
-            <div className="detail-body">{issue.body}</div>
-          )}
+          {issue.body && renderMarkdownBody(issue.body)}
         </div>
       );
     }

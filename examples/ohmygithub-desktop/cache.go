@@ -72,6 +72,13 @@ func unlockSync(kind string) {
 	delete(syncLocks, kind)
 }
 
+// isSyncLocked 查询指定 kind 是否正在同步（只读，不修改锁状态）。
+func isSyncLocked(kind string) bool {
+	syncMu.Lock()
+	defer syncMu.Unlock()
+	return syncLocks[kind]
+}
+
 // needsSync 判断是否需要后台同步（lastSync 为 0 或超过 syncInterval）。
 func needsSync(lastSync int64) bool {
 	if lastSync == 0 {

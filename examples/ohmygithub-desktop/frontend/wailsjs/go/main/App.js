@@ -14,6 +14,10 @@ export function AddRepoToStarGroup(arg1, arg2) {
   return window['go']['main']['App']['AddRepoToStarGroup'](arg1, arg2);
 }
 
+export function CloneRepo(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CloneRepo'](arg1, arg2, arg3);
+}
+
 export function CreateStarGroup(arg1) {
   return window['go']['main']['App']['CreateStarGroup'](arg1);
 }
@@ -64,6 +68,10 @@ export function GetStarGroups() {
 
 export function GetStarredRepos() {
   return window['go']['main']['App']['GetStarredRepos']();
+}
+
+export function GetSyncState() {
+  return window['go']['main']['App']['GetSyncState']();
 }
 
 export function GetWorkflowLogs(arg1, arg2) {

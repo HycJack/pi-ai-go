@@ -6,7 +6,7 @@ import { GetPullRequests, GetPRDiff, GetPRFiles } from '../../wailsjs/go/main/Ap
 import { GetIssues } from '../../wailsjs/go/main/App';
 import { GetWorkflowRuns, GetWorkflowRunJobs, GetWorkflowLogs } from '../../wailsjs/go/main/App';
 import { GetMyRepos, SearchRepos, SyncRepos } from '../../wailsjs/go/main/App';
-import { GetRepoContents, GetRepo } from '../../wailsjs/go/main/App';
+import { GetRepoContents, GetRepo, GetSyncState, CloneRepo } from '../../wailsjs/go/main/App';
 import { OpenExternal, ShowMessage } from '../../wailsjs/go/main/App';
 import {
   GetStarredRepos,
@@ -45,6 +45,8 @@ export const API = {
   SyncRepos,
   GetRepoContents,
   GetRepo,
+  GetSyncState,
+  CloneRepo,
   OpenExternal,
   ShowMessage,
   GetStarredRepos,
@@ -85,6 +87,7 @@ export interface PullRequest {
   labels: Label[];
   mergeable: string;
   reviewStatus: string;
+  body?: string;
 }
 
 export interface Issue {
@@ -218,6 +221,24 @@ export interface StarGroup {
 // StarredRepo = Repo + 所属分组 ID 列表
 export interface StarredRepo extends Repo {
   groups: string[];
+}
+
+export interface SyncStateEntry {
+  kind: string;
+  lastSync: number;
+  lastFullSync: number;
+  totalCount: number;
+  syncing: boolean;
+  needsSync: boolean;
+  needsFull: boolean;
+  nextSyncIn: number;
+}
+
+export interface CloneRepoResult {
+  path: string;
+  repo: string;
+  branch: string;
+  fileSize: number;
 }
 
 export function formatRelativeTime(dateStr: string): string {

@@ -1506,6 +1506,64 @@ func (a *App) SyncRepos(kind string) error {
 	return nil
 }
 
+// SyncStateEntry 描述某一类仓库（mine / starred）的同步状态。
+type SyncStateEntry struct {
+	Kind         string `json:"kind"`
+	LastSync     int64  `json:"lastSync"`     // 最后一次同步 unix 秒
+	LastFullSync int64  `json:"lastFullSync"` // 最后一次全量校正 unix 秒
+	TotalCount   int    `json:"totalCount"`   // 缓存条数
+	Syncing      bool   `json:"syncing"`      // 当前是否在同步
+	NeedsSync    bool   `json:"needsSync"`    // 是否需要增量同步
+	NeedsFull    bool   `json:"needsFull"`    // 是否需要全量校正
+	NextSyncIn   int64  `json:"nextSyncIn"`   // 下次增量同步倒计时（秒，0 表示立即需要）
+}
+
+// GetSyncState 返回当前所有仓库类别的同步状态，用于前端进度/离线指示。
+func (a *App) GetSyncState() (string, error) {
+	if a.db == nil {
+		return "[]", nil
+	}
+
+	now := time.Now()
+	kinds := []string{repoKindMine, repoKindStarred}
+	entries := make([]SyncStateEntry, 0, len(kinds))
+	for _, kind := range kinds {
+		lastSync, lastFullSync, totalCount, err := getSyncState(a.db, kind)
+		if err != nil {
+			continue
+		}
+		syncing := isSyncLocked(kind)
+		needsSync := needsSync(lastSync)
+		needsFull := needsFullSync(lastFullSync)
+
+		var nextSyncIn int64
+		if !needsSync && lastSync > 0 {
+			elapsed := now.Sub(time.Unix(lastSync, 0))
+			remaining := syncInterval - elapsed
+			if remaining > 0 {
+				nextSyncIn = int64(remaining.Seconds())
+			}
+		}
+
+		entries = append(entries, SyncStateEntry{
+			Kind:         kind,
+			LastSync:     lastSync,
+			LastFullSync: lastFullSync,
+			TotalCount:   totalCount,
+			Syncing:      syncing,
+			NeedsSync:    needsSync,
+			NeedsFull:    needsFull,
+			NextSyncIn:   nextSyncIn,
+		})
+	}
+
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 // escapeRepoPath 将 "owner/name" 格式的仓库标识转为 URL 安全路径段。
 // 不能整体 PathEscape（会把 "/" 编码成 %2F 导致 GitHub 404），需分别 escape owner 和 name。
 func escapeRepoPath(repo string) (string, error) {
@@ -1632,5 +1690,236 @@ func (a *App) ShowMessage(title, message string) error {
 		Title:   title,
 		Message: message,
 	})
+	return err
+}
+
+// CloneRepoResult 描述克隆/下载仓库后的结果。
+type CloneRepoResult struct {
+	Path     string `json:"path"`     // 本地解压目录
+	Repo     string `json:"repo"`     // "owner/name"
+	Branch   string `json:"branch"`   // 分支或 tag（默认默认分支）
+	FileSize int64  `json:"fileSize"` // zip 字节数
+}
+
+// CloneRepo 下载指定仓库的源码 ZIP 并解压到用户选择的本地目录。
+// 使用 GitHub "Download repository archive" API（/repos/{owner}/{repo}/zipball/{ref}）。
+// branch 为空时，先调用 GetRepo 获取默认分支。
+func (a *App) CloneRepo(repoFullName, branch, outDir string) (string, error) {
+	repoFullName = strings.TrimSpace(repoFullName)
+	if repoFullName == "" {
+		return "", fmt.Errorf("repo cannot be empty")
+	}
+	parts := strings.SplitN(repoFullName, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid repo %q, expected owner/name", repoFullName)
+	}
+	if branch == "" {
+		branch = "HEAD"
+	}
+
+	safeRepo, err := escapeRepoPath(repoFullName)
+	if err != nil {
+		return "", err
+	}
+
+	archiveURL := fmt.Sprintf("https://api.github.com/repos/%s/zipball/%s", safeRepo, branch)
+
+	req, err := http.NewRequestWithContext(a.ctx, "GET", archiveURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "ohmygithub-desktop")
+	if token := a.activeToken(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 0}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("github archive download failed (%d): %s", resp.StatusCode, string(buf))
+	}
+
+	if outDir == "" {
+		// 让用户选择保存目录
+		selected, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+			Title: "Select download folder",
+		})
+		if err != nil {
+			return "", err
+		}
+		outDir = selected
+	}
+	if outDir == "" {
+		return "", fmt.Errorf("no output directory selected")
+	}
+
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return "", err
+	}
+
+	tmpFile, err := os.CreateTemp(outDir, "gh-archive-*.zip")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmpFile.Name()
+
+	n, err := io.Copy(tmpFile, resp.Body)
+	tmpFile.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+
+	// 解压 zip
+	destDir := tmpPath + ".extracted"
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	if err := extractZip(tmpPath, destDir); err != nil {
+		os.RemoveAll(destDir)
+		os.Remove(tmpPath)
+		return "", err
+	}
+	os.Remove(tmpPath)
+
+	// GitHub zipball 解压后外层有一个顶层目录（owner-name-sha），将其内容移动到 outDir
+	entries, err := os.ReadDir(destDir)
+	if err == nil && len(entries) == 1 && entries[0].IsDir() {
+		top := filepath.Join(destDir, entries[0].Name())
+		finalDir := filepath.Join(outDir, entries[0].Name())
+		// 如果 outDir 下已经有同名目录（极少见），加后缀
+		if _, err := os.Stat(finalDir); err == nil {
+			finalDir = outDir + "-" + entries[0].Name()
+		}
+		if err := os.Rename(top, finalDir); err != nil {
+			// 跨盘移动可能失败，使用复制
+			if err := copyDir(top, finalDir); err != nil {
+				os.RemoveAll(destDir)
+				return "", err
+			}
+		}
+		os.RemoveAll(destDir)
+		result := CloneRepoResult{
+			Path:     finalDir,
+			Repo:     repoFullName,
+			Branch:   branch,
+			FileSize: n,
+		}
+		data, _ := json.Marshal(result)
+		return string(data), nil
+	}
+
+	// 没有顶层目录结构，直接将 destDir 作为结果
+	finalDir := filepath.Join(outDir, safeRepo)
+	os.RemoveAll(finalDir)
+	if err := os.Rename(destDir, finalDir); err != nil {
+		return "", err
+	}
+	result := CloneRepoResult{
+		Path:     finalDir,
+		Repo:     repoFullName,
+		Branch:   branch,
+		FileSize: n,
+	}
+	data, _ := json.Marshal(result)
+	return string(data), nil
+}
+
+// activeToken 返回当前激活账户的 token（未激活时返回 ""）。
+func (a *App) activeToken() string {
+	a.settingsMu.RLock()
+	defer a.settingsMu.RUnlock()
+	if len(a.settings.Accounts) == 0 || a.settings.ActiveAccount >= len(a.settings.Accounts) {
+		return ""
+	}
+	return a.settings.Accounts[a.settings.ActiveAccount].Token
+}
+
+// extractZip 将 zipFile 解压到 destDir。
+func extractZip(zipFile, destDir string) error {
+	r, err := zip.OpenReader(zipFile)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	cleanDest := filepath.Clean(destDir) + string(os.PathSeparator)
+
+	for _, f := range r.File {
+		target := filepath.Join(destDir, f.Name)
+		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), cleanDest) {
+			return fmt.Errorf("invalid zip path: %s", f.Name)
+		}
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(target, 0o755)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			out.Close()
+			return err
+		}
+		if _, err := io.Copy(out, rc); err != nil {
+			rc.Close()
+			out.Close()
+			return err
+		}
+		rc.Close()
+		out.Close()
+	}
+	return nil
+}
+
+// copyDir 递归复制目录（作为 Rename 跨盘回退方案）。
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		srcPath := filepath.Join(src, e.Name())
+		dstPath := filepath.Join(dst, e.Name())
+		if e.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
 	return err
 }

@@ -187,27 +187,42 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
           {cachedAt > 0 && <span style={{ marginLeft: 8 }}>· cached {new Date(cachedAt * 1000).toLocaleString()}</span>}
           {syncing && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>· syncing…</span>}
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowNewGroupInput(v => !v)}>+ New Group</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowNewGroupInput(true)}>+ New Group</button>
         <button className="btn btn-ghost btn-sm" onClick={handleForceSync} disabled={syncing} title="Force sync from GitHub">
           {syncing ? 'Syncing…' : 'Sync'}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={loadRepos}>Refresh</button>
       </div>
 
-      {/* 新建分组输入框 */}
+      {/* 新建分组弹窗 */}
       {showNewGroupInput && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-          <input
-            className="input"
-            style={{ width: 240, fontSize: 12 }}
-            placeholder="Group name (e.g. Frontend frameworks)"
-            value={newGroupName}
-            onChange={e => setNewGroupName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); if (e.key === 'Escape') setShowNewGroupInput(false); }}
-            autoFocus
-          />
-          <button className="btn btn-primary btn-sm" onClick={handleCreateGroup}>Create</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowNewGroupInput(false)}>Cancel</button>
+        <div className="modal-overlay" onClick={() => setShowNewGroupInput(false)}>
+          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Create Star Group</h2>
+              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowNewGroupInput(false)}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: 'block' }}>Group Name</label>
+              <input
+                className="input"
+                style={{ width: '100%' }}
+                placeholder="e.g. Frontend frameworks"
+                value={newGroupName}
+                onChange={e => setNewGroupName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); if (e.key === 'Escape') setShowNewGroupInput(false); }}
+                autoFocus
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowNewGroupInput(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleCreateGroup} disabled={!newGroupName.trim()}>Create Group</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -316,11 +331,14 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
                 >Unstar</button>
               </div>
               {groupMenuFor === repo.fullName && (
-                <div style={{
-                  position: 'absolute', top: 36, right: 8, zIndex: 10,
-                  background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)',
-                  borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: 4, minWidth: 180,
-                }}>
+                <div
+                  style={{
+                    position: 'absolute', top: 36, right: 8, zIndex: 10,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)',
+                    borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: 4, minWidth: 180,
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
                   {starGroups.length === 0 ? (
                     <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text-secondary)' }}>
                       No groups yet. Create one first.

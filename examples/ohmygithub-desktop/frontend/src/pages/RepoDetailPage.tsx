@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API, Repo, FileContent } from '../lib/api';
+import { API, Repo, FileContent, CloneRepoResult } from '../lib/api';
 import CodeViewer from '../components/CodeViewer';
 
 interface RepoDetailPageProps {
@@ -162,6 +162,7 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const [fileLoading, setFileLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
+  const [cloning, setCloning] = useState(false);
 
   // 加载仓库元信息（直接调用 /repos/{owner}/{repo}，比搜索 API 更可靠）
   const loadDetail = useCallback(async () => {
@@ -178,6 +179,9 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [repoFullName, addToast]);
 
+  // 常见 README 文件名（按优先级排序）
+  const readmeNames = ['README.md', 'readme.md', 'README.MD', 'Readme.md', 'README', 'readme', 'Readme', 'README.txt'];
+
   // 加载根目录文件列表
   const loadRootContents = useCallback(async () => {
     try {
@@ -187,7 +191,6 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
         return;
       }
       const items: FileContent[] = JSON.parse(str);
-      // GitHub 风格排序：文件夹在前，然后按名称
       const sorted = [...items].sort((a, b) => {
         if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
         return a.name.localeCompare(b.name);
@@ -306,10 +309,38 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   // 面包屑：当前路径分段
   const breadcrumbs = currentFile ? currentFile.path.split('/') : [];
 
+  // 克隆仓库到本地
+  const handleClone = useCallback(async () => {
+    if (cloning) return;
+    setCloning(true);
+    addToast('正在下载仓库源码...', 'info');
+    try {
+      // branch 传空，后端自动使用默认分支
+      const str = await API.CloneRepo(repoFullName, '', '');
+      const result: CloneRepoResult = JSON.parse(str);
+      addToast(`已下载到: ${result.path}`, 'success');
+    } catch (e: any) {
+      const msg = e?.message || e?.error || (typeof e === 'string' ? e : 'unknown error');
+      addToast('Clone 失败: ' + msg, 'error');
+    } finally {
+      setCloning(false);
+    }
+  }, [repoFullName, repo, cloning, addToast]);
+
   useEffect(() => {
     loadDetail();
     loadRootContents();
   }, [loadDetail, loadRootContents]);
+
+  // 自动加载 README：rootNodes 加载完成后，查找 README 文件并自动选中
+  useEffect(() => {
+    if (rootNodes.length === 0) return;
+    if (currentFile) return; // 已有选中文件则不覆盖
+    const readmeNode = rootNodes.find(n => readmeNames.includes(n.name));
+    if (readmeNode && readmeNode.type === 'file') {
+      handleFileClick(readmeNode);
+    }
+  }, [rootNodes, currentFile, handleFileClick]);
 
   // 渲染文件树节点
   const renderNode = (node: TreeNode, depth: number): React.ReactNode => {
@@ -438,10 +469,26 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
       </div>
 
       {/* 快捷入口 */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-sm" onClick={() => onNavigate('pull-requests')}>🔀 Pull Requests</button>
         <button className="btn btn-sm" onClick={() => onNavigate('issues')}>◯ Issues</button>
         <button className="btn btn-sm" onClick={() => onNavigate('actions')}>▶ Actions</button>
+        <button
+          className="btn btn-sm"
+          onClick={handleClone}
+          disabled={cloning}
+          title="下载仓库源码到本地"
+          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {cloning ? (
+            <>
+              <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />
+              下载中...
+            </>
+          ) : (
+            <>⬇ Clone to local</>
+          )}
+        </button>
       </div>
 
       {/* GitHub 风格文件浏览器 */}

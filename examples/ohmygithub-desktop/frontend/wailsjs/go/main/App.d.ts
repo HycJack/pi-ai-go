@@ -7,6 +7,8 @@ export function AddBookmark(arg1:string,arg2:string,arg3:string):Promise<string>
 
 export function AddRepoToStarGroup(arg1:string,arg2:string):Promise<void>;
 
+export function CloneRepo(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function CreateStarGroup(arg1:string):Promise<string>;
 
 export function DeleteStarGroup(arg1:string):Promise<void>;
@@ -32,6 +34,8 @@ export function GetSettings():Promise<string>;
 export function GetStarGroups():Promise<string>;
 
 export function GetStarredRepos():Promise<string>;
+
+export function GetSyncState():Promise<string>;
 
 export function GetWorkflowLogs(arg1:string,arg2:number):Promise<string>;
 

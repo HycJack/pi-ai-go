@@ -133,6 +133,14 @@ function App() {
     'repo-detail': 'Repository',
   };
 
+  const isDark = settings.theme !== 'light';
+
+  const handleToggleTheme = async () => {
+    const newTheme = isDark ? 'light' : 'dark';
+    const newSettings = { ...settings, theme: newTheme };
+    await handleUpdateSettings(newSettings);
+  };
+
   return (
     <div className="app-layout">
       <Sidebar
@@ -159,6 +167,23 @@ function App() {
           <h2>{pageTitle[activePage]}</h2>
           {activeRepo && <span className="subtitle">{activeRepo}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              className="btn btn-ghost btn-sm btn-icon"
+              onClick={handleToggleTheme}
+              title={isDark ? '切换到浅色主题' : '切换到深色主题'}
+              aria-label="Toggle theme"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0 }}
+            >
+              {isDark ? (
+                <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+                  <path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.5 8.75H1a.75.75 0 0 1 0-1.5h1.5a.75.75 0 0 1 0 1.5ZM15 8.75h-1.5a.75.75 0 0 1 0-1.5H15a.75.75 0 0 1 0 1.5ZM13.42 2.58a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0ZM4.7 11.3a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0ZM13.42 13.42a.75.75 0 0 1-1.06 0l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06a.75.75 0 0 1 0 1.06ZM4.7 4.7a.75.75 0 0 1-1.06 0L2.58 3.64a.75.75 0 1 1 1.06-1.06L4.7 3.64a.75.75 0 0 1 0 1.06Z"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
+                  <path d="M9.598 1.591a.75.75 0 0 1 .785-.175 7.001 7.001 0 1 1-8.967 8.967.75.75 0 0 1 .961-.96 5.5 5.5 0 0 0 7.046-7.046.75.75 0 0 1 .175-.786Z"/>
+                </svg>
+              )}
+            </button>
             <div className="search-box">
               <svg className="search-icon" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215l-3.04-3.04Zm-4.68-.74a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z"/>
