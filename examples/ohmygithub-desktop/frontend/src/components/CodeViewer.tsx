@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { API } from '../lib/api';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
@@ -207,6 +208,17 @@ export default function CodeViewer({ fileName, content }: CodeViewerProps) {
           rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
           components={{
             pre: MarkdownPre,
+            a: ({ href, children }) => (
+              <a
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (href) API.OpenExternal(href);
+                }}
+              >
+                {children}
+              </a>
+            ),
           }}
         >
           {content}

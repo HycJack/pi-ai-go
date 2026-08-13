@@ -274,7 +274,20 @@ export default function PreviewPanel({ open, item, onClose }: PreviewPanelProps)
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeKatex, [rehypeHighlight, { detect: true, ignoreMissing: true }]]}
-          components={{ pre: MarkdownPre }}
+          components={{
+            pre: MarkdownPre,
+            a: ({ href, children }) => (
+              <a
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (href) API.OpenExternal(href);
+                }}
+              >
+                {children}
+              </a>
+            ),
+          }}
         >
           {body}
         </ReactMarkdown>
