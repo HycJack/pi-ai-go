@@ -17,7 +17,7 @@ export interface GeoGebraRef {
 }
 
 const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
-  perspective = '2',
+  perspective = '1',
   onReady,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -225,7 +225,7 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
         }
 
         scriptElement = document.createElement('script');
-        scriptElement.src = '/deployggb.js';
+        scriptElement.src = '/GeoGebra/deployggb.js';
         scriptElement.onload = () => {
           scriptLoadedRef.current = true;
           initApplet();
@@ -256,7 +256,7 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
         height,
         showToolBar: true,
         showAlgebraInput: true,
-        showMenuBar: false,
+        showMenuBar: true,
         perspective: perspective,
         allowStyleBar: true,
         showResetIcon: true,
@@ -266,6 +266,8 @@ const GeoGebra = forwardRef<GeoGebraRef, GeoGebraProps>(({
         capturingThreshold: null,
         showLogging: false,
         useBrowserForJS: false,
+        // 设置本地资源路径
+        "codebase": "/GeoGebra/HTML5/5.0/",
         appletOnLoad: (api: any) => {
           appletRef.current = api;
           setIsReady(true);

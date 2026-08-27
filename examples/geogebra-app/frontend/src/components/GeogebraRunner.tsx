@@ -235,7 +235,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
     };
 
     const script = document.createElement('script');
-    script.src = '/deployggb.js';
+    script.src = '/GeoGebra/deployggb.js';
     script.onload = () => {
       if (typeof window.GGBApplet !== 'undefined') {
         // @ts-ignore - second argument enables legacy API with setSize
@@ -245,7 +245,7 @@ export default function GeogebraRunner({ html, ggbCode, svg, activeTab = 'html',
     };
     
     // Prevent duplicate loading
-    const existingScript = document.querySelector('script[src="/deployggb.js"]') || document.querySelector('script[src="https://cdn.geogebra.org/apps/deployggb.js"]');
+    const existingScript = document.querySelector('script[src="/GeoGebra/deployggb.js"]') || document.querySelector('script[src="/deployggb.js"]') || document.querySelector('script[src="https://cdn.geogebra.org/apps/deployggb.js"]');
     if (!existingScript) {
       document.head.appendChild(script);
     } else {

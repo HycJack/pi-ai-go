@@ -58,7 +58,7 @@ function App() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [models, setModels] = useState<{ id: string; name: string }[]>([]);
-  const [perspective, setPerspective] = useState('2');
+  const [perspective, setPerspective] = useState('1');
   const [ggbCode, setGgbCode] = useState('');
   const [scriptCode, setScriptCode] = useState('');
   const [loadingTip, setLoadingTip] = useState('');

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"pi-ai-go/agent/session"
@@ -77,7 +78,7 @@ func (a *App) streamLLM(model core.Model, llmCtx core.Context, opts core.SimpleS
 			case core.EventTextDelta:
 				textLen += len(e.Delta)
 				fullContent.WriteString(e.Delta)
-				runtime.EventsEmit(a.ctx, "geogebra-text-delta", e.Delta)
+				runtime.EventsEmit(a.ctx, "geogebra-text-delta", stripInternalTags(e.Delta))
 			case core.EventDone:
 				LogInfo("[%s] done, total text length=%d", streamID, textLen)
 				result := extractGeogebraResult(fullContent.String())
@@ -96,6 +97,12 @@ func (a *App) streamLLM(model core.Model, llmCtx core.Context, opts core.SimpleS
 	}()
 
 	return nil
+}
+
+var internalTagRe = regexp.MustCompile(`(?s)<thinking>.*?</thinking>|<tool_result>.*?</tool_result>`)
+
+func stripInternalTags(s string) string {
+	return internalTagRe.ReplaceAllString(s, "")
 }
 
 // GeogebraMessage handles a streaming request to generate GeoGebra

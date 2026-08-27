@@ -14,7 +14,7 @@ interface GeoGebraProps {
   onReady?: (api: any) => void;
 }
 
-const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective = '2', onPerspectiveChange, onReady }, ref) => {
+const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective = '1', onPerspectiveChange, onReady }, ref) => {
   // Keep a stable ref to onReady so initGeoGebra/rebuildApplet references
   // remain stable across re-renders that aren't related to perspective changes.
   const onReadyRef = useRef(onReady);
@@ -327,7 +327,7 @@ const GeoGebraWorkspace = forwardRef<GeoGebraRef, GeoGebraProps>(({ perspective 
     if (getScriptLoaded()) return;
 
     const CDN_CANDIDATES = [
-      '/deployggb.js',
+      '/GeoGebra/deployggb.js',
       'https://cdn.geogebra.org/apps/deployggb.js',
       'http://cdn.geogebra.org/apps/deployggb.js',
     ];
