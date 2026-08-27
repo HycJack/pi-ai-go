@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "handwriting-desktop",
+  "outputfilename": "handwriting-desktop",
+  "frontend:install": "pnpm install --prefer-offline",
+  "frontend:build": "pnpm build",
+  "frontend:dev:watcher": "pnpm dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "pi-ai-go",
+    "email": "agent@pi-ai-go.local"
+  }
+}

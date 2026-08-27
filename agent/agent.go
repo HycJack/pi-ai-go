@@ -129,7 +129,13 @@ func (a *Agent) FollowUp(msgs ...core.Message) {
 	a.followUp = append(a.followUp, msgs...)
 }
 
-// Abort cancels the current run.
+// Abort cancels the current run and waits for the background stream
+// goroutine to exit before returning. This prevents goroutine leaks
+// when callers Abort() from outside the agent's Run() call site
+// (e.g. on a SIGINT handler).
+//
+// || 取消当前运行，并等待后台事件流 goroutine 退出，避免 goroutine 泄漏。
+// || 用于外部中断场景（如 SIGINT 处理器）。
 func (a *Agent) Abort() {
 	a.mu.Lock()
 	cancel := a.cancel
@@ -137,6 +143,12 @@ func (a *Agent) Abort() {
 	if cancel != nil {
 		cancel()
 	}
+	// Wait for the stream goroutine (started by processStream) to
+	// finish. Canceling ctx unblocks ForEach, but the goroutine still
+	// needs to drain events and return before streamWg.Done() fires.
+	// || 等待 processStream 启动的后台 goroutine 结束。
+	// || cancel() 解锁了 ForEach，但 goroutine 仍需排空事件后才能返回。
+	a.streamWg.Wait()
 }
 
 // Run starts a new agent run with the given prompts.

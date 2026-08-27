@@ -143,9 +143,14 @@ function inferArgumentType(arg: Expression): string {
             return 'Object';
         case 'ListLiteral':
             return 'List';
+        case 'TupleLiteral':
+            return 'List';
         case 'FunctionCall':
             // 函数调用的返回类型未知，假设为 Object
             return 'Object';
+        case 'BinaryExpression':
+            // 二元运算表达式返回 Number
+            return 'Number';
         default:
             return 'Unknown';
     }
@@ -161,12 +166,11 @@ function isTypeCompatible(actualType: string, expectedType: string): boolean {
     }
 
     // Object（标识符）可以匹配任何预期类型
-    // 因为在运行时标识符可能引用任何类型的对象
     if (actualType === 'Object') {
         return true;
     }
 
-    // Object 可以接受任何类型（除了原始类型与 Object 的不匹配）
+    // Object 可以接受任何类型
     if (expectedType === 'Object' && actualType !== 'Unknown') {
         return true;
     }
@@ -191,6 +195,23 @@ function isTypeCompatible(actualType: string, expectedType: string): boolean {
     const geometricTypes = ['Point', 'Line', 'Vector', 'Polygon', 'Conic', 'Function'];
     if (geometricTypes.includes(expectedType) && actualType === 'Object') {
         return true;
+    }
+
+    // ===============================================================
+    // 以下修复：如果 expectedType 不是已知类型，而是参数名（如 Min, Max, Increment
+    // 等来自签名 <参数名> 的标签），且 actualType 是基础类型，则视为兼容
+    // ===============================================================
+    const knownTypes = [
+        'Object', 'Number', 'Boolean', 'String', 'Point', 'Line', 'Vector',
+        'Polygon', 'Conic', 'Function', 'List', 'Text', 'Angle', 'Matrix',
+        'Quadric', 'View Number', 'any', 'Unknown'
+    ];
+    if (!knownTypes.includes(expectedType)) {
+        // expectedType 不是已知类型（可能是参数名如 Min, Max, Red, Green...）
+        // 如果 actualType 是基础类型，视为兼容
+        if (actualType === 'Number' || actualType === 'Boolean' || actualType === 'String') {
+            return true;
+        }
     }
 
     return false;

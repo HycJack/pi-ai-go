@@ -35,7 +35,9 @@ export const noUnknownCommand: Rule = {
                         arg.type === 'NumberLiteral' || 
                         arg.type === 'StringLiteral' || 
                         arg.type === 'BooleanLiteral' ||
-                        arg.type === 'Identifier') {  // 支持变量赋值 A = B
+                        arg.type === 'Identifier' ||    // 支持变量赋值 A = B
+                        arg.type === 'FunctionCall' ||  // 支持变量赋值 A = Command(...)
+                        arg.type === 'BinaryExpression') {  // 支持变量赋值 A = 2 * pi + 1
                         return; // 跳过检查
                     }
                 }
@@ -65,27 +67,80 @@ export const noUnknownCommand: Rule = {
 };
 
 /**
- * 查找相似的命令名（基于编辑距离）
+ * 查找相似的命令名（基于编辑距离和子串匹配）
  */
-function findSimilarCommands(target: string, commands: string[], maxDistance: number = 3): string[] {
+function findSimilarCommands(target: string, commands: string[], _maxDistance: number = 3): string[] {
+    const lowerTarget = target.toLowerCase();
+    
+    // 动态调整最大编辑距离：较长命令允许更大的距离，按相对比例（目标长度的 50%）
+    const maxDistance = Math.min(Math.max(3, Math.floor(target.length * 0.5)), 6);
+    
     const similar: Array<{ command: string; distance: number }> = [];
+    // 收集"好前缀"匹配：共享至少 50% 前缀且有包含关系
+    const prefixMatches: string[] = [];
 
     for (const command of commands) {
-        const distance = levenshteinDistance(
-            target.toLowerCase(),
-            command.toLowerCase()
-        );
+        const lowerCommand = command.toLowerCase();
+        const distance = levenshteinDistance(lowerTarget, lowerCommand);
 
         if (distance <= maxDistance) {
             similar.push({ command, distance });
+        } else {
+            // 子串匹配：一方包含另一方
+            if (lowerCommand.includes(lowerTarget) || lowerTarget.includes(lowerCommand)) {
+                prefixMatches.push(command);
+                continue;
+            }
+            // 共享前缀匹配：有共同前缀且长度都较长
+            const minLen = Math.min(lowerTarget.length, lowerCommand.length);
+            let prefixLen = 0;
+            for (let i = 0; i < minLen; i++) {
+                if (lowerTarget[i] === lowerCommand[i]) {
+                    prefixLen++;
+                } else {
+                    break;
+                }
+            }
+            if (prefixLen >= 4 && prefixLen / Math.max(lowerTarget.length, lowerCommand.length) >= 0.3) {
+                prefixMatches.push(command);
+            }
         }
     }
 
-    // 按距离排序，返回前 3 个
-    return similar
+    // 按距离排序，取前 2 个编辑距离结果
+    const result: string[] = similar
         .sort((a, b) => a.distance - b.distance)
-        .slice(0, 3)
+        .slice(0, 2)
         .map(s => s.command);
+    
+    // 前缀匹配按与 target 的共同前缀长度降序排列（最长的最相关）
+    prefixMatches.sort((a, b) => {
+        const aLower = a.toLowerCase(), bLower = b.toLowerCase();
+        let aLen = 0, bLen = 0;
+        const minLenA = Math.min(aLower.length, lowerTarget.length);
+        const minLenB = Math.min(bLower.length, lowerTarget.length);
+        for (let i = 0; i < minLenA; i++) { if (aLower[i] === lowerTarget[i]) aLen++; else break; }
+        for (let i = 0; i < minLenB; i++) { if (bLower[i] === lowerTarget[i]) bLen++; else break; }
+        return bLen - aLen;
+    });
+    
+    // 优先补充前缀/子串匹配结果
+    for (const match of prefixMatches) {
+        if (!result.includes(match)) {
+            result.push(match);
+            if (result.length >= 3) break;
+        }
+    }
+    
+    // 如果 prefix 补充后仍然不足 3 个，从编辑距离结果中再补充一个
+    if (result.length < 3 && similar.length > 2) {
+        const third = similar[2];
+        if (!result.includes(third.command)) {
+            result.push(third.command);
+        }
+    }
+    
+    return result;
 }
 
 /**

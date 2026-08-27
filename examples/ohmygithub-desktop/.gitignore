@@ -1,0 +1,10 @@
+build/bin
+node_modules
+frontend/dist
+
+# 临时日志
+build-log.txt
+frontend/build-log.txt
+frontend/npm-*.log
+frontend/tsc-check.log
+frontend/wails-build.log

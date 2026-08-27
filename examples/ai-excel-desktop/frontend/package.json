@@ -1,0 +1,48 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@docx-editor.dev/core": "^2.2.1",
+    "@docx-editor.dev/i18n": "^2.2.1",
+    "@docx-editor.dev/react": "^2.2.1",
+    "ag-grid-community": "^31.0.0",
+    "docx": "^9.7.1",
+    "file-saver": "^2.0.5",
+    "katex": "^0.18.4",
+    "lucide-react": "^0.460.0",
+    "mammoth": "^1.12.1",
+    "mermaid": "^11.16.1",
+    "papaparse": "^5.4.1",
+    "plotly.js-dist-min": "^3.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
+    "streamdown": "^2.5.0",
+    "three": "^0.185.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@esbuild/win32-x64": "^0.28.2",
+    "@types/katex": "^0.16.8",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "vite": "^5.4.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

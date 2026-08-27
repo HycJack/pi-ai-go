@@ -56,7 +56,8 @@ export type Expression =
     | BooleanLiteral
     | ListLiteral
     | TupleLiteral
-    | FunctionCall; // 嵌套命令调用 (例如: SetValue(A, x(B)))
+    | FunctionCall
+    | BinaryExpression; // 二元运算表达式 (例如: a + b, 2 * pi)
 
 /**
  * 标识符 (变量名，如 'A', 'slider1', 'f')
@@ -114,6 +115,16 @@ export interface FunctionCall extends BaseNode {
     type: 'FunctionCall';
     callee: Identifier;    // 被调用的函数或命令名
     arguments: Expression[];
+}
+
+/**
+ * 二元运算表达式 (例如: a + b, 2 * pi, x / n)
+ */
+export interface BinaryExpression extends BaseNode {
+    type: 'BinaryExpression';
+    operator: string;      // '+', '-', '*', '/'
+    left: Expression;
+    right: Expression;
 }
 
 // --- 组合类型 ---

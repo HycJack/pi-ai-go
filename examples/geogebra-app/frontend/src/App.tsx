@@ -72,6 +72,7 @@ function App() {
   
   const retryCountRef = useRef(0);
   const lastPromptRef = useRef<string>('');
+  const originalPromptRef = useRef<string>(''); // 保存原始用户需求，供 lint 修复时使用
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
@@ -274,13 +275,10 @@ function App() {
               };
             }));
 
-            lastPromptRef.current = lastPromptRef.current +
-              `\n\n（之前的生成有校验错误，需要修正。错误：${validationErrors}）`;
-
             const cp = getCurrentProvider(s);
             const payload = JSON.stringify({
               message: '',
-              originalMessage: lastPromptRef.current,
+              originalMessage: originalPromptRef.current,
               ggbCode: result.ggbCode,
               validationErrors,
               provider: cp?.type || '',
@@ -418,6 +416,7 @@ function App() {
 
     retryCountRef.current = 0;
     lastPromptRef.current = text;
+    originalPromptRef.current = text;
 
     setConversations((prev) => {
       const existing = prev.findIndex((c) => c.id === convId);

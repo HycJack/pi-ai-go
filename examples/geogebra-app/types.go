@@ -57,6 +57,7 @@ type GeogebraRequest struct {
 	Model           string           `json:"model"`
 	MaxTokens       int              `json:"maxTokens"`
 	Temperature     float64          `json:"temperature"`
+	Perspective     string           `json:"perspective"`
 }
 
 // HistoryMessage mirrors the frontend message for multi-turn context.

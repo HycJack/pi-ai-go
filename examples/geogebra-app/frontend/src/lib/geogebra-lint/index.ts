@@ -15,6 +15,7 @@ export type {
   ListLiteral,
   TupleLiteral,
   FunctionCall,
+  BinaryExpression,
   ASTNode,
   BaseNode,
   SourceLocation,
