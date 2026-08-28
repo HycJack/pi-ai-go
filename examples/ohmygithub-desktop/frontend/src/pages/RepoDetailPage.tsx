@@ -27,7 +27,6 @@ import {
   Film,
   GitBranch,
   ExternalLink,
-  ArrowLeft,
   GitPullRequest,
   Circle,
   Play,
@@ -45,7 +44,6 @@ interface RepoDetailPageProps {
   addToast: (message: string, type?: string) => void;
   onNavigate: (page: string) => void;
   onOpenExternal: (url: string) => void;
-  onBack?: () => void;
 }
 
 const languageColors: Record<string, string> = {
@@ -172,7 +170,7 @@ interface TreeNode {
   loading?: boolean;
 }
 
-export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onOpenExternal, onBack }: RepoDetailPageProps) {
+export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onOpenExternal }: RepoDetailPageProps) {
   const [repo, setRepo] = useState<Repo | null>(null);
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -429,14 +427,8 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
 
   return (
     <div className="animate-fade-in pb-8 flex flex-col gap-3">
-      {/* Top repo info bar + back button */}
+      {/* Top repo info bar */}
       <div className="flex items-center gap-3 flex-wrap bg-card border border-border rounded-md px-4 py-3">
-        {onBack && (
-          <Button variant="ghost" size="sm" onClick={onBack} title="返回" className="px-2.5">
-            <ArrowLeft className="size-3.5" />
-            返回
-          </Button>
-        )}
         <div className="flex-1 min-w-[200px]">
           <h2 className="m-0 text-base font-semibold text-foreground">
             {repo.fullName}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { API, AppSettings, GitHubAccount, Notification, PullRequest, Issue, Repo, WorkflowRun, Bookmark, formatRelativeTime } from './lib/api';
 import Sidebar from './components/Sidebar';
 import NotificationsPage from './pages/NotificationsPage';
@@ -13,21 +13,67 @@ import SettingsModal from './components/SettingsModal';
 import PreviewPanel from './components/PreviewPanel';
 import Toast from './components/Toast';
 import { Button } from './components/ui/button';
-import { Input } from './components/ui/input';
-import { Search, Sun, Moon, ArrowLeft } from 'lucide-react';
+import { Sun, Moon, ArrowLeft } from 'lucide-react';
 
 type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories' | 'starred' | 'repo-detail';
 type NavHandler = (page: string) => void;
 
 function App() {
   const [activePage, setActivePage] = useState<string>('overview');
+  const [pageHistory, setPageHistory] = useState<string[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeRepo, setActiveRepo] = useState<string>('');
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: string }>>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+
+  // Persisted filter state (survives page navigation)
+  const [starredFilters, setStarredFilters] = useState({
+    keyword: '',
+    language: '',
+    sort: 'starred' as 'starred' | 'name' | 'stars' | 'updated',
+    groupID: '',
+  });
+  const [repoFilters, setRepoFilters] = useState({
+    keyword: '',
+    language: '',
+    sort: 'updated' as 'updated' | 'created' | 'full_name',
+  });
+
+  // Navigate to a new page, pushing current page to history
+  const navigateTo = useCallback((page: string, repo?: string) => {
+    setPageHistory(prev => [...prev, activePage]);
+    setActivePage(page);
+    if (repo !== undefined) setActiveRepo(repo);
+  }, [activePage]);
+
+  // Go back to previous page in history
+  const goBack = useCallback(() => {
+    setPageHistory(prev => {
+      if (prev.length === 0) return prev;
+      const newHistory = [...prev];
+      const previousPage = newHistory.pop()!;
+      setActivePage(previousPage);
+      // Clear repo if going back to a non-repo-detail page
+      if (previousPage !== 'repo-detail') {
+        setActiveRepo('');
+      }
+      return newHistory;
+    });
+  }, []);
+
+  // Navigate from sidebar (no history push for sidebar clicks)
+  const navigateFromSidebar = useCallback((page: string) => {
+    setActivePage(page);
+    setActiveRepo('');
+    setPageHistory([]); // Reset history when using sidebar
+    if (page === 'starred') {
+      setStarredFilters({ keyword: '', language: '', sort: 'starred', groupID: '' });
+    } else if (page === 'repositories') {
+      setRepoFilters({ keyword: '', language: '', sort: 'updated' });
+    }
+  }, []);
 
   useEffect(() => {
     loadSettings();
@@ -117,13 +163,14 @@ function App() {
   if (!settings) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-3 border-border border-t-primary" />
+        <div className="h-6 w-6 animate-spin rounded-full border-[3px] border-border border-t-primary" />
       </div>
     );
   }
 
   const activeAccount: GitHubAccount | undefined = settings.accounts[settings.activeAccount];
   const isDark = settings.theme !== 'light';
+  const canGoBack = pageHistory.length > 0;
 
   const handleToggleTheme = async () => {
     const newTheme = isDark ? 'light' : 'dark';
@@ -146,7 +193,7 @@ function App() {
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar
         activePage={activePage}
-        onNavigate={(p: string) => setActivePage(p)}
+        onNavigate={navigateFromSidebar}
         settings={settings}
         onOpenSettings={() => setShowSettings(true)}
         onUpdateSettings={handleUpdateSettings}
@@ -156,15 +203,12 @@ function App() {
       <div className="flex flex-1 flex-col min-w-0">
         {/* Header */}
         <div className="flex h-12 items-center gap-3 border-b border-border bg-background px-4 shrink-0">
-          {activePage !== 'overview' && (
+          {canGoBack && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setActivePage('overview');
-                setActiveRepo('');
-              }}
-              title="返回 Overview"
+              onClick={goBack}
+              title="返回上一页"
             >
               <ArrowLeft className="h-4 w-4" />
               返回
@@ -185,22 +229,13 @@ function App() {
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Search repositories..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 w-[240px] pl-8 text-sm"
-              />
-            </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
           {activePage === 'overview' && (
-            <OverviewPage settings={settings} onNavigate={setActivePage} addToast={addToast} />
+            <OverviewPage settings={settings} onNavigate={navigateTo} addToast={addToast} />
           )}
           {activePage === 'notifications' && (
             <NotificationsPage onSelect={handleSelectItem} addToast={addToast} />
@@ -216,12 +251,9 @@ function App() {
           )}
           {activePage === 'repositories' && (
             <RepositoriesPage
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onSelect={(repo: Repo) => {
-                setActiveRepo(repo.fullName);
-                setActivePage('repo-detail');
-              }}
+              filters={repoFilters}
+              onFiltersChange={setRepoFilters}
+              onSelect={(repo: Repo) => navigateTo('repo-detail', repo.fullName)}
               addToast={addToast}
             />
           )}
@@ -230,21 +262,17 @@ function App() {
               addToast={addToast}
               starGroups={settings.starGroups || []}
               onGroupsChange={loadSettings}
-              onSelectRepo={(repo) => {
-                setActiveRepo(repo.fullName);
-                setActivePage('repo-detail');
-              }}
+              filters={starredFilters}
+              onFiltersChange={setStarredFilters}
+              onSelectRepo={(repo) => navigateTo('repo-detail', repo.fullName)}
             />
           )}
           {activePage === 'repo-detail' && activeRepo && (
             <RepoDetailPage
               repoFullName={activeRepo}
               addToast={addToast}
-              onNavigate={setActivePage}
+              onNavigate={navigateTo}
               onOpenExternal={handleOpenExternal}
-              onBack={() => {
-                setActivePage('repositories');
-              }}
             />
           )}
         </div>

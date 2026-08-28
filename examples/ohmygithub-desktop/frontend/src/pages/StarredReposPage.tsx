@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { API, StarredRepo, StarGroup, CachedRepoResponse, formatRelativeTime } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Select } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { ScrollArea } from '../components/ui/scroll-area';
 import {
@@ -15,11 +16,20 @@ import { Label } from '../components/ui/label';
 import { Star, RefreshCw, Loader2, FolderPlus, X, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+export interface StarredFilters {
+  keyword: string;
+  language: string;
+  sort: 'starred' | 'name' | 'stars' | 'updated';
+  groupID: string;
+}
+
 interface StarredReposPageProps {
   addToast: (message: string, type?: string) => void;
   onSelectRepo: (repo: StarredRepo) => void;
   starGroups: StarGroup[];
   onGroupsChange: () => void;
+  filters: StarredFilters;
+  onFiltersChange: (f: StarredFilters) => void;
 }
 
 const languageColors: Record<string, string> = {
@@ -44,13 +54,18 @@ export default function StarredReposPage({
   onSelectRepo,
   starGroups,
   onGroupsChange,
+  filters,
+  onFiltersChange,
 }: StarredReposPageProps) {
   const [repos, setRepos] = useState<StarredRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [cachedAt, setCachedAt] = useState(0);
-  const [keyword, setKeyword] = useState('');
-  const [activeGroupID, setActiveGroupID] = useState<string>('');
+  const { keyword, language: languageFilter, sort, groupID: activeGroupID } = filters;
+  const setKeyword = (v: string) => onFiltersChange({ ...filters, keyword: v });
+  const setLanguageFilter = (v: string) => onFiltersChange({ ...filters, language: v });
+  const setSort = (v: StarredFilters['sort']) => onFiltersChange({ ...filters, sort: v });
+  const setActiveGroupID = (v: string) => onFiltersChange({ ...filters, groupID: v });
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
@@ -91,19 +106,39 @@ export default function StarredReposPage({
     loadRepos();
   }, [loadRepos]);
 
-  const filtered = repos.filter((r) => {
-    if (keyword) {
-      const k = keyword.toLowerCase();
-      if (
-        !r.fullName.toLowerCase().includes(k) &&
-        !(r.description || '').toLowerCase().includes(k)
-      ) {
-        return false;
+  const languages = useMemo(() => {
+    const langs = new Set(repos.map((r) => r.language).filter(Boolean));
+    return Array.from(langs).sort();
+  }, [repos]);
+
+  const filtered = useMemo(() => {
+    const result = repos.filter((r) => {
+      if (keyword) {
+        const k = keyword.toLowerCase();
+        if (
+          !r.fullName.toLowerCase().includes(k) &&
+          !(r.description || '').toLowerCase().includes(k)
+        ) {
+          return false;
+        }
       }
+      if (languageFilter && r.language !== languageFilter) return false;
+      if (activeGroupID && !r.groups.includes(activeGroupID)) return false;
+      return true;
+    });
+
+    if (sort === 'name') {
+      result.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    } else if (sort === 'stars') {
+      result.sort((a, b) => (b.stars || 0) - (a.stars || 0));
+    } else if (sort === 'updated') {
+      result.sort(
+        (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      );
     }
-    if (activeGroupID && !r.groups.includes(activeGroupID)) return false;
-    return true;
-  });
+
+    return result;
+  }, [repos, keyword, languageFilter, activeGroupID, sort]);
 
   const handleCreateGroup = async () => {
     const name = newGroupName.trim();
@@ -183,11 +218,34 @@ export default function StarredReposPage({
       {/* Filter Bar */}
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
         <Input
-          className="w-[220px] text-xs"
+          className="h-8 w-[200px] text-xs"
           placeholder="Filter by name or description..."
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
+        <div className="h-5 w-px bg-border" />
+        <Select
+          className="h-8 w-auto text-xs"
+          value={languageFilter}
+          onChange={(e) => setLanguageFilter(e.target.value)}
+        >
+          <option value="">All Languages</option>
+          {languages.map((lang) => (
+            <option key={lang} value={lang}>
+              {lang}
+            </option>
+          ))}
+        </Select>
+        <Select
+          className="h-8 w-auto text-xs"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as any)}
+        >
+          <option value="starred">Recently starred</option>
+          <option value="updated">Recently updated</option>
+          <option value="stars">Most stars</option>
+          <option value="name">Name</option>
+        </Select>
         <div className="h-5 w-px bg-border" />
         <span className="text-xs font-medium text-muted-foreground">Group:</span>
         <Button
@@ -210,7 +268,7 @@ export default function StarredReposPage({
         ))}
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground">
-          {repos.length} repos
+          {filtered.length}/{repos.length} repos
           {cachedAt > 0 && (
             <span className="ml-2">· cached {new Date(cachedAt * 1000).toLocaleString()}</span>
           )}
