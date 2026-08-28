@@ -12,6 +12,9 @@ import RepoDetailPage from './pages/RepoDetailPage';
 import SettingsModal from './components/SettingsModal';
 import PreviewPanel from './components/PreviewPanel';
 import Toast from './components/Toast';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
+import { Search, Sun, Moon, ArrowLeft } from 'lucide-react';
 
 type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories' | 'starred' | 'repo-detail';
 type NavHandler = (page: string) => void;
@@ -21,21 +24,25 @@ function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeRepo, setActiveRepo] = useState<string>('');
-  const [toasts, setToasts] = useState<Array<{id: string; message: string; type: string}>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: string }>>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load settings on mount
   useEffect(() => {
     loadSettings();
   }, []);
 
-  // Apply theme / font size / code font to document root
   useEffect(() => {
     if (!settings) return;
     const root = document.documentElement;
-    root.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+    if (settings.theme === 'light') {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    } else {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    }
     if (settings.fontSize && settings.fontSize > 0) {
       root.style.setProperty('--app-font-size', `${settings.fontSize}px`);
       root.style.fontSize = `${settings.fontSize}px`;
@@ -49,7 +56,6 @@ function App() {
     try {
       const str = await API.GetSettings();
       const s = JSON.parse(str) as AppSettings;
-      // 防御性处理：确保数组字段非 null，避免后续 .map() 崩溃
       if (!Array.isArray(s.accounts)) s.accounts = [];
       if (!Array.isArray(s.bookmarks)) s.bookmarks = [];
       if (!Array.isArray(s.starGroups)) s.starGroups = [];
@@ -58,7 +64,6 @@ function App() {
       setSettings(s);
     } catch (e) {
       console.error('Failed to load settings:', e);
-      // 加载失败时使用默认设置，避免一直卡在 loading
       setSettings({
         accounts: [],
         activeAccount: 0,
@@ -111,16 +116,20 @@ function App() {
 
   if (!settings) {
     return (
-      <div className="loading-spinner" style={{ height: '100vh' }}>
-        <div className="spinner" />
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-3 border-border border-t-primary" />
       </div>
     );
   }
 
   const activeAccount: GitHubAccount | undefined = settings.accounts[settings.activeAccount];
+  const isDark = settings.theme !== 'light';
 
-  const currentUser = activeAccount?.username || 'Not signed in';
-  const currentAvatar = activeAccount?.avatarUrl || '';
+  const handleToggleTheme = async () => {
+    const newTheme = isDark ? 'light' : 'dark';
+    const newSettings = { ...settings, theme: newTheme };
+    await handleUpdateSettings(newSettings);
+  };
 
   const pageTitle: Record<string, string> = {
     overview: 'Overview',
@@ -133,16 +142,8 @@ function App() {
     'repo-detail': 'Repository',
   };
 
-  const isDark = settings.theme !== 'light';
-
-  const handleToggleTheme = async () => {
-    const newTheme = isDark ? 'light' : 'dark';
-    const newSettings = { ...settings, theme: newTheme };
-    await handleUpdateSettings(newSettings);
-  };
-
   return (
-    <div className="app-layout">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar
         activePage={activePage}
         onNavigate={(p: string) => setActivePage(p)}
@@ -152,54 +153,52 @@ function App() {
         addToast={addToast}
       />
 
-      <div className="main-area">
-        <div className="main-header">
+      <div className="flex flex-1 flex-col min-w-0">
+        {/* Header */}
+        <div className="flex h-12 items-center gap-3 border-b border-border bg-background px-4 shrink-0">
           {activePage !== 'overview' && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => { setActivePage('overview'); setActiveRepo(''); }}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setActivePage('overview');
+                setActiveRepo('');
+              }}
               title="返回 Overview"
-              style={{ marginRight: 8, padding: '4px 10px' }}
             >
-              ← 返回
-            </button>
+              <ArrowLeft className="h-4 w-4" />
+              返回
+            </Button>
           )}
-          <h2>{pageTitle[activePage]}</h2>
-          {activeRepo && <span className="subtitle">{activeRepo}</span>}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              className="btn btn-ghost btn-sm btn-icon"
+          <h2 className="text-base font-semibold">{pageTitle[activePage]}</h2>
+          {activeRepo && (
+            <span className="text-xs text-muted-foreground">{activeRepo}</span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
               onClick={handleToggleTheme}
               title={isDark ? '切换到浅色主题' : '切换到深色主题'}
               aria-label="Toggle theme"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0 }}
             >
-              {isDark ? (
-                <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
-                  <path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.5 8.75H1a.75.75 0 0 1 0-1.5h1.5a.75.75 0 0 1 0 1.5ZM15 8.75h-1.5a.75.75 0 0 1 0-1.5H15a.75.75 0 0 1 0 1.5ZM13.42 2.58a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0ZM4.7 11.3a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0ZM13.42 13.42a.75.75 0 0 1-1.06 0l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06a.75.75 0 0 1 0 1.06ZM4.7 4.7a.75.75 0 0 1-1.06 0L2.58 3.64a.75.75 0 1 1 1.06-1.06L4.7 3.64a.75.75 0 0 1 0 1.06Z"/>
-                </svg>
-              ) : (
-                <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
-                  <path d="M9.598 1.591a.75.75 0 0 1 .785-.175 7.001 7.001 0 1 1-8.967 8.967.75.75 0 0 1 .961-.96 5.5 5.5 0 0 0 7.046-7.046.75.75 0 0 1 .175-.786Z"/>
-                </svg>
-              )}
-            </button>
-            <div className="search-box">
-              <svg className="search-icon" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215l-3.04-3.04Zm-4.68-.74a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z"/>
-              </svg>
-              <input
-                className="input"
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
                 placeholder="Search repositories..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ width: 240 }}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 w-[240px] pl-8 text-sm"
               />
             </div>
           </div>
         </div>
 
-        <div className="main-content">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
           {activePage === 'overview' && (
             <OverviewPage settings={settings} onNavigate={setActivePage} addToast={addToast} />
           )}
@@ -219,7 +218,10 @@ function App() {
             <RepositoriesPage
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
-              onSelect={(repo: Repo) => { setActiveRepo(repo.fullName); setActivePage('repo-detail'); }}
+              onSelect={(repo: Repo) => {
+                setActiveRepo(repo.fullName);
+                setActivePage('repo-detail');
+              }}
               addToast={addToast}
             />
           )}
@@ -228,7 +230,10 @@ function App() {
               addToast={addToast}
               starGroups={settings.starGroups || []}
               onGroupsChange={loadSettings}
-              onSelectRepo={(repo) => { setActiveRepo(repo.fullName); setActivePage('repo-detail'); }}
+              onSelectRepo={(repo) => {
+                setActiveRepo(repo.fullName);
+                setActivePage('repo-detail');
+              }}
             />
           )}
           {activePage === 'repo-detail' && activeRepo && (
@@ -237,17 +242,15 @@ function App() {
               addToast={addToast}
               onNavigate={setActivePage}
               onOpenExternal={handleOpenExternal}
-              onBack={() => { setActivePage('repositories'); }}
+              onBack={() => {
+                setActivePage('repositories');
+              }}
             />
           )}
         </div>
       </div>
 
-      <PreviewPanel
-        open={previewOpen}
-        item={selectedItem}
-        onClose={handleClosePreview}
-      />
+      <PreviewPanel open={previewOpen} item={selectedItem} onClose={handleClosePreview} />
 
       {showSettings && (
         <SettingsModal

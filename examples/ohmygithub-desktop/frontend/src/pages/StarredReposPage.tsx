@@ -1,11 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, StarredRepo, StarGroup, CachedRepoResponse, formatRelativeTime } from '../lib/api';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
+import { ScrollArea } from '../components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../components/ui/dialog';
+import { Label } from '../components/ui/label';
+import { Star, RefreshCw, Loader2, FolderPlus, X, Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface StarredReposPageProps {
   addToast: (message: string, type?: string) => void;
   onSelectRepo: (repo: StarredRepo) => void;
   starGroups: StarGroup[];
-  onGroupsChange: () => void; // 分组变更后通知父组件刷新 settings
+  onGroupsChange: () => void;
 }
 
 const languageColors: Record<string, string> = {
@@ -25,18 +39,22 @@ const languageColors: Record<string, string> = {
   Dockerfile: '#384d54',
 };
 
-export default function StarredReposPage({ addToast, onSelectRepo, starGroups, onGroupsChange }: StarredReposPageProps) {
+export default function StarredReposPage({
+  addToast,
+  onSelectRepo,
+  starGroups,
+  onGroupsChange,
+}: StarredReposPageProps) {
   const [repos, setRepos] = useState<StarredRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [cachedAt, setCachedAt] = useState(0);
   const [keyword, setKeyword] = useState('');
-  const [activeGroupID, setActiveGroupID] = useState<string>(''); // '' = 全部
+  const [activeGroupID, setActiveGroupID] = useState<string>('');
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  // 记录每个 repo 的下拉菜单展开状态
   const [groupMenuFor, setGroupMenuFor] = useState<string | null>(null);
 
   const loadRepos = useCallback(async () => {
@@ -56,7 +74,6 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
     }
   }, [addToast]);
 
-  // 手动强制同步 starred repos
   const handleForceSync = useCallback(async () => {
     setSyncing(true);
     try {
@@ -70,14 +87,17 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
     }
   }, [loadRepos, addToast]);
 
-  useEffect(() => { loadRepos(); }, [loadRepos]);
+  useEffect(() => {
+    loadRepos();
+  }, [loadRepos]);
 
-  // 按关键字 + 分组过滤
-  const filtered = repos.filter(r => {
+  const filtered = repos.filter((r) => {
     if (keyword) {
       const k = keyword.toLowerCase();
-      if (!r.fullName.toLowerCase().includes(k) &&
-          !(r.description || '').toLowerCase().includes(k)) {
+      if (
+        !r.fullName.toLowerCase().includes(k) &&
+        !(r.description || '').toLowerCase().includes(k)
+      ) {
         return false;
       }
     }
@@ -132,13 +152,15 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
       } else {
         await API.AddRepoToStarGroup(groupID, repoFullName);
       }
-      // 更新本地 repos 状态，避免重新拉取
-      setRepos(prev => prev.map(r => {
-        if (r.fullName !== repoFullName) return r;
-        const set = new Set(r.groups);
-        if (currentlyIn) set.delete(groupID); else set.add(groupID);
-        return { ...r, groups: Array.from(set) };
-      }));
+      setRepos((prev) =>
+        prev.map((r) => {
+          if (r.fullName !== repoFullName) return r;
+          const set = new Set(r.groups);
+          if (currentlyIn) set.delete(groupID);
+          else set.add(groupID);
+          return { ...r, groups: Array.from(set) };
+        })
+      );
       onGroupsChange();
     } catch (e: any) {
       addToast('Update group failed: ' + (e?.message || 'error'), 'error');
@@ -149,7 +171,7 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
     if (!confirm(`Unstar ${repoFullName}?`)) return;
     try {
       await API.UnstarRepo(repoFullName);
-      setRepos(prev => prev.filter(r => r.fullName !== repoFullName));
+      setRepos((prev) => prev.filter((r) => r.fullName !== repoFullName));
       addToast(`Unstarred ${repoFullName}`, 'info');
     } catch (e: any) {
       addToast('Unstar failed: ' + (e?.message || 'error'), 'error');
@@ -157,114 +179,146 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
   };
 
   return (
-    <div className="fade-in">
-      {/* 顶部过滤栏 */}
-      <div className="filter-bar">
-        <input
-          className="input"
-          style={{ width: 220, fontSize: 12 }}
+    <div className="animate-fade-in">
+      {/* Filter Bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+        <Input
+          className="w-[220px] text-xs"
           placeholder="Filter by name or description..."
           value={keyword}
-          onChange={e => setKeyword(e.target.value)}
+          onChange={(e) => setKeyword(e.target.value)}
         />
-        <div style={{ width: 1, height: 20, background: 'var(--border-muted)' }} />
-        <span className="filter-label">Group:</span>
-        <button
-          className={`btn btn-sm ${activeGroupID === '' ? 'btn-primary' : 'btn-ghost'}`}
+        <div className="h-5 w-px bg-border" />
+        <span className="text-xs font-medium text-muted-foreground">Group:</span>
+        <Button
+          variant={activeGroupID === '' ? 'default' : 'ghost'}
+          size="sm"
           onClick={() => setActiveGroupID('')}
-        >All</button>
-        {starGroups.map(g => (
-          <button
+        >
+          All
+        </Button>
+        {starGroups.map((g) => (
+          <Button
             key={g.id}
-            className={`btn btn-sm ${activeGroupID === g.id ? 'btn-primary' : 'btn-ghost'}`}
+            variant={activeGroupID === g.id ? 'default' : 'ghost'}
+            size="sm"
             onClick={() => setActiveGroupID(g.id)}
             title={`${g.repos.length} repos`}
-          >{g.name}</button>
+          >
+            {g.name}
+          </Button>
         ))}
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+        <div className="flex-1" />
+        <span className="text-xs text-muted-foreground">
           {repos.length} repos
-          {cachedAt > 0 && <span style={{ marginLeft: 8 }}>· cached {new Date(cachedAt * 1000).toLocaleString()}</span>}
-          {syncing && <span style={{ marginLeft: 8, color: 'var(--accent)' }}>· syncing…</span>}
+          {cachedAt > 0 && (
+            <span className="ml-2">· cached {new Date(cachedAt * 1000).toLocaleString()}</span>
+          )}
+          {syncing && <span className="ml-2 text-primary">· syncing…</span>}
         </span>
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowNewGroupInput(true)}>+ New Group</button>
-        <button className="btn btn-ghost btn-sm" onClick={handleForceSync} disabled={syncing} title="Force sync from GitHub">
+        <Button variant="ghost" size="sm" onClick={() => setShowNewGroupInput(true)}>
+          <FolderPlus className="h-3.5 w-3.5" />
+          New Group
+        </Button>
+        <Button variant="ghost" size="sm" onClick={handleForceSync} disabled={syncing}>
+          {syncing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
           {syncing ? 'Syncing…' : 'Sync'}
-        </button>
-        <button className="btn btn-ghost btn-sm" onClick={loadRepos}>Refresh</button>
+        </Button>
+        <Button variant="ghost" size="sm" onClick={loadRepos}>
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
-      {/* 新建分组弹窗 */}
+      {/* New Group Dialog */}
       {showNewGroupInput && (
-        <div className="modal-overlay" onClick={() => setShowNewGroupInput(false)}>
-          <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Create Star Group</h2>
-              <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowNewGroupInput(false)}>
-                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              <label style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, display: 'block' }}>Group Name</label>
-              <input
-                className="input"
-                style={{ width: '100%' }}
+        <Dialog open onOpenChange={(open) => !open && setShowNewGroupInput(false)}>
+          <DialogContent className="max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Create Star Group</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label>Group Name</Label>
+              <Input
                 placeholder="e.g. Frontend frameworks"
                 value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); if (e.key === 'Escape') setShowNewGroupInput(false); }}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateGroup();
+                  if (e.key === 'Escape') setShowNewGroupInput(false);
+                }}
                 autoFocus
               />
             </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setShowNewGroupInput(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateGroup} disabled={!newGroupName.trim()}>Create Group</button>
-            </div>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowNewGroupInput(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateGroup} disabled={!newGroupName.trim()}>
+                Create Group
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
-      {/* 分组管理列表 */}
+      {/* Group Management */}
       {starGroups.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12,
-          fontSize: 11, color: 'var(--text-secondary)'
-        }}>
-          {starGroups.map(g => (
-            <div key={g.id} style={{
-              border: '1px solid var(--border-muted)', borderRadius: 6,
-              padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 6,
-            }}>
+        <div className="mb-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+          {starGroups.map((g) => (
+            <div
+              key={g.id}
+              className="flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5"
+            >
               {renameTarget === g.id ? (
-                <>
-                  <input
-                    className="input"
-                    style={{ width: 120, fontSize: 11, padding: '1px 4px' }}
+                <div className="flex items-center gap-1">
+                  <Input
+                    className="h-5 w-[120px] text-xs"
                     value={renameValue}
-                    onChange={e => setRenameValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleRenameGroup(g.id); if (e.key === 'Escape') setRenameTarget(null); }}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRenameGroup(g.id);
+                      if (e.key === 'Escape') setRenameTarget(null);
+                    }}
                     autoFocus
                   />
-                  <button className="btn btn-ghost btn-sm" style={{ padding: '0 4px' }} onClick={() => handleRenameGroup(g.id)}>OK</button>
-                  <button className="btn btn-ghost btn-sm" style={{ padding: '0 4px' }} onClick={() => setRenameTarget(null)}>×</button>
-                </>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => handleRenameGroup(g.id)}>
+                    OK
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setRenameTarget(null)}>
+                    ×
+                  </Button>
+                </div>
               ) : (
                 <>
-                  <span><strong>{g.name}</strong> · {g.repos.length}</span>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 4px', fontSize: 10 }}
-                    onClick={() => { setRenameTarget(g.id); setRenameValue(g.name); }}
+                  <span>
+                    <strong>{g.name}</strong> · {g.repos.length}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-xs"
+                    onClick={() => {
+                      setRenameTarget(g.id);
+                      setRenameValue(g.name);
+                    }}
                     title="Rename"
-                  >✎</button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 4px', fontSize: 10 }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-xs text-destructive"
                     onClick={() => handleDeleteGroup(g.id, g.name)}
                     title="Delete"
-                  >×</button>
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 </>
               )}
             </div>
@@ -273,103 +327,127 @@ export default function StarredReposPage({ addToast, onSelectRepo, starGroups, o
       )}
 
       {loading ? (
-        <div className="loading-spinner"><div className="spinner" /></div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="empty-state">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48" className="icon">
-            <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.401 8.169L12 18.896l-7.335 3.868 1.401-8.169L.132 9.21l8.2-1.192z"/>
-          </svg>
-          <h3>No starred repositories</h3>
-          <p>{activeGroupID ? 'This group has no repos yet.' : 'Star repos on GitHub to see them here.'}</p>
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <Star className="mb-3 h-12 w-12 opacity-40" />
+          <h3 className="mb-1 text-base font-semibold text-secondary-foreground">
+            No starred repositories
+          </h3>
+          <p className="text-sm">
+            {activeGroupID
+              ? 'This group has no repos yet.'
+              : 'Star repos on GitHub to see them here.'}
+          </p>
         </div>
       ) : (
-        <div style={{ border: '1px solid var(--border-muted)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-          {filtered.map(repo => (
+        <div className="overflow-hidden rounded-md border border-border">
+          {filtered.map((repo) => (
             <div
               key={repo.fullName}
-              className="repo-card"
-              style={{ position: 'relative', cursor: 'pointer' }}
+              className="group relative flex cursor-pointer gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/50 last:border-b-0"
               onClick={() => onSelectRepo(repo)}
             >
-              <div className="repo-card-content">
-                <div className="repo-card-name">
-                  {repo.fullName}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-semibold text-primary">{repo.fullName}</span>
                   {repo.groups.length > 0 && (
-                    <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--text-accent)' }}>
-                      {repo.groups.map(gid => starGroups.find(g => g.id === gid)?.name).filter(Boolean).join(', ')}
+                    <span className="text-xs text-primary">
+                      {repo.groups
+                        .map((gid) => starGroups.find((g) => g.id === gid)?.name)
+                        .filter(Boolean)
+                        .join(', ')}
                     </span>
                   )}
                 </div>
-                {repo.description && <div className="repo-card-desc">{repo.description}</div>}
-                <div className="repo-card-meta">
+                {repo.description && (
+                  <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                    {repo.description}
+                  </div>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                   {repo.language && (
-                    <span>
-                      <span style={{
-                        display: 'inline-block', width: 12, height: 12,
-                        borderRadius: '50%', background: languageColors[repo.language] || '#8b949e',
-                        marginRight: 4, verticalAlign: 'middle'
-                      }} />
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full"
+                        style={{ background: languageColors[repo.language] || '#8b949e' }}
+                      />
                       {repo.language}
                     </span>
                   )}
-                  <span>★ {repo.stars.toLocaleString()}</span>
-                  <span>⑂ {repo.forks.toLocaleString()}</span>
+                  <span className="flex items-center gap-1">
+                    <Star className="h-3 w-3" />
+                    {repo.stars.toLocaleString()}
+                  </span>
+                  <span>{repo.forks.toLocaleString()} forks</span>
                   <span>Updated {formatRelativeTime(repo.updatedAt)}</span>
                 </div>
               </div>
-              {/* 分组操作菜单 */}
-              <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  title="Assign to groups"
+              {/* Group action menu */}
+              <div
+                className="flex items-start gap-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
                   onClick={() => setGroupMenuFor(groupMenuFor === repo.fullName ? null : repo.fullName)}
-                >Group ▾</button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  title="Unstar"
+                >
+                  Group ▾
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-destructive"
                   onClick={() => handleUnstar(repo.fullName)}
-                >Unstar</button>
+                >
+                  Unstar
+                </Button>
               </div>
               {groupMenuFor === repo.fullName && (
                 <div
-                  style={{
-                    position: 'absolute', top: 36, right: 8, zIndex: 10,
-                    background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)',
-                    borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', padding: 4, minWidth: 180,
-                  }}
-                  onClick={e => e.stopPropagation()}
+                  className="absolute right-2 top-9 z-10 min-w-[180px] rounded-md border border-border bg-background p-1.5 shadow-lg cursor-default"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {starGroups.length === 0 ? (
-                    <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text-secondary)' }}>
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
                       No groups yet. Create one first.
                     </div>
                   ) : (
-                    starGroups.map(g => {
+                    starGroups.map((g) => {
                       const inGroup = repo.groups.includes(g.id);
                       return (
                         <label
                           key={g.id}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', cursor: 'pointer', fontSize: 12 }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = '')}
+                          className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-xs hover:bg-muted"
                         >
                           <input
                             type="checkbox"
                             checked={inGroup}
                             onChange={() => handleToggleRepoInGroup(g.id, repo.fullName, inGroup)}
+                            className="h-3.5 w-3.5"
                           />
-                          <span>{g.name}</span>
-                          <span style={{ color: 'var(--text-secondary)', fontSize: 10 }}>({g.repos.length})</span>
+                          <span className="flex-1">{g.name}</span>
+                          <span className="text-xs text-muted-foreground">({g.repos.length})</span>
                         </label>
                       );
                     })
                   )}
-                  <div style={{ borderTop: '1px solid var(--border-muted)', marginTop: 4, paddingTop: 4 }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ width: '100%', fontSize: 11 }}
-                      onClick={() => { setGroupMenuFor(null); setShowNewGroupInput(true); }}
-                    >+ New group</button>
+                  <div className="mt-1 border-t border-border pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs"
+                      onClick={() => {
+                        setGroupMenuFor(null);
+                        setShowNewGroupInput(true);
+                      }}
+                    >
+                      + New group
+                    </Button>
                   </div>
                 </div>
               )}

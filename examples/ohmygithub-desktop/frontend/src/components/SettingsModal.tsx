@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, AppSettings } from '../lib/api';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from './ui/dialog';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select } from './ui/select';
+import { ScrollArea } from './ui/scroll-area';
+import { Badge } from './ui/badge';
+import { Trash2, ArrowRightLeft } from 'lucide-react';
 
 interface SettingsModalProps {
   settings: AppSettings;
@@ -44,7 +58,9 @@ export default function SettingsModal({ settings, onSave, onClose, addToast }: S
       setLocalSettings(updated);
       onSave(updated);
       addToast('Account removed', 'success');
-    } catch { addToast('Failed to remove account', 'error'); }
+    } catch {
+      addToast('Failed to remove account', 'error');
+    }
   };
 
   const handleSwitchAccount = async (index: number) => {
@@ -54,105 +70,167 @@ export default function SettingsModal({ settings, onSave, onClose, addToast }: S
       const updated = JSON.parse(str);
       setLocalSettings(updated);
       onSave(updated);
-    } catch { addToast('Failed to switch account', 'error'); }
+    } catch {
+      addToast('Failed to switch account', 'error');
+    }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Settings</h2>
-          <button className="btn btn-ghost btn-sm btn-icon" onClick={onClose}>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="settings-group">
-            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>Accounts</h3>
-            {localSettings.accounts.length === 0 && (
-              <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 8 }}>
-                No accounts configured. Add a GitHub Personal Access Token to get started.
-              </p>
-            )}
-            {localSettings.accounts.map((acc, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)',
-                marginBottom: 6, border: i === localSettings.activeAccount ? '1px solid var(--border-accent)' : '1px solid var(--border-muted)'
-              }}>
-                <div className="account-avatar" style={{ width: 24, height: 24 }}>
-                  {acc.avatarUrl ? <img src={acc.avatarUrl} alt="" /> : null}
-                </div>
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{acc.username}</span>
-                {i === localSettings.activeAccount && (
-                  <span style={{ fontSize: 10, color: 'var(--text-link)', fontWeight: 600, background: 'rgba(31,111,235,0.15)', padding: '1px 6px', borderRadius: 4 }}>ACTIVE</span>
-                )}
-                <button className="btn btn-ghost btn-sm" onClick={() => handleSwitchAccount(i)} disabled={i === localSettings.activeAccount}
-                  style={{ fontSize: 11 }}>Switch</button>
-                <button className="btn btn-danger btn-sm" onClick={() => handleRemoveAccount(i)}
-                  style={{ fontSize: 11 }}>Remove</button>
-              </div>
-            ))}
-            {addingAccount ? (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <input className="input" value={newToken} onChange={e => setNewToken(e.target.value)}
-                  placeholder="Paste GitHub Personal Access Token..." style={{ flex: 1 }} disabled />
-                <div className="spinner" style={{ width: 20, height: 20 }} />
-              </div>
-            ) : (
-              <div style={{ marginTop: 8 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className="input" value={newToken} onChange={e => setNewToken(e.target.value)}
-                    placeholder="Paste GitHub Personal Access Token..." style={{ flex: 1 }} />
-                  <button className="btn btn-primary" onClick={handleAddAccount}>Add</button>
-                </div>
-                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 6, lineHeight: 1.5 }}>
-                  创建 token 时请勾选以下 scope： <code style={{ color: 'var(--text-link)' }}>repo</code>、
-                  <code style={{ color: 'var(--text-link)' }}> notifications</code>、
-                  <code style={{ color: 'var(--text-link)' }}> read:user</code>、
-                  <code style={{ color: 'var(--text-link)' }}> workflow</code>
-                  <br />
-                  <a href="https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop"
-                    onClick={(e) => { e.preventDefault(); API.OpenExternal('https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop'); }}
-                    style={{ color: 'var(--text-link)', textDecoration: 'underline', cursor: 'pointer' }}>
-                    点此直接创建带正确权限的 token ↗
-                  </a>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[520px] max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle>Settings</DialogTitle>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[60vh] pr-4">
+          <div className="space-y-6">
+            {/* Accounts */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Accounts</h3>
+              {localSettings.accounts.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No accounts configured. Add a GitHub Personal Access Token to get started.
                 </p>
-              </div>
-            )}
-          </div>
+              )}
+              {localSettings.accounts.map((acc, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 rounded-md border p-3 ${
+                    i === localSettings.activeAccount
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border bg-muted/50'
+                  }`}
+                >
+                  <div className="flex h-6 w-6 shrink-0 overflow-hidden rounded-full bg-border">
+                    {acc.avatarUrl ? (
+                      <img src={acc.avatarUrl} alt="" className="h-full w-full object-cover" />
+                    ) : null}
+                  </div>
+                  <span className="flex-1 text-sm font-medium">{acc.username}</span>
+                  {i === localSettings.activeAccount && (
+                    <Badge variant="secondary" className="text-xs">
+                      ACTIVE
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleSwitchAccount(i)}
+                    disabled={i === localSettings.activeAccount}
+                    className="h-7 text-xs"
+                  >
+                    <ArrowRightLeft className="h-3 w-3" />
+                    Switch
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveAccount(i)}
+                    className="h-7 text-xs text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Remove
+                  </Button>
+                </div>
+              ))}
 
-          <div className="settings-group">
-            <label>Theme</label>
-            <select className="select" value={localSettings.theme}
-              onChange={e => setLocalSettings({ ...localSettings, theme: e.target.value })}>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="system">System</option>
-            </select>
-          </div>
+              {addingAccount ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={newToken}
+                    onChange={(e) => setNewToken(e.target.value)}
+                    placeholder="Paste GitHub Personal Access Token..."
+                    className="flex-1"
+                    disabled
+                  />
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      value={newToken}
+                      onChange={(e) => setNewToken(e.target.value)}
+                      placeholder="Paste GitHub Personal Access Token..."
+                      className="flex-1"
+                    />
+                    <Button onClick={handleAddAccount}>Add</Button>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    创建 token 时请勾选以下 scope：
+                    <code className="text-primary">repo</code>、
+                    <code className="text-primary">notifications</code>、
+                    <code className="text-primary">read:user</code>、
+                    <code className="text-primary">workflow</code>
+                    <br />
+                    <a
+                      href="https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        API.OpenExternal(
+                          'https://github.com/settings/tokens/new?scopes=repo,notifications,read:user,workflow&description=OhMyGitHub-Desktop'
+                        );
+                      }}
+                      className="text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer"
+                    >
+                      点此直接创建带正确权限的 token ↗
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
 
-          <div className="settings-group">
-            <label>Font Size</label>
-            <input className="input" type="number" min={12} max={20} value={localSettings.fontSize}
-              onChange={e => setLocalSettings({ ...localSettings, fontSize: parseInt(e.target.value) || 14 })} />
-            <div className="help-text">Adjust the base font size (12–20px)</div>
-          </div>
+            {/* Theme */}
+            <div className="space-y-2">
+              <Label>Theme</Label>
+              <Select
+                value={localSettings.theme}
+                onChange={(e) => setLocalSettings({ ...localSettings, theme: e.target.value })}
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="system">System</option>
+              </Select>
+            </div>
 
-          <div className="settings-group">
-            <label>Code Font</label>
-            <input className="input" value={localSettings.codeFont}
-              onChange={e => setLocalSettings({ ...localSettings, codeFont: e.target.value })} />
-            <div className="help-text">Font family for code blocks (e.g., JetBrains Mono, Fira Code)</div>
+            {/* Font Size */}
+            <div className="space-y-2">
+              <Label>Font Size</Label>
+              <Input
+                type="number"
+                min={12}
+                max={20}
+                value={localSettings.fontSize}
+                onChange={(e) =>
+                  setLocalSettings({ ...localSettings, fontSize: parseInt(e.target.value) || 14 })
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Adjust the base font size (12–20px)
+              </p>
+            </div>
+
+            {/* Code Font */}
+            <div className="space-y-2">
+              <Label>Code Font</Label>
+              <Input
+                value={localSettings.codeFont}
+                onChange={(e) => setLocalSettings({ ...localSettings, codeFont: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Font family for code blocks (e.g., JetBrains Mono, Fira Code)
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
-        </div>
-      </div>
-    </div>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,13 +1,51 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, Repo, FileContent, CloneRepoResult } from '../lib/api';
 import CodeViewer from '../components/CodeViewer';
+import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
+import { cn } from '@/lib/utils';
+import {
+  Loader2,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  File,
+  FileText,
+  FileCode,
+  FileJson,
+  FileCog,
+  FileImage,
+  FileArchive,
+  FileLock,
+  Terminal,
+  Package,
+  Globe,
+  Code2,
+  Database,
+  Music,
+  Film,
+  GitBranch,
+  ExternalLink,
+  ArrowLeft,
+  GitPullRequest,
+  Circle,
+  Play,
+  Download,
+  FolderTree,
+  BookOpen,
+  Shield,
+  Hammer,
+  Key,
+  Sailboat,
+} from 'lucide-react';
 
 interface RepoDetailPageProps {
   repoFullName: string;
   addToast: (message: string, type?: string) => void;
   onNavigate: (page: string) => void;
   onOpenExternal: (url: string) => void;
-  onBack?: () => void; // 返回上一页
+  onBack?: () => void;
 }
 
 const languageColors: Record<string, string> = {
@@ -27,7 +65,6 @@ const languageColors: Record<string, string> = {
   Dockerfile: '#384d54',
 };
 
-// 文件扩展名 → 是否可渲染为文本
 const textExtensions = new Set([
   'md', 'markdown', 'mdown', 'mkd', 'txt', 'log', 'json', 'jsonc',
   'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'js', 'mjs', 'cjs',
@@ -42,98 +79,80 @@ const textExtensions = new Set([
   'readme', 'license', 'editorconfig', 'prettierrc', 'eslintrc',
 ]);
 
-// 文件名/扩展名 → 图标（更精细的 GitHub 风格映射）
-function fileIcon(name: string, isDir: boolean): string {
+function fileIconNode(name: string, isDir: boolean): React.ReactNode {
   if (isDir) {
-    // 常见目录特殊图标
     const lower = name.toLowerCase();
-    if (lower === 'src' || lower === 'source') return '📂';
-    if (lower === 'test' || lower === 'tests' || lower === '__tests__') return '🧪';
-    if (lower === 'docs' || lower === 'doc') return '📚';
-    if (lower === '.github' || lower === '.gitlab') return '🐱';
-    if (lower === 'node_modules') return '📦';
-    if (lower === 'dist' || lower === 'build') return '🏗️';
-    if (lower === 'assets' || lower === 'public' || lower === 'static') return '🖼️';
-    return '📁';
+    if (lower === 'src' || lower === 'source') return <Folder className="size-3.5 text-blue-400" />;
+    if (lower === 'test' || lower === 'tests' || lower === '__tests__') return <Folder className="size-3.5 text-green-400" />;
+    if (lower === 'docs' || lower === 'doc') return <BookOpen className="size-3.5 text-amber-400" />;
+    if (lower === '.github' || lower === '.gitlab') return <GitBranch className="size-3.5 text-purple-400" />;
+    if (lower === 'node_modules') return <Package className="size-3.5 text-gray-400" />;
+    if (lower === 'dist' || lower === 'build') return <Folder className="size-3.5 text-orange-400" />;
+    if (lower === 'assets' || lower === 'public' || lower === 'static') return <Folder className="size-3.5 text-pink-400" />;
+    return <Folder className="size-3.5 text-muted-foreground" />;
   }
   const lower = name.toLowerCase();
-  // 特殊文件名
-  if (lower === 'license' || lower === 'license.md' || lower === 'license.txt') return '📜';
-  if (lower === 'readme.md' || lower === 'readme') return '📖';
-  if (lower === '.gitignore' || lower === '.npmignore') return '🚫';
-  if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return '🐳';
-  if (lower === 'makefile') return '🔨';
-  if (lower === 'package.json' || lower === 'package-lock.json') return '📦';
-  if (lower === 'go.mod' || lower === 'go.sum') return '🐹';
-  if (lower === 'cargo.toml' || lower === 'cargo.lock') return '🦀';
-  if (lower === '.env' || lower.startsWith('.env.')) return '🔑';
+  if (lower === 'license' || lower === 'license.md' || lower === 'license.txt') return <Shield className="size-3.5 text-green-500" />;
+  if (lower === 'readme.md' || lower === 'readme') return <BookOpen className="size-3.5 text-blue-400" />;
+  if (lower === '.gitignore' || lower === '.npmignore') return <FileLock className="size-3.5 text-red-400" />;
+  if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) return <Sailboat className="size-3.5 text-cyan-400" />;
+  if (lower === 'makefile') return <Hammer className="size-3.5 text-yellow-500" />;
+  if (lower === 'package.json' || lower === 'package-lock.json') return <Package className="size-3.5 text-red-400" />;
+  if (lower === 'go.mod' || lower === 'go.sum') return <Sailboat className="size-3.5 text-cyan-400" />;
+  if (lower === 'cargo.toml' || lower === 'cargo.lock') return <FileCog className="size-3.5 text-orange-400" />;
+  if (lower === '.env' || lower.startsWith('.env.')) return <Key className="size-3.5 text-yellow-400" />;
 
   const ext = lower.split('.').pop() || '';
-  // 文档类
-  if (['md', 'markdown', 'mdown', 'mkd'].includes(ext)) return '📝';
-  if (['txt', 'log'].includes(ext)) return '📄';
-  if (['pdf'].includes(ext)) return '📕';
-  // 配置类
-  if (['json', 'jsonc'].includes(ext)) return '🔧';
-  if (['yaml', 'yml', 'toml', 'ini', 'cfg', 'conf'].includes(ext)) return '⚙️';
-  if (['xml', 'svg'].includes(ext)) return '🔗';
-  // Web 前端
-  if (['html', 'htm'].includes(ext)) return '🌐';
-  if (['css', 'scss', 'sass', 'less'].includes(ext)) return '🎨';
-  if (['vue', 'svelte'].includes(ext)) return '⚛️';
-  // JS/TS
-  if (['js', 'mjs', 'cjs'].includes(ext)) return '🟨';
-  if (['jsx'].includes(ext)) return '⚛️';
-  if (['ts', 'mts', 'cts'].includes(ext)) return '🔷';
-  if (['tsx'].includes(ext)) return '⚛️';
-  // 后端语言
-  if (ext === 'go') return '🐹';
-  if (ext === 'rs') return '🦀';
-  if (ext === 'py') return '🐍';
-  if (ext === 'java') return '☕';
-  if (ext === 'kt') return '🟪';
-  if (ext === 'swift') return '🦅';
-  if (ext === 'rb') return '💎';
-  if (ext === 'php') return '🐘';
-  if (['c', 'h'].includes(ext)) return '🔵';
-  if (['cpp', 'cc', 'cxx', 'hpp', 'hxx'].includes(ext)) return '➕';
-  if (ext === 'cs') return '🟢';
-  if (ext === 'fs') return '🟣';
-  // Shell/脚本
-  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return '🐚';
-  if (ext === 'ps1') return '💠';
-  if (ext === 'bat' || ext === 'cmd') return '🪟';
-  // 数据/查询
-  if (ext === 'sql') return '🗄️';
-  if (['graphql', 'gql'].includes(ext)) return '◈';
-  // 图片
-  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) return '🖼️';
-  // 音视频
-  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return '🎵';
-  if (['mp4', 'webm', 'avi', 'mov', 'mkv'].includes(ext)) return '🎬';
-  // 压缩包
-  if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return '🗜️';
-  // Mermaid / 图表
-  if (['mmd', 'mermaid'].includes(ext)) return '🌊';
-  // 数据
-  if (['csv', 'tsv'].includes(ext)) return '📊';
-  // 默认
-  return '📄';
+  if (['md', 'markdown', 'mdown', 'mkd'].includes(ext)) return <FileText className="size-3.5 text-blue-400" />;
+  if (['txt', 'log'].includes(ext)) return <FileText className="size-3.5 text-muted-foreground" />;
+  if (['pdf'].includes(ext)) return <FileText className="size-3.5 text-red-400" />;
+  if (['json', 'jsonc'].includes(ext)) return <FileJson className="size-3.5 text-yellow-400" />;
+  if (['yaml', 'yml', 'toml', 'ini', 'cfg', 'conf'].includes(ext)) return <FileCog className="size-3.5 text-muted-foreground" />;
+  if (['xml', 'svg'].includes(ext)) return <Globe className="size-3.5 text-orange-400" />;
+  if (['html', 'htm'].includes(ext)) return <Globe className="size-3.5 text-orange-400" />;
+  if (['css', 'scss', 'sass', 'less'].includes(ext)) return <FileCode className="size-3.5 text-blue-300" />;
+  if (['vue', 'svelte'].includes(ext)) return <FileCode className="size-3.5 text-green-400" />;
+  if (['js', 'mjs', 'cjs'].includes(ext)) return <FileCode className="size-3.5 text-yellow-300" />;
+  if (['jsx'].includes(ext)) return <FileCode className="size-3.5 text-cyan-300" />;
+  if (['ts', 'mts', 'cts'].includes(ext)) return <FileCode className="size-3.5 text-blue-400" />;
+  if (['tsx'].includes(ext)) return <FileCode className="size-3.5 text-blue-300" />;
+  if (ext === 'go') return <Sailboat className="size-3.5 text-cyan-400" />;
+  if (ext === 'rs') return <FileCog className="size-3.5 text-orange-400" />;
+  if (ext === 'py') return <Code2 className="size-3.5 text-yellow-400" />;
+  if (ext === 'java') return <FileCode className="size-3.5 text-red-400" />;
+  if (ext === 'kt') return <FileCode className="size-3.5 text-purple-400" />;
+  if (ext === 'swift') return <FileCode className="size-3.5 text-orange-400" />;
+  if (ext === 'rb') return <FileCode className="size-3.5 text-red-400" />;
+  if (ext === 'php') return <FileCode className="size-3.5 text-purple-300" />;
+  if (['c', 'h'].includes(ext)) return <FileCode className="size-3.5 text-blue-300" />;
+  if (['cpp', 'cc', 'cxx', 'hpp', 'hxx'].includes(ext)) return <FileCode className="size-3.5 text-blue-400" />;
+  if (ext === 'cs') return <FileCode className="size-3.5 text-green-400" />;
+  if (ext === 'fs') return <FileCode className="size-3.5 text-purple-300" />;
+  if (['sh', 'bash', 'zsh', 'fish'].includes(ext)) return <Terminal className="size-3.5 text-green-400" />;
+  if (ext === 'ps1') return <Terminal className="size-3.5 text-blue-400" />;
+  if (ext === 'bat' || ext === 'cmd') return <Terminal className="size-3.5 text-gray-400" />;
+  if (ext === 'sql') return <Database className="size-3.5 text-blue-400" />;
+  if (['graphql', 'gql'].includes(ext)) return <Code2 className="size-3.5 text-pink-400" />;
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'].includes(ext)) return <FileImage className="size-3.5 text-green-400" />;
+  if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return <Music className="size-3.5 text-pink-400" />;
+  if (['mp4', 'webm', 'avi', 'mov', 'mkv'].includes(ext)) return <Film className="size-3.5 text-purple-400" />;
+  if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return <FileArchive className="size-3.5 text-gray-400" />;
+  if (['mmd', 'mermaid'].includes(ext)) return <Globe className="size-3.5 text-cyan-400" />;
+  if (['csv', 'tsv'].includes(ext)) return <Database className="size-3.5 text-green-400" />;
+  return <File className="size-3.5 text-muted-foreground" />;
 }
 
 function isTextFile(name: string): boolean {
   const lower = name.toLowerCase();
-  if (textExtensions.has(lower)) return true; // 如 dockerfile, makefile
+  if (textExtensions.has(lower)) return true;
   const ext = lower.split('.').pop() || '';
   return textExtensions.has(ext);
 }
 
-// base64 → UTF-8 字符串（处理多字节字符）
 function decodeBase64Utf8(b64: string): string {
   try {
     const clean = b64.replace(/\s/g, '');
     const binary = atob(clean);
-    // 处理 UTF-8：将 binary string 转为 Uint8Array 再 decode
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return new TextDecoder('utf-8').decode(bytes);
@@ -145,11 +164,11 @@ function decodeBase64Utf8(b64: string): string {
 interface TreeNode {
   name: string;
   path: string;
-  type: string; // 'file' | 'dir'
+  type: string;
   size: number;
   htmlUrl: string;
   children?: TreeNode[];
-  loaded?: boolean; // 子目录是否已加载
+  loaded?: boolean;
   loading?: boolean;
 }
 
@@ -164,7 +183,6 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   const [cloning, setCloning] = useState(false);
 
-  // 加载仓库元信息（直接调用 /repos/{owner}/{repo}，比搜索 API 更可靠）
   const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
@@ -179,10 +197,8 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [repoFullName, addToast]);
 
-  // 常见 README 文件名（按优先级排序）
   const readmeNames = ['README.md', 'readme.md', 'README.MD', 'Readme.md', 'README', 'readme', 'Readme', 'README.txt'];
 
-  // 加载根目录文件列表
   const loadRootContents = useCallback(async () => {
     try {
       const str = await API.GetRepoContents(repoFullName, '');
@@ -210,7 +226,6 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [repoFullName, addToast]);
 
-  // 加载子目录
   const loadChildren = useCallback(async (node: TreeNode): Promise<TreeNode[]> => {
     try {
       const str = await API.GetRepoContents(repoFullName, node.path);
@@ -238,11 +253,9 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [repoFullName, addToast]);
 
-  // 切换文件夹展开/折叠
   const toggleDir = useCallback(async (node: TreeNode) => {
     const isExpanded = expandedPaths.has(node.path);
     if (isExpanded) {
-      // 折叠
       setExpandedPaths(prev => {
         const next = new Set(prev);
         next.delete(node.path);
@@ -251,14 +264,11 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
       return;
     }
 
-    // 展开
     setExpandedPaths(prev => new Set(prev).add(node.path));
 
-    // 如果子目录未加载，先加载
     if (!node.loaded) {
       setLoadingDirs(prev => new Set(prev).add(node.path));
       const children = await loadChildren(node);
-      // 更新 rootNodes 中对应节点的 children
       setRootNodes(prev => updateNodeChildren(prev, node.path, children, true));
       setLoadingDirs(prev => {
         const next = new Set(prev);
@@ -268,7 +278,6 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [expandedPaths, loadChildren]);
 
-  // 递归更新节点 children
   function updateNodeChildren(nodes: TreeNode[], targetPath: string, children: TreeNode[], markLoaded: boolean): TreeNode[] {
     return nodes.map(n => {
       if (n.path === targetPath) {
@@ -281,13 +290,11 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     });
   }
 
-  // 点击文件：加载内容
   const handleFileClick = useCallback(async (node: TreeNode) => {
     setCurrentFile(node);
     setFileContent('');
     setFileLoading(true);
     try {
-      // 如果节点已有 content（来自单文件 API 响应），直接用；否则调用 API
       const str = await API.GetRepoContents(repoFullName, node.path);
       const items: FileContent[] = JSON.parse(str);
       const file = items[0];
@@ -306,16 +313,13 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     }
   }, [repoFullName, addToast]);
 
-  // 面包屑：当前路径分段
   const breadcrumbs = currentFile ? currentFile.path.split('/') : [];
 
-  // 克隆仓库到本地
   const handleClone = useCallback(async () => {
     if (cloning) return;
     setCloning(true);
     addToast('正在下载仓库源码...', 'info');
     try {
-      // branch 传空，后端自动使用默认分支
       const str = await API.CloneRepo(repoFullName, '', '');
       const result: CloneRepoResult = JSON.parse(str);
       addToast(`已下载到: ${result.path}`, 'success');
@@ -332,17 +336,15 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
     loadRootContents();
   }, [loadDetail, loadRootContents]);
 
-  // 自动加载 README：rootNodes 加载完成后，查找 README 文件并自动选中
   useEffect(() => {
     if (rootNodes.length === 0) return;
-    if (currentFile) return; // 已有选中文件则不覆盖
+    if (currentFile) return;
     const readmeNode = rootNodes.find(n => readmeNames.includes(n.name));
     if (readmeNode && readmeNode.type === 'file') {
       handleFileClick(readmeNode);
     }
   }, [rootNodes, currentFile, handleFileClick]);
 
-  // 渲染文件树节点
   const renderNode = (node: TreeNode, depth: number): React.ReactNode => {
     const isExpanded = expandedPaths.has(node.path);
     const isLoading = loadingDirs.has(node.path);
@@ -353,32 +355,36 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
       <div key={node.path}>
         <div
           onClick={() => isDir ? toggleDir(node) : handleFileClick(node)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '4px 8px',
-            paddingLeft: 8 + depth * 16,
-            cursor: 'pointer',
-            borderRadius: 4,
-            background: isActive ? 'var(--accent-soft, rgba(88,166,255,0.15))' : 'transparent',
-            color: isActive ? 'var(--accent)' : 'var(--text-primary)',
-            fontSize: 13,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-          onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+          className={cn(
+            'flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer text-[13px] truncate select-none transition-colors',
+            isActive
+              ? 'bg-accent text-accent-foreground'
+              : 'text-foreground hover:bg-muted',
+          )}
+          style={{ paddingLeft: 8 + depth * 16 }}
           title={node.name}
         >
-          <span style={{ width: 14, textAlign: 'center', fontSize: 12 }}>
-            {isDir ? (isLoading ? '⏳' : (isExpanded ? '▾' : '▸')) : ''}
+          <span className="w-3.5 text-center text-xs text-muted-foreground">
+            {isDir ? (
+              isLoading ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : isExpanded ? (
+                <ChevronDown className="size-3" />
+              ) : (
+                <ChevronRight className="size-3" />
+              )
+            ) : null}
           </span>
-          <span style={{ fontSize: 14 }}>{fileIcon(node.name, isDir)}</span>
-          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.name}</span>
+          <span className="flex-shrink-0">
+            {isDir ? (
+              isExpanded ? <FolderOpen className="size-3.5" /> : fileIconNode(node.name, true)
+            ) : (
+              fileIconNode(node.name, false)
+            )}
+          </span>
+          <span className="flex-1 truncate">{node.name}</span>
           {!isDir && node.size > 0 && (
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+            <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
               {node.size < 1024 ? `${node.size} B` : `${(node.size / 1024).toFixed(1)} KB`}
             </span>
           )}
@@ -389,7 +395,10 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
           </div>
         )}
         {isDir && isExpanded && node.children && node.children.length === 0 && !isLoading && (
-          <div style={{ paddingLeft: 32 + depth * 16, fontSize: 11, color: 'var(--text-tertiary)', padding: '4px 8px' }}>
+          <div
+            className="text-xs text-muted-foreground py-1 px-2"
+            style={{ paddingLeft: 32 + depth * 16 }}
+          >
             (empty)
           </div>
         )}
@@ -398,15 +407,19 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   };
 
   if (loading) {
-    return <div className="loading-spinner"><div className="spinner" /></div>;
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   if (!repo) {
     return (
-      <div className="empty-state">
-        <h3>Repository not found</h3>
-        <p>Could not load details for "{repoFullName}".</p>
-        <button className="btn btn-primary btn-sm" onClick={loadDetail}>Retry</button>
+      <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-center gap-3">
+        <h3 className="text-base font-semibold text-secondary-foreground">Repository not found</h3>
+        <p className="text-[13px] max-w-80">Could not load details for "{repoFullName}".</p>
+        <Button variant="default" size="sm" onClick={loadDetail}>Retry</Button>
       </div>
     );
   }
@@ -415,187 +428,166 @@ export default function RepoDetailPage({ repoFullName, addToast, onNavigate, onO
   const githubUrl = `https://github.com/${repo.fullName}`;
 
   return (
-    <div className="fade-in" style={{ paddingBottom: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* 顶部仓库信息条 + 返回按钮 */}
-      <div style={{
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border-muted)',
-        borderRadius: 'var(--radius-md)',
-        padding: '12px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        flexWrap: 'wrap',
-      }}>
+    <div className="animate-fade-in pb-8 flex flex-col gap-3">
+      {/* Top repo info bar + back button */}
+      <div className="flex items-center gap-3 flex-wrap bg-card border border-border rounded-md px-4 py-3">
         {onBack && (
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onBack}
-            title="返回"
-            style={{ padding: '4px 10px' }}
-          >
-            ← 返回
-          </button>
+          <Button variant="ghost" size="sm" onClick={onBack} title="返回" className="px-2.5">
+            <ArrowLeft className="size-3.5" />
+            返回
+          </Button>
         )}
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
+        <div className="flex-1 min-w-[200px]">
+          <h2 className="m-0 text-base font-semibold text-foreground">
             {repo.fullName}
           </h2>
           {repo.description && (
-            <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: 12 }}>
+            <p className="mt-1 text-secondary-foreground text-xs">
               {repo.description}
             </p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+        <div className="flex gap-3 text-xs text-secondary-foreground flex-wrap items-center">
           {repo.language && (
-            <span>
-              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: langColor, marginRight: 4, verticalAlign: 'middle' }} />
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-full"
+                style={{ background: langColor }}
+              />
               {repo.language}
             </span>
           )}
-          <span>★ {repo.stars.toLocaleString()}</span>
-          <span>⑂ {repo.forks.toLocaleString()}</span>
-          <span>! {repo.openIssues.toLocaleString()}</span>
-          <span>{repo.private ? 'Private' : 'Public'}</span>
+          <span className="flex items-center gap-1">★ {repo.stars.toLocaleString()}</span>
+          <span className="flex items-center gap-1">⑂ {repo.forks.toLocaleString()}</span>
+          <span className="flex items-center gap-1">! {repo.openIssues.toLocaleString()}</span>
+          <Badge variant={repo.private ? 'destructive' : 'secondary'} className="text-xs px-1.5 py-0">
+            {repo.private ? 'Private' : 'Public'}
+          </Badge>
         </div>
-        <button
-          className="btn btn-ghost btn-sm"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onOpenExternal(githubUrl)}
           title="Open on GitHub"
         >
-          ↗ GitHub
-        </button>
+          <ExternalLink className="size-3.5" />
+          GitHub
+        </Button>
       </div>
 
-      {/* 快捷入口 */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button className="btn btn-sm" onClick={() => onNavigate('pull-requests')}>🔀 Pull Requests</button>
-        <button className="btn btn-sm" onClick={() => onNavigate('issues')}>◯ Issues</button>
-        <button className="btn btn-sm" onClick={() => onNavigate('actions')}>▶ Actions</button>
-        <button
-          className="btn btn-sm"
+      {/* Quick links */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <Button variant="outline" size="sm" onClick={() => onNavigate('pull-requests')}>
+          <GitPullRequest className="size-3.5" />
+          Pull Requests
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => onNavigate('issues')}>
+          <Circle className="size-3.5" />
+          Issues
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => onNavigate('actions')}>
+          <Play className="size-3.5" />
+          Actions
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleClone}
           disabled={cloning}
           title="下载仓库源码到本地"
-          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+          className="flex items-center gap-1"
         >
           {cloning ? (
             <>
-              <span className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5 }} />
+              <Loader2 className="size-3 animate-spin" />
               下载中...
             </>
           ) : (
-            <>⬇ Clone to local</>
+            <>
+              <Download className="size-3.5" />
+              Clone to local
+            </>
           )}
-        </button>
+        </Button>
       </div>
 
-      {/* GitHub 风格文件浏览器 */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '280px 1fr',
-        gap: 12,
-        minHeight: 500,
-      }}>
-        {/* 左侧文件树 */}
-        <div style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-muted)',
-          borderRadius: 'var(--radius-md)',
-          padding: 8,
-          overflow: 'auto',
-          maxHeight: 'calc(100vh - 280px)',
-        }}>
-          <div style={{
-            fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase',
-            letterSpacing: 0.5, padding: '4px 8px 8px', borderBottom: '1px solid var(--border-muted)',
-            marginBottom: 4,
-          }}>
+      {/* GitHub-style file browser */}
+      <div className="grid grid-cols-[280px_1fr] gap-3 min-h-[500px]">
+        {/* Left file tree */}
+        <div className="bg-card border border-border rounded-md p-2 overflow-auto max-h-[calc(100vh-280px)]">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider px-2 pb-2 border-b border-border mb-1">
+            <FolderTree className="size-3.5 inline-block mr-1 -mt-0.5" />
             Files
           </div>
           {rootNodes.length === 0 ? (
-            <div style={{ padding: 16, fontSize: 12, color: 'var(--text-tertiary)' }}>Loading...</div>
+            <div className="p-4 text-xs text-muted-foreground">Loading...</div>
           ) : (
             rootNodes.map(node => renderNode(node, 0))
           )}
         </div>
 
-        {/* 右侧文件内容 */}
-        <div style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-muted)',
-          borderRadius: 'var(--radius-md)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          maxHeight: 'calc(100vh - 280px)',
-        }}>
-          {/* 面包屑 */}
-          <div style={{
-            padding: '8px 16px',
-            borderBottom: '1px solid var(--border-muted)',
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            flexWrap: 'wrap',
-            background: 'var(--bg-secondary, var(--bg-elevated))',
-          }}>
+        {/* Right file content */}
+        <div className="bg-card border border-border rounded-md flex flex-col overflow-hidden max-h-[calc(100vh-280px)]">
+          {/* Breadcrumbs */}
+          <div className="px-4 py-2 border-b border-border text-xs flex items-center gap-1.5 flex-wrap bg-secondary/50">
             <span
-              style={{ cursor: 'pointer', color: 'var(--accent)' }}
+              className="cursor-pointer text-primary font-medium hover:underline"
               onClick={() => { setCurrentFile(null); setFileContent(''); }}
             >
               {repo.name}
             </span>
             {breadcrumbs.map((seg, i) => (
               <React.Fragment key={i}>
-                <span style={{ color: 'var(--text-tertiary)' }}>/</span>
-                <span style={{ color: i === breadcrumbs.length - 1 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                <span className="text-muted-foreground">/</span>
+                <span className={cn(i === breadcrumbs.length - 1 ? 'text-foreground font-medium' : 'text-secondary-foreground')}>
                   {seg}
                 </span>
               </React.Fragment>
             ))}
             {currentFile && (
-              <button
-                className="btn btn-ghost btn-sm"
-                style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11 }}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto px-2 py-0.5 h-auto text-xs"
                 onClick={() => onOpenExternal(currentFile.htmlUrl)}
                 title="Open on GitHub"
               >
-                ↗ View raw
-              </button>
+                <ExternalLink className="size-3" />
+                View raw
+              </Button>
             )}
           </div>
 
-          {/* 内容区 */}
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          {/* Content area */}
+          <div className="flex-1 overflow-auto">
             {!currentFile ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+              <div className="p-8 text-center text-muted-foreground text-[13px]">
+                <FolderOpen className="size-8 mx-auto mb-2 opacity-40" />
                 <div>从左侧选择文件查看内容</div>
-                <div style={{ fontSize: 11, marginTop: 4 }}>选择文件夹可展开/折叠</div>
+                <div className="text-xs mt-1">选择文件夹可展开/折叠</div>
               </div>
             ) : fileLoading ? (
-              <div className="loading-spinner" style={{ padding: 32 }}>
-                <div className="spinner" />
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
               </div>
             ) : fileContent ? (
               <CodeViewer fileName={currentFile.name} content={fileContent} />
             ) : (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>📄</div>
+              <div className="p-8 text-center text-muted-foreground text-[13px]">
+                <FileText className="size-6 mx-auto mb-2 opacity-50" />
                 <div>{currentFile.name}</div>
-                <div style={{ fontSize: 11, marginTop: 4 }}>
+                <div className="text-xs mt-1">
                   {isTextFile(currentFile.name) ? '文件为空' : '此文件类型无法预览（二进制文件或图片）'}
                 </div>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ marginTop: 12 }}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3"
                   onClick={() => onOpenExternal(currentFile.htmlUrl)}
                 >
-                  ↗ 在 GitHub 查看
-                </button>
+                  <ExternalLink className="size-3.5" />
+                  在 GitHub 查看
+                </Button>
               </div>
             )}
           </div>

@@ -1,5 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { API, WorkflowRun, Job, Repo, CachedRepoResponse, formatRelativeTime } from '../lib/api';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
+import { ScrollArea } from '../components/ui/scroll-area';
+import { PlayCircle, ChevronDown, FolderGit2, Loader2, FileText } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ActionsPageProps {
   addToast: (message: string, type?: string) => void;
@@ -36,7 +42,9 @@ export default function ActionsPage({ addToast, initialRepo }: ActionsPageProps)
         if (!cancelled) setReposLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -93,128 +101,131 @@ export default function ActionsPage({ addToast, initialRepo }: ActionsPageProps)
   };
 
   const filteredRepos = repoSearch
-    ? myRepos.filter(r =>
-        r.fullName.toLowerCase().includes(repoSearch.toLowerCase()) ||
-        (r.description && r.description.toLowerCase().includes(repoSearch.toLowerCase()))
+    ? myRepos.filter(
+        (r) =>
+          r.fullName.toLowerCase().includes(repoSearch.toLowerCase()) ||
+          (r.description && r.description.toLowerCase().includes(repoSearch.toLowerCase()))
       )
     : myRepos.slice(0, 100);
 
   const getStatusBadge = (status: string, conclusion: string) => {
     if (status === 'completed') {
-      const cls = conclusion === 'success' ? 'success' : conclusion === 'failure' ? 'failure' : 'neutral';
-      return <span className={`status-badge ${cls}`}>{conclusion}</span>;
+      const variant = conclusion === 'success' ? 'success' : conclusion === 'failure' ? 'destructive' : 'secondary';
+      return <Badge variant={variant} className="text-xs">{conclusion}</Badge>;
     }
-    return <span className="status-badge in_progress">{status}</span>;
+    return <Badge variant="default" className="text-xs animate-pulse">{status}</Badge>;
   };
 
   return (
-    <div className="fade-in" style={{ display: 'flex', gap: 16, height: '100%' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="filter-bar" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="filter-label">Repository:</span>
+    <div className="animate-fade-in flex gap-4" style={{ height: '100%' }}>
+      {/* Left Panel - Runs */}
+      <div className="flex-1 min-w-0">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+          <span className="text-xs font-medium text-muted-foreground">Repository:</span>
 
-          <div ref={dropdownRef} style={{ position: 'relative' }}>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setRepoDropdownOpen(v => !v)}
+          <div ref={dropdownRef} className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRepoDropdownOpen((v) => !v)}
               title="Choose from your repos"
-              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
-                <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"/>
-              </svg>
+              <FolderGit2 className="h-3.5 w-3.5" />
               {reposLoading ? 'Loading...' : 'My Repos'}
-              <svg viewBox="0 0 16 16" fill="currentColor" width="12" height="12" style={{ opacity: 0.6 }}>
-                <path d="M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/>
-              </svg>
-            </button>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </Button>
 
             {repoDropdownOpen && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, marginTop: 4,
-                background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)',
-                borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                minWidth: 320, maxWidth: 420, zIndex: 20, maxHeight: 400, display: 'flex', flexDirection: 'column',
-              }}>
-                <div style={{ padding: 8, borderBottom: '1px solid var(--border-muted)', position: 'sticky', top: 0, background: 'var(--bg-elevated)' }}>
-                  <input
-                    className="input"
-                    style={{ width: '100%', fontSize: 12 }}
+              <div className="absolute top-full left-0 z-20 mt-1 flex max-h-[400px] min-w-[320px] max-w-[420px] flex-col rounded-md border border-border bg-background shadow-lg">
+                <div className="sticky top-0 border-b border-border bg-background p-2">
+                  <Input
+                    className="h-7 text-xs"
                     placeholder="Search your repositories..."
                     value={repoSearch}
-                    onChange={e => setRepoSearch(e.target.value)}
+                    onChange={(e) => setRepoSearch(e.target.value)}
                     autoFocus
                   />
                 </div>
-                <div style={{ overflow: 'auto', flex: 1 }}>
+                <ScrollArea className="flex-1">
                   {reposLoading ? (
-                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>Loading repos...</div>
+                    <div className="p-4 text-center text-xs text-muted-foreground">Loading repos...</div>
                   ) : filteredRepos.length === 0 ? (
-                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                    <div className="p-4 text-center text-xs text-muted-foreground">
                       {repoSearch ? 'No matching repos' : 'No cached repos. Sync repositories first.'}
                     </div>
                   ) : (
-                    filteredRepos.map(r => (
+                    filteredRepos.map((r) => (
                       <div
                         key={r.fullName}
                         onClick={() => handlePickRepo(r.fullName)}
-                        style={{
-                          padding: '8px 12px', cursor: 'pointer',
-                          borderBottom: '1px solid var(--border-subtle)',
-                          fontSize: 12,
-                          background: repoInput === r.fullName ? 'var(--bg-overlay)' : 'transparent',
-                        }}
-                        onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-overlay)')}
-                        onMouseOut={e => (e.currentTarget.style.background = repoInput === r.fullName ? 'var(--bg-overlay)' : 'transparent')}
+                        className={cn(
+                          'cursor-pointer border-b border-border px-3 py-2 text-xs transition-colors hover:bg-muted',
+                          repoInput === r.fullName && 'bg-muted'
+                        )}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontWeight: 600 }}>{r.fullName}</span>
-                          {r.private && <span className="tag" style={{ padding: '0 6px', fontSize: 10 }}>Private</span>}
-                          {r.language && <span className="tag" style={{ padding: '0 6px', fontSize: 10 }}>{r.language}</span>}
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold">{r.fullName}</span>
+                          {r.private && (
+                            <Badge variant="secondary" className="h-4 text-xs px-1">Private</Badge>
+                          )}
+                          {r.language && (
+                            <Badge variant="outline" className="h-4 text-xs px-1">{r.language}</Badge>
+                          )}
                         </div>
                         {r.description && (
-                          <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
                             {r.description}
                           </div>
                         )}
                       </div>
                     ))
                   )}
-                </div>
+                </ScrollArea>
               </div>
             )}
           </div>
 
-          <input
-            className="input"
-            style={{ width: 280, fontSize: 13 }}
+          <Input
+            className="w-[280px] text-sm"
             value={repoInput}
-            onChange={e => setRepoInput(e.target.value)}
+            onChange={(e) => setRepoInput(e.target.value)}
             placeholder="owner/repo"
           />
-          <button className="btn btn-primary btn-sm" onClick={loadRuns}>Load</button>
+          <Button size="sm" onClick={loadRuns}>
+            Load
+          </Button>
         </div>
 
         {loading ? (
-          <div className="loading-spinner"><div className="spinner" /></div>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
         ) : runs.length === 0 ? (
-          <div className="empty-state">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48" className="icon">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-            </svg>
-            <h3>No workflow runs</h3>
-            <p>Choose a repository from "My Repos" or enter owner/repo manually, then click Load.</p>
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <PlayCircle className="mb-3 h-12 w-12 opacity-40" />
+            <h3 className="mb-1 text-base font-semibold text-secondary-foreground">
+              No workflow runs
+            </h3>
+            <p className="text-sm">
+              Choose a repository from "My Repos" or enter owner/repo manually, then click Load.
+            </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
-            {runs.map(run => (
-              <div key={run.id} className="workflow-card" onClick={() => handleSelectRun(run)}
-                style={{ cursor: 'pointer', borderColor: selectedRun?.id === run.id ? 'var(--border-accent)' : undefined }}>
-                <div className="workflow-card-header">
-                  <span className="workflow-name">{run.name}</span>
+          <div className="space-y-2 py-2">
+            {runs.map((run) => (
+              <div
+                key={run.id}
+                onClick={() => handleSelectRun(run)}
+                className={cn(
+                  'cursor-pointer rounded-md border border-border bg-card p-3 transition-colors hover:border-primary/50',
+                  selectedRun?.id === run.id && 'border-primary'
+                )}
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-sm font-medium">{run.name}</span>
                   {getStatusBadge(run.status, run.conclusion)}
                 </div>
-                <div className="workflow-meta">
+                <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                   <span>{run.headBranch}</span>
                   <span>trigger: {run.event}</span>
                   <span>by {run.actor}</span>
@@ -226,12 +237,13 @@ export default function ActionsPage({ addToast, initialRepo }: ActionsPageProps)
         )}
       </div>
 
+      {/* Right Panel - Jobs/Logs */}
       {(selectedRun || jobs.length > 0) && (
-        <div style={{ width: 400, minWidth: 400, borderLeft: '1px solid var(--border-muted)', padding: 16, overflow: 'auto' }}>
+        <div className="w-[400px] min-w-[400px] overflow-auto border-l border-border p-4">
           {selectedRun && (
-            <div style={{ marginBottom: 16 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{selectedRun.name}</h3>
-              <div className="workflow-meta" style={{ marginBottom: 8 }}>
+            <div className="mb-4">
+              <h3 className="mb-1 text-sm font-semibold">{selectedRun.name}</h3>
+              <div className="flex gap-3 text-xs text-muted-foreground">
                 <span>{selectedRun.headBranch}</span>
                 <span>{selectedRun.event}</span>
               </div>
@@ -239,33 +251,60 @@ export default function ActionsPage({ addToast, initialRepo }: ActionsPageProps)
           )}
 
           {loadingJobs ? (
-            <div className="loading-spinner"><div className="spinner" /></div>
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
           ) : jobs.length > 0 ? (
             <div>
-              <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)' }}>Jobs</h3>
-              {jobs.map(job => (
-                <div key={job.id} style={{ marginBottom: 12, padding: 8, background: 'var(--bg-overlay)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{job.name}</span>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Jobs
+              </h3>
+              {jobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="mb-3 rounded-md bg-muted/50 p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">{job.name}</span>
                     {getStatusBadge(job.status, job.conclusion || '')}
                   </div>
                   {job.steps.map((step, i) => (
-                    <div key={i} className="job-step">
-                      <div className={`step-indicator ${step.conclusion === 'success' ? 'completed' : step.conclusion === 'failure' ? 'failed' : step.status === 'in_progress' ? 'running' : 'pending'}`} />
-                      <span style={{ flex: 1 }}>{step.name}</span>
+                    <div key={i} className="flex items-center gap-2 py-1 text-sm">
+                      <div
+                        className={cn(
+                          'h-2 w-2 rounded-full shrink-0',
+                          step.conclusion === 'success'
+                            ? 'bg-success'
+                            : step.conclusion === 'failure'
+                              ? 'bg-destructive'
+                              : step.status === 'in_progress'
+                                ? 'bg-primary animate-pulse'
+                                : 'bg-muted-foreground'
+                        )}
+                      />
+                      <span className="flex-1">{step.name}</span>
                     </div>
                   ))}
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleViewLogs(job.id)}
-                    style={{ marginTop: 4 }}>View logs</button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 text-xs"
+                    onClick={() => handleViewLogs(job.id)}
+                  >
+                    <FileText className="h-3 w-3" />
+                    View logs
+                  </Button>
                 </div>
               ))}
             </div>
           ) : null}
 
           {logs && (
-            <div className="code-block" style={{ marginTop: 16 }}>
-              <div className="code-header">Logs</div>
-              <div className="code-content" style={{ maxHeight: 400, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 11 }}>
+            <div className="mt-4 rounded-md border border-border overflow-hidden">
+              <div className="bg-muted px-3 py-2 text-sm font-medium border-b border-border">
+                Logs
+              </div>
+              <div className="max-h-[400px] overflow-auto whitespace-pre-wrap p-3 font-mono text-xs">
                 {logs}
               </div>
             </div>

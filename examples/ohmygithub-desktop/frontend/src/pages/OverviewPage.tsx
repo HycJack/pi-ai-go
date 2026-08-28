@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, AppSettings, formatRelativeTime, SyncStateEntry } from '../lib/api';
+import { Button } from '../components/ui/button';
+import {
+  Bell,
+  GitPullRequest,
+  CircleDot,
+  BookMarked,
+  Compass,
+  RefreshCw,
+  Loader2,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface OverviewPageProps {
   settings: AppSettings;
@@ -14,9 +25,9 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
 
-  // 每 30 秒刷新同步状态 + 倒计时
   useEffect(() => {
     loadSyncState();
+    loadStats();
     const timer = setInterval(() => {
       setNow(Date.now());
       loadSyncState();
@@ -30,7 +41,7 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
       const entries: SyncStateEntry[] = JSON.parse(str);
       setSyncStates(entries);
     } catch {
-      // 静默失败
+      // silent
     }
   }, []);
 
@@ -47,7 +58,7 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
       const prs = JSON.parse(prStr);
       const issues = JSON.parse(issueStr);
       const repoResp = JSON.parse(repoStr);
-      const repos = Array.isArray(repoResp) ? repoResp : (repoResp.data || []);
+      const repos = Array.isArray(repoResp) ? repoResp : repoResp.data || [];
 
       setStats({
         notifications: notifs.length,
@@ -56,12 +67,13 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
         repos: repos.length,
       });
 
-      // Combine recent activity
       const activity = [
         ...prs.slice(0, 5).map((p: any) => ({ ...p, _type: 'pr', _time: p.updatedAt })),
         ...issues.slice(0, 5).map((i: any) => ({ ...i, _type: 'issue', _time: i.updatedAt })),
         ...notifs.slice(0, 3).map((n: any) => ({ ...n, _type: 'notification', _time: n.updatedAt })),
-      ].sort((a, b) => new Date(b._time).getTime() - new Date(a._time).getTime()).slice(0, 8);
+      ]
+        .sort((a, b) => new Date(b._time).getTime() - new Date(a._time).getTime())
+        .slice(0, 8);
 
       setRecentActivity(activity);
     } catch (e) {
@@ -71,181 +83,227 @@ export default function OverviewPage({ settings, onNavigate, addToast }: Overvie
     }
   };
 
-  if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (settings.accounts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+        <Compass className="mb-4 h-16 w-16 opacity-40" />
+        <h3 className="mb-2 text-xl font-semibold text-secondary-foreground">
+          Welcome to Oh My GitHub
+        </h3>
+        <p className="mb-4 max-w-md text-sm">
+          Get started by adding your GitHub account in Settings. You'll need a Personal Access
+          Token with repo, notifications, and workflow scopes.
+        </p>
+        <Button onClick={() => onNavigate('notifications')} className="mt-2">
+          Browse without an account
+        </Button>
+      </div>
+    );
+  }
+
+  const cards = [
+    {
+      title: 'Notifications',
+      value: stats.notifications,
+      label: 'Unread',
+      page: 'notifications',
+      icon: Bell,
+    },
+    {
+      title: 'Pull Requests',
+      value: stats.openPRs,
+      label: 'Open',
+      page: 'pull-requests',
+      icon: GitPullRequest,
+    },
+    {
+      title: 'Issues',
+      value: stats.openIssues,
+      label: 'Open',
+      page: 'issues',
+      icon: CircleDot,
+    },
+    {
+      title: 'Repositories',
+      value: stats.repos,
+      label: 'Total',
+      page: 'repositories',
+      icon: BookMarked,
+    },
+  ];
 
   return (
-    <div className="fade-in">
-      {settings.accounts.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: 48 }}>
-          <svg viewBox="0 0 24 24" fill="currentColor" width="64" height="64" className="icon">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 5-5v3h4v4h-4v3zm7-3l-5 5v-3h-4v-4h4v-3l5 5z"/>
-          </svg>
-          <h3>Welcome to Oh My GitHub</h3>
-          <p>Get started by adding your GitHub account in Settings. You'll need a Personal Access Token with repo, notifications, and workflow scopes.</p>
-          <button className="btn btn-primary" onClick={() => onNavigate('notifications')} style={{ marginTop: 8 }}>
-            Browse without an account
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="dashboard-grid" style={{ marginBottom: 24 }}>
-            <div className="dashboard-card">
-              <div className="dashboard-card-title">Notifications</div>
-              <div className="dashboard-stat">
-                <span className="stat-value">{stats.notifications}</span>
-                <span className="stat-label">Unread</span>
+    <div className="animate-fade-in space-y-6">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.page}
+              className="rounded-md border border-border bg-card p-4"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {card.title}
+                </span>
+                <Icon className="h-4 w-4 text-muted-foreground" />
               </div>
-              <button className="btn btn-sm" onClick={() => onNavigate('notifications')} style={{ marginTop: 8 }}>
-                View all
-              </button>
-            </div>
-            <div className="dashboard-card">
-              <div className="dashboard-card-title">Pull Requests</div>
-              <div className="dashboard-stat">
-                <span className="stat-value">{stats.openPRs}</span>
-                <span className="stat-label">Open</span>
+              <div className="mb-3 flex items-baseline gap-2">
+                <span className="text-2xl font-bold">{card.value}</span>
+                <span className="text-xs text-muted-foreground">{card.label}</span>
               </div>
-              <button className="btn btn-sm" onClick={() => onNavigate('pull-requests')} style={{ marginTop: 8 }}>
-                View all
-              </button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => onNavigate(card.page)}
+              >
+                View all →
+              </Button>
             </div>
-            <div className="dashboard-card">
-              <div className="dashboard-card-title">Issues</div>
-              <div className="dashboard-stat">
-                <span className="stat-value">{stats.openIssues}</span>
-                <span className="stat-label">Open</span>
-              </div>
-              <button className="btn btn-sm" onClick={() => onNavigate('issues')} style={{ marginTop: 8 }}>
-                View all
-              </button>
-            </div>
-            <div className="dashboard-card">
-              <div className="dashboard-card-title">Repositories</div>
-              <div className="dashboard-stat">
-                <span className="stat-value">{stats.repos}</span>
-                <span className="stat-label">Total</span>
-              </div>
-              <button className="btn btn-sm" onClick={() => onNavigate('repositories')} style={{ marginTop: 8 }}>
-                View all
-              </button>
-            </div>
+          );
+        })}
+      </div>
+
+      {/* Sync Status */}
+      {syncStates.length > 0 && (
+        <div className="rounded-md border border-border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Sync Status
+            </span>
+            <Button variant="ghost" size="sm" onClick={loadSyncState}>
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
           </div>
+          <div className="flex flex-wrap gap-4">
+            {syncStates.map((s) => {
+              const isSyncing = s.syncing;
+              const lastSyncDate = s.lastSync > 0 ? new Date(s.lastSync * 1000) : null;
+              const lastFullDate = s.lastFullSync > 0 ? new Date(s.lastFullSync * 1000) : null;
+              const nextIn = s.nextSyncIn;
+              const kindLabel = s.kind === 'mine' ? 'My Repos' : s.kind === 'starred' ? 'Starred' : s.kind;
 
-          {/* 同步状态卡片 */}
-          {syncStates.length > 0 && (
-            <div className="dashboard-card" style={{ marginBottom: 24 }}>
-              <div className="dashboard-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Sync Status</span>
-                <button className="btn btn-ghost btn-sm" onClick={loadSyncState}>Refresh</button>
-              </div>
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8 }}>
-                {syncStates.map(s => {
-                  const isSyncing = s.syncing;
-                  const lastSyncDate = s.lastSync > 0 ? new Date(s.lastSync * 1000) : null;
-                  const lastFullDate = s.lastFullSync > 0 ? new Date(s.lastFullSync * 1000) : null;
-                  const nextIn = s.nextSyncIn;
-                  const kindLabel = s.kind === 'mine' ? 'My Repos' : s.kind === 'starred' ? 'Starred' : s.kind;
-
-                  return (
-                    <div key={s.kind} style={{
-                      flex: '1 1 200px', minWidth: 200,
-                      padding: 12, borderRadius: 8,
-                      border: '1px solid var(--border-muted)',
-                      background: 'var(--bg-secondary, var(--bg-elevated))',
-                    }}>
-                      {/* 标题行 */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{kindLabel}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>· {s.totalCount} repos</span>
-                        {isSyncing && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent)' }}>
-                            <span className="spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} />
-                            Syncing
-                          </span>
-                        )}
-                      </div>
-
-                      {/* 进度条 */}
-                      <div style={{
-                        height: 4, borderRadius: 2, overflow: 'hidden',
-                        background: 'var(--border-muted)', marginBottom: 8,
-                      }}>
-                        <div style={{
-                          height: '100%', borderRadius: 2,
-                          background: isSyncing ? 'var(--accent)' : (s.needsSync || s.needsFull ? 'var(--warn, #f0ad4e)' : 'var(--success, #28a745)'),
-                          transition: 'width 0.5s ease',
-                          width: isSyncing ? '60%' : (s.needsSync || s.needsFull ? '100%' : nextIn > 0 ? '100%' : '100%'),
-                        }} />
-                      </div>
-
-                      {/* 状态文字 */}
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {isSyncing ? (
-                          <span>正在同步...</span>
-                        ) : s.needsSync || s.needsFull ? (
-                          <span style={{ color: 'var(--warn, #f0ad4e)' }}>
-                            {s.needsFull ? '需要全量校正' : '需要增量同步'}
-                          </span>
-                        ) : lastSyncDate ? (
-                          <span>最后同步: {formatRelativeTime(lastSyncDate.toISOString())}</span>
-                        ) : (
-                          <span>尚未同步</span>
-                        )}
-                        {nextIn > 0 && !isSyncing && !s.needsSync && !s.needsFull && (
-                          <span style={{ color: 'var(--text-tertiary)' }}>
-                            下次同步: {Math.floor(nextIn / 60)}m {nextIn % 60}s 后
-                          </span>
-                        )}
-                        {lastFullDate && (
-                          <span style={{ color: 'var(--text-tertiary)' }}>
-                            全量校正: {formatRelativeTime(lastFullDate.toISOString())}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="dashboard-card">
-            <div className="dashboard-card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Recent Activity</span>
-              <button className="btn btn-ghost btn-sm" onClick={loadStats}>Refresh</button>
-            </div>
-            {recentActivity.length === 0 ? (
-              <div className="empty-state" style={{ padding: 24 }}>
-                <p>No recent activity found</p>
-              </div>
-            ) : (
-              recentActivity.map((item, i) => (
-                <div key={i} className="dashboard-stat">
-                  <span className={`state-icon ${item._type === 'pr' ? (item.draft ? 'draft' : 'open') : item.state === 'open' ? 'open' : 'closed'}`}>
-                    <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
-                      {item._type === 'pr' ? (
-                        <path d="M7.177 3.073L9.573.677A.25.25 0 0110 .854v4.792a.25.25 0 01-.427.177L7.177 3.427a.25.25 0 010-.354zM3.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5z"/>
-                      ) : item._type === 'issue' ? (
-                        <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 0a8 8 0 110 16A8 8 0 018 0z"/>
-                      ) : (
-                        <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+              return (
+                <div
+                  key={s.kind}
+                  className="min-w-[200px] flex-1 rounded-md border border-border bg-muted/50 p-3"
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-sm font-semibold">{kindLabel}</span>
+                    <span className="text-xs text-muted-foreground">· {s.totalCount} repos</span>
+                    {isSyncing && (
+                      <span className="flex items-center gap-1 text-xs text-primary">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        Syncing
+                      </span>
+                    )}
+                  </div>
+                  <div className="mb-2 h-1 overflow-hidden rounded-full bg-border">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-500',
+                        isSyncing
+                          ? 'bg-primary w-3/5'
+                          : s.needsSync || s.needsFull
+                            ? 'bg-warning w-full'
+                            : 'bg-success w-full'
                       )}
-                    </svg>
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.title}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    />
+                  </div>
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
+                    {isSyncing ? (
+                      <span>正在同步...</span>
+                    ) : s.needsSync || s.needsFull ? (
+                      <span className="text-warning">
+                        {s.needsFull ? '需要全量校正' : '需要增量同步'}
+                      </span>
+                    ) : lastSyncDate ? (
+                      <span>最后同步: {formatRelativeTime(lastSyncDate.toISOString())}</span>
+                    ) : (
+                      <span>尚未同步</span>
+                    )}
+                    {nextIn > 0 && !isSyncing && !s.needsSync && !s.needsFull && (
+                      <div className="text-muted-foreground">
+                        下次同步: {Math.floor(nextIn / 60)}m {nextIn % 60}s 后
+                      </div>
+                    )}
+                    {lastFullDate && (
+                      <div className="text-muted-foreground">
+                        全量校正: {formatRelativeTime(lastFullDate.toISOString())}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      <div className="rounded-md border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Recent Activity
+          </span>
+          <Button variant="ghost" size="sm" onClick={loadStats}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+        </div>
+        {recentActivity.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            No recent activity found
+          </div>
+        ) : (
+          <div className="space-y-0">
+            {recentActivity.map((item, i) => {
+              const Icon =
+                item._type === 'pr'
+                  ? GitPullRequest
+                  : item._type === 'issue'
+                    ? CircleDot
+                    : Bell;
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0"
+                >
+                  <Icon
+                    className={cn(
+                      'h-4 w-4 shrink-0',
+                      item._type === 'pr'
+                        ? item.draft
+                          ? 'text-muted-foreground'
+                          : 'text-success'
+                        : item.state === 'open'
+                          ? 'text-success'
+                          : 'text-destructive'
+                    )}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm">{item.title}</div>
+                    <div className="text-xs text-muted-foreground">
                       {item.repo} · {formatRelativeTime(item._time)}
                     </div>
                   </div>
                 </div>
-              ))
-            )}
+              );
+            })}
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

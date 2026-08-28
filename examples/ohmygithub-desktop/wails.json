@@ -2,10 +2,10 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "ohmygithub-desktop",
   "outputfilename": "ohmygithub-desktop",
-  "frontend:install": "npm install",
+  "frontend:install": "pnpm install",
   "compileDaemonPID": 924,
-  "frontend:build": "npm run build",
-  "frontend:dev:watcher": "npm run dev",
+  "frontend:build": "pnpm run build",
+  "frontend:dev:watcher": "pnpm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "HycJack",

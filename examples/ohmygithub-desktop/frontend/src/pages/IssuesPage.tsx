@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API, Issue, formatRelativeTime } from '../lib/api';
+import { Button } from '../components/ui/button';
+import { Select } from '../components/ui/select';
+import { Badge } from '../components/ui/badge';
+import { CircleDot, RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface IssuesPageProps {
   onSelect: (item: any) => void;
@@ -26,71 +31,110 @@ export default function IssuesPage({ onSelect, addToast, activeRepo }: IssuesPag
     }
   }, [filter, sort, activeRepo, addToast]);
 
-  useEffect(() => { loadIssues(); }, [loadIssues]);
+  useEffect(() => {
+    loadIssues();
+  }, [loadIssues]);
 
   return (
-    <div className="fade-in">
-      <div className="filter-bar">
-        <span className="filter-label">State:</span>
-        <button className={`btn btn-sm ${filter === 'open' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter('open')}>Open</button>
-        <button className={`btn btn-sm ${filter === 'closed' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter('closed')}>Closed</button>
-        <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter('all')}>All</button>
-        <div style={{ width: 1, height: 20, background: 'var(--border-muted)' }} />
-        <span className="filter-label">Sort:</span>
-        <select className="select" style={{ width: 'auto', fontSize: 12 }} value={sort} onChange={e => setSort(e.target.value as any)}>
+    <div className="animate-fade-in">
+      {/* Filter Bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-border bg-background p-2">
+        <span className="text-xs font-medium text-muted-foreground">State:</span>
+        <Button
+          variant={filter === 'open' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setFilter('open')}
+        >
+          Open
+        </Button>
+        <Button
+          variant={filter === 'closed' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setFilter('closed')}
+        >
+          Closed
+        </Button>
+        <Button
+          variant={filter === 'all' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => setFilter('all')}
+        >
+          All
+        </Button>
+        <div className="h-5 w-px bg-border" />
+        <span className="text-xs font-medium text-muted-foreground">Sort:</span>
+        <Select
+          className="w-auto text-xs"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as any)}
+        >
           <option value="updated">Recently updated</option>
           <option value="created">Recently created</option>
-        </select>
-        <div style={{ flex: 1 }} />
+        </Select>
+        <div className="flex-1" />
         {activeRepo && (
-          <span className="filter-label" style={{ color: 'var(--text-accent)' }}>
-            Scope: {activeRepo}
-          </span>
+          <span className="text-xs font-medium text-primary">Scope: {activeRepo}</span>
         )}
-        <button className="btn btn-ghost btn-sm" onClick={loadIssues}>Refresh</button>
+        <Button variant="ghost" size="sm" onClick={loadIssues}>
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
       </div>
 
       {loading ? (
-        <div className="loading-spinner"><div className="spinner" /></div>
+        <div className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+        </div>
       ) : issues.length === 0 ? (
-        <div className="empty-state">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48" className="icon">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
-          </svg>
-          <h3>No issues found</h3>
-          <p>No {filter} issues match your criteria.</p>
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+          <CircleDot className="mb-3 h-12 w-12 opacity-40" />
+          <h3 className="mb-1 text-base font-semibold text-secondary-foreground">
+            No issues found
+          </h3>
+          <p className="text-sm">No {filter} issues match your criteria.</p>
         </div>
       ) : (
-        <div style={{ border: '1px solid var(--border-muted)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+        <div className="overflow-hidden rounded-md border border-border">
           {issues.map((issue) => (
-            <div key={issue.id} className="list-item" onClick={() => onSelect({ ...issue, _type: 'issue' })}>
-              <div className={`state-icon ${issue.state === 'open' ? 'open' : 'closed'}`}>
-                <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16">
-                  <path d="M8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 0a8 8 0 110 16A8 8 0 018 0z"/>
-                </svg>
+            <div
+              key={issue.id}
+              onClick={() => onSelect({ ...issue, _type: 'issue' })}
+              className="flex cursor-pointer items-start gap-3 border-b border-border px-4 py-3 transition-colors hover:bg-muted/50 last:border-b-0"
+            >
+              <CircleDot
+                className={cn(
+                  'mt-0.5 h-4 w-4 shrink-0',
+                  issue.state === 'open' ? 'text-success' : 'text-destructive'
+                )}
+              />
+              <div className="flex h-8 w-8 shrink-0 overflow-hidden rounded-full bg-border">
+                <img src={issue.avatarUrl} alt="" className="h-full w-full object-cover" />
               </div>
-              <div className="list-item-avatar">
-                <img src={issue.avatarUrl} alt="" />
-              </div>
-              <div className="list-item-content">
-                <div className="list-item-title">{issue.title}</div>
-                <div className="list-item-meta">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{issue.title}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>#{issue.number}</span>
                   <span>by {issue.user}</span>
-                  <span className="repo-name">{issue.repo}</span>
+                  <span className="font-medium text-primary">{issue.repo}</span>
                   <span>{formatRelativeTime(issue.createdAt)}</span>
                   {issue.comments > 0 && <span>💬 {issue.comments}</span>}
                 </div>
               </div>
               {issue.labels.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start', flexWrap: 'wrap', maxWidth: 200 }}>
+                <div className="flex max-w-[200px] flex-wrap gap-1">
                   {issue.labels.slice(0, 3).map((l, i) => (
-                    <span key={i} className="label" style={{
-                      background: `#${l.color}22`,
-                      borderColor: `#${l.color}44`,
-                      color: `#${l.color}`,
-                      fontSize: 10,
-                    }}>{l.name}</span>
+                    <Badge
+                      key={i}
+                      variant="outline"
+                      className="text-xs"
+                      style={{
+                        background: `#${l.color}22`,
+                        borderColor: `#${l.color}44`,
+                        color: `#${l.color}`,
+                      }}
+                    >
+                      {l.name}
+                    </Badge>
                   ))}
                 </div>
               )}
