@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin/arm64
+            os: macos-latest
+            artifact: ohmygithub-desktop-macos.zip
+          - platform: windows/amd64
+            os: windows-latest
+            artifact: ohmygithub-desktop.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Add Wails to PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Build frontend
+        run: cd frontend && pnpm install && pnpm run build
+
+      - name: Build app (${{ matrix.platform }})
+        run: wails build -platform ${{ matrix.platform }}
+
+      - name: Package macOS
+        if: matrix.platform == 'darwin/arm64'
+        run: |
+          cd build/bin
+          zip -r ${{ matrix.artifact }} ohmygithub-desktop.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/bin/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
