@@ -13,6 +13,8 @@ export function CreateStarGroup(arg1:string):Promise<string>;
 
 export function DeleteStarGroup(arg1:string):Promise<void>;
 
+export function ForkRepo(arg1:string):Promise<string>;
+
 export function GetIssues(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetMyRepos(arg1:string):Promise<string>;

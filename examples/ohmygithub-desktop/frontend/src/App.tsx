@@ -9,13 +9,15 @@ import OverviewPage from './pages/OverviewPage';
 import RepositoriesPage from './pages/RepositoriesPage';
 import StarredReposPage from './pages/StarredReposPage';
 import RepoDetailPage from './pages/RepoDetailPage';
+import SearchPage from './pages/SearchPage';
+import SearchDetailPage from './pages/SearchDetailPage';
 import SettingsModal from './components/SettingsModal';
 import PreviewPanel from './components/PreviewPanel';
 import Toast from './components/Toast';
 import { Button } from './components/ui/button';
 import { Sun, Moon, ArrowLeft } from 'lucide-react';
 
-type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories' | 'starred' | 'repo-detail';
+type Page = 'overview' | 'notifications' | 'pull-requests' | 'issues' | 'actions' | 'repositories' | 'starred' | 'repo-detail' | 'search' | 'search-detail';
 type NavHandler = (page: string) => void;
 
 function App() {
@@ -40,6 +42,7 @@ function App() {
     language: '',
     sort: 'updated' as 'updated' | 'created' | 'full_name',
   });
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Navigate to a new page, pushing current page to history
   const navigateTo = useCallback((page: string, repo?: string) => {
@@ -72,6 +75,8 @@ function App() {
       setStarredFilters({ keyword: '', language: '', sort: 'starred', groupID: '' });
     } else if (page === 'repositories') {
       setRepoFilters({ keyword: '', language: '', sort: 'updated' });
+    } else if (page === 'search') {
+      setSearchQuery('');
     }
   }, []);
 
@@ -187,6 +192,8 @@ function App() {
     repositories: 'Repositories',
     starred: 'Starred',
     'repo-detail': 'Repository',
+    search: 'Search GitHub',
+    'search-detail': 'Search Result',
   };
 
   return (
@@ -272,6 +279,21 @@ function App() {
               repoFullName={activeRepo}
               addToast={addToast}
               onNavigate={navigateTo}
+              onOpenExternal={handleOpenExternal}
+            />
+          )}
+          {activePage === 'search' && (
+            <SearchPage
+              addToast={addToast}
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              onSelectRepo={(repo) => navigateTo('search-detail', repo.fullName)}
+            />
+          )}
+          {activePage === 'search-detail' && activeRepo && (
+            <SearchDetailPage
+              repoFullName={activeRepo}
+              addToast={addToast}
               onOpenExternal={handleOpenExternal}
             />
           )}

@@ -26,6 +26,10 @@ export function DeleteStarGroup(arg1) {
   return window['go']['main']['App']['DeleteStarGroup'](arg1);
 }
 
+export function ForkRepo(arg1) {
+  return window['go']['main']['App']['ForkRepo'](arg1);
+}
+
 export function GetIssues(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetIssues'](arg1, arg2, arg3);
 }

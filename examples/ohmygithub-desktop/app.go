@@ -1601,6 +1601,33 @@ func (a *App) UnstarRepo(repoFullName string) error {
 	return err
 }
 
+// ForkRepo 在当前登录用户下 fork 指定仓库到自己的账号。
+// 返回 JSON 字符串：{"htmlUrl": "..."} 包含 fork 后的仓库地址。
+func (a *App) ForkRepo(repoFullName string) (string, error) {
+	repoFullName = strings.TrimSpace(repoFullName)
+	if repoFullName == "" {
+		return "", fmt.Errorf("repo name cannot be empty")
+	}
+	safeRepo, err := escapeRepoPath(repoFullName)
+	if err != nil {
+		return "", err
+	}
+	data, err := a.githubAPI("POST", fmt.Sprintf("/repos/%s/forks", safeRepo), nil)
+	if err != nil {
+		return "", err
+	}
+	var raw struct {
+		HTMLURL string `json:"html_url"`
+		FullName string `json:"full_name"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return "", err
+	}
+	resp := map[string]string{"htmlUrl": raw.HTMLURL, "fullName": raw.FullName}
+	out, _ := json.Marshal(resp)
+	return string(out), nil
+}
+
 // ============================================================================
 // GitHub API: File content browsing
 // ============================================================================

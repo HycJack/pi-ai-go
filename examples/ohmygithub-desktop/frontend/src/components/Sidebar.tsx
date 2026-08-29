@@ -15,6 +15,7 @@ import {
   Plus,
   X,
   Settings,
+  Search,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ const navItems = [
   { id: 'actions', label: 'Actions', icon: PlayCircle },
   { id: 'repositories', label: 'Repositories', icon: BookMarked },
   { id: 'starred', label: 'Starred', icon: Star },
+  { id: 'search', label: 'Search', icon: Search },
 ];
 
 const pageMapping: Record<string, string> = {
@@ -164,7 +166,9 @@ export default function Sidebar({
         <nav className="p-2">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activePage === pageMapping[item.id];
+            const isActive =
+              activePage === pageMapping[item.id] ||
+              activePage.startsWith(item.id + '-');
             return (
               <button
                 key={item.id}

@@ -19,6 +19,7 @@ import {
   ReorderStarGroups,
   StarRepo,
   UnstarRepo,
+  ForkRepo,
 } from '../../wailsjs/go/main/App';
 
 export const API = {
@@ -59,6 +60,7 @@ export const API = {
   ReorderStarGroups,
   StarRepo,
   UnstarRepo,
+  ForkRepo,
 };
 
 // Types
