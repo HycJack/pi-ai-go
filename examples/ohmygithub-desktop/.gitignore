@@ -8,3 +8,4 @@ frontend/build-log.txt
 frontend/npm-*.log
 frontend/tsc-check.log
 frontend/wails-build.log
+.agents/

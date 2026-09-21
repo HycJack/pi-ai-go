@@ -80,6 +80,17 @@ function App() {
     }
   }, []);
 
+  // Track OS dark-mode preference (for theme === 'system')
+  const [systemDark, setSystemDark] = useState<boolean>(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -87,13 +98,9 @@ function App() {
   useEffect(() => {
     if (!settings) return;
     const root = document.documentElement;
-    if (settings.theme === 'light') {
-      root.classList.add('light');
-      root.classList.remove('dark');
-    } else {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    }
+    const isDark = settings.theme === 'light' ? false : settings.theme === 'system' ? systemDark : true;
+    root.classList.toggle('light', !isDark);
+    root.classList.toggle('dark', isDark);
     if (settings.fontSize && settings.fontSize > 0) {
       root.style.setProperty('--app-font-size', `${settings.fontSize}px`);
       root.style.fontSize = `${settings.fontSize}px`;
@@ -101,7 +108,7 @@ function App() {
     if (settings.codeFont) {
       root.style.setProperty('--font-mono', `'${settings.codeFont}', monospace`);
     }
-  }, [settings]);
+  }, [settings, systemDark]);
 
   const loadSettings = async () => {
     try {
@@ -167,14 +174,15 @@ function App() {
 
   if (!settings) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center" role="status" aria-live="polite">
+        <span className="sr-only">Loading…</span>
         <div className="h-6 w-6 animate-spin rounded-full border-[3px] border-border border-t-primary" />
       </div>
     );
   }
 
   const activeAccount: GitHubAccount | undefined = settings.accounts[settings.activeAccount];
-  const isDark = settings.theme !== 'light';
+  const isDark = settings.theme === 'light' ? false : settings.theme === 'system' ? systemDark : true;
   const canGoBack = pageHistory.length > 0;
 
   const handleToggleTheme = async () => {
@@ -207,7 +215,7 @@ function App() {
         addToast={addToast}
       />
 
-      <div className="flex flex-1 flex-col min-w-0">
+      <main className="flex flex-1 flex-col min-w-0">
         {/* Header */}
         <div className="flex h-12 items-center gap-3 border-b border-border bg-background px-4 shrink-0">
           {canGoBack && (
@@ -298,7 +306,7 @@ function App() {
             />
           )}
         </div>
-      </div>
+      </main>
 
       <PreviewPanel open={previewOpen} item={selectedItem} onClose={handleClosePreview} />
 

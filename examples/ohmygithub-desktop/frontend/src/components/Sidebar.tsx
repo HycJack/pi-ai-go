@@ -141,7 +141,9 @@ export default function Sidebar({
       <div className="border-b border-border p-2 shrink-0">
         {activeAccount ? (
           <button
+            type="button"
             onClick={onOpenSettings}
+            aria-label={`Account ${activeAccount.username}, open settings`}
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent cursor-pointer"
           >
             <div className="flex h-5 w-5 shrink-0 overflow-hidden rounded-full bg-border">
@@ -152,7 +154,7 @@ export default function Sidebar({
             <span className="flex-1 truncate font-medium text-sidebar-foreground">
               {activeAccount.username}
             </span>
-            <Settings className="h-4 w-4 text-muted-foreground" />
+            <Settings aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
           </button>
         ) : (
           <Button onClick={onOpenSettings} className="w-full justify-center" size="sm">
@@ -172,17 +174,22 @@ export default function Sidebar({
             return (
               <button
                 key={item.id}
+                type="button"
                 onClick={() => onNavigate(item.id)}
+                aria-current={isActive ? 'page' : undefined}
                 className={`flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                     : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
                 }`}
               >
-                <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-primary' : 'opacity-80'}`} />
+                <Icon aria-hidden="true" className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-primary' : 'opacity-80'}`} />
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.id === 'notifications' && unreadCount > 0 && (
-                  <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                  <span
+                    aria-label={`${unreadCount} unread notifications`}
+                    className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground"
+                  >
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
@@ -194,16 +201,22 @@ export default function Sidebar({
           <div className="mt-6">
             <div className="flex items-center justify-between px-3 py-1">
               <button
+                type="button"
                 onClick={() => setShowBookmarks(!showBookmarks)}
+                aria-expanded={showBookmarks}
+                aria-controls="bookmark-list"
                 className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
               >
                 Bookmarks
               </button>
               <button
+                type="button"
                 onClick={() => setEditingBookmark(!editingBookmark)}
+                aria-label={editingBookmark ? 'Cancel adding bookmark' : 'Add bookmark'}
+                aria-pressed={editingBookmark}
                 className="cursor-pointer text-primary hover:text-primary/80"
               >
-                <Plus className="h-4 w-4" />
+                <Plus aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
 
@@ -227,33 +240,46 @@ export default function Sidebar({
               </div>
             )}
 
-            {showBookmarks &&
-              settings.bookmarks.map((bm) => (
-                <div
-                  key={bm.id}
-                  onClick={() => handleBookmarkClick(bm)}
-                  title={bm.url}
-                  className="group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground cursor-pointer"
-                >
-                  <Bookmark className="h-4 w-4 shrink-0" />
-                  <span className="flex-1 truncate">{bm.title}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveBookmark(bm.id);
+            <div id="bookmark-list">
+              {showBookmarks &&
+                settings.bookmarks.map((bm) => (
+                  <div
+                    key={bm.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleBookmarkClick(bm)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleBookmarkClick(bm);
+                      }
                     }}
-                    className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                    aria-label={`Open bookmark ${bm.title}`}
+                    title={bm.url}
+                    className="group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-foreground cursor-pointer"
                   >
-                    <X className="h-[18px] w-[18px] text-destructive" />
-                  </button>
-                </div>
-              ))}
+                    <Bookmark aria-hidden="true" className="h-4 w-4 shrink-0" />
+                    <span className="flex-1 truncate">{bm.title}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveBookmark(bm.id);
+                      }}
+                      aria-label={`Remove bookmark ${bm.title}`}
+                      className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                    >
+                      <X aria-hidden="true" className="h-[18px] w-[18px] text-destructive" />
+                    </button>
+                  </div>
+                ))}
 
-            {showBookmarks && settings.bookmarks.length === 0 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                No bookmarks yet. Click + to add.
-              </div>
-            )}
+              {showBookmarks && settings.bookmarks.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  No bookmarks yet. Click + to add.
+                </div>
+              )}
+            </div>
           </div>
         </nav>
       </ScrollArea>
