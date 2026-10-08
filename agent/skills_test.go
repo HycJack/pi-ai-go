@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	session "pi-ai-go/agent/session"
+	session "github.com/HycJack/pi-ai-go/agent/session"
 )
 
 func TestBuildSystemPromptWithSkills(t *testing.T) {

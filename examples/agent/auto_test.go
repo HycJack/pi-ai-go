@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	piai "pi-ai-go"
-	"pi-ai-go/agent"
+	piai "github.com/HycJack/pi-ai-go"
+	"github.com/HycJack/pi-ai-go/agent"
 )
 
 // newTestAgent 构造一个最小化的测试 Agent，使用全局 resolveAppConfig。

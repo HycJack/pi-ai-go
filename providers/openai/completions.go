@@ -1,8 +1,8 @@
 package openai
 
 import (
-	core "pi-ai-go/core"
-	"pi-ai-go/providers/compat"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/providers/compat"
 )
 
 // CompletionsOptions holds OpenAI Completions-specific options.

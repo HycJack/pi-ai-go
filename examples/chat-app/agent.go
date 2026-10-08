@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/agent"
-	"pi-ai-go/agent/session"
-	agenttools "pi-ai-go/agent/tools"
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
+	"github.com/HycJack/pi-ai-go/agent"
+	"github.com/HycJack/pi-ai-go/agent/session"
+	agenttools "github.com/HycJack/pi-ai-go/agent/tools"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 
 	"chat-app/autolearn"
 	"chat-app/contextmgr"

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // ContextPolicy controls how the agent loop manages its context window.

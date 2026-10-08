@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // CoerceToolResult normalizes an arbitrary tool-execution output into a

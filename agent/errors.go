@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // Sentinel error reasons used by the agent loop. The aim is for callers to

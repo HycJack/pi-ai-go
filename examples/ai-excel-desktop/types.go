@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // App 是 Wails 主应用结构体，持有运行时上下文、用户设置与已加载的数据。

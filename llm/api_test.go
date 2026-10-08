@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 func TestStreamNoProvider(t *testing.T) {

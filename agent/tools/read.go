@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 const readSchema = `{

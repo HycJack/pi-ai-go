@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 type Skill struct {

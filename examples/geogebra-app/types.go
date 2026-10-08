@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"pi-ai-go/agent/session"
+	"github.com/HycJack/pi-ai-go/agent/session"
 )
 
 // App is the main Wails application struct.

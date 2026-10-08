@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	piai "pi-ai-go"
-	_ "pi-ai-go/providers"
+	piai "github.com/HycJack/pi-ai-go"
+	_ "github.com/HycJack/pi-ai-go/providers"
 )
 
 // loadEnv 从 .env 文件加载环境变量

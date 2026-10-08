@@ -3,7 +3,7 @@ package providers
 import (
 	"testing"
 
-	piai "pi-ai-go"
+	piai "github.com/HycJack/pi-ai-go"
 )
 
 func TestRegisterBuiltInProviders(t *testing.T) {

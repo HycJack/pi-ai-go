@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	core "pi-ai-go/core"
-	"pi-ai-go/llm"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 )
 
 // CompactionResult holds the result of a compaction operation.

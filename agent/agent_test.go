@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // mockStreamFn creates a StreamFn that returns a pre-built assistant message.

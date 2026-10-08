@@ -3,7 +3,7 @@ package bedrock
 import (
 	"testing"
 
-	piai "pi-ai-go"
+	piai "github.com/HycJack/pi-ai-go"
 )
 
 func TestMapBedrockStopReason(t *testing.T) {

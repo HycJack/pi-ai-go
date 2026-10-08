@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 type Session struct {

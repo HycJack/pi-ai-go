@@ -14,8 +14,8 @@ import (
 
 	"examples/agent-memory-demo/demos/internal/common"
 
-	"pi-ai-go/agent/session"
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/agent/session"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 func main() {

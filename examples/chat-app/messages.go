@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // ─── 消息历史构建 ───

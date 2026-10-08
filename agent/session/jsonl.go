@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 	"sync"
 	"time"
 )

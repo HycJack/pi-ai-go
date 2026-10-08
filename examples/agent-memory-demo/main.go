@@ -23,12 +23,12 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/agent"
-	"pi-ai-go/agent/session"
-	"pi-ai-go/agent/tools"
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
-	_ "pi-ai-go/providers"
+	"github.com/HycJack/pi-ai-go/agent"
+	"github.com/HycJack/pi-ai-go/agent/session"
+	"github.com/HycJack/pi-ai-go/agent/tools"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
+	_ "github.com/HycJack/pi-ai-go/providers"
 )
 
 func main() {

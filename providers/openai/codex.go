@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // CodexOptions holds OpenAI Codex-specific options.

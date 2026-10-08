@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"chat-app/memory"
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 type TriggerSource string

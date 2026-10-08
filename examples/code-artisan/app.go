@@ -11,8 +11,8 @@ import (
 
 	"code-artisan/internal/env"
 
-	"pi-ai-go/core"
-	"pi-ai-go/providers"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/providers"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )

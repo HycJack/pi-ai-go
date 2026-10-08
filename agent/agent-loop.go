@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	session "pi-ai-go/agent/session"
-	core "pi-ai-go/core"
-	"pi-ai-go/llm"
+	session "github.com/HycJack/pi-ai-go/agent/session"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 )
 
 // AgentEventStream is the type alias for the agent event stream.

@@ -3,7 +3,7 @@ package agent
 import (
 	"sync"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // QueueMode controls how Steering / FollowUp messages are scheduled

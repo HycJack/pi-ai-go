@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"examples/agent-with-skills/memory"
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // TriggerSource 标记触发来源。

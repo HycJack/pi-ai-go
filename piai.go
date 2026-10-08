@@ -12,8 +12,8 @@ package piai
 import (
 	"context"
 
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 )
 
 // ============================================================

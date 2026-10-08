@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 const defaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"

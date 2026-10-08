@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	core "pi-ai-go/core"
-	"pi-ai-go/internal/sse"
-	"pi-ai-go/providers/openai/convert"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/internal/sse"
+	"github.com/HycJack/pi-ai-go/providers/openai/convert"
 )
 
 // Config describes a single OpenAI-compatible provider.

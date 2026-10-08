@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"pi-ai-go/internal/oauth"
+	"github.com/HycJack/pi-ai-go/internal/oauth"
 )
 
 func main() {

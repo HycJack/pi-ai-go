@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"pi-ai-go/providers"
+	"github.com/HycJack/pi-ai-go/providers"
 )
 
 // NewApp 创建一个带默认设置的 App 实例。

@@ -1,18 +1,18 @@
 package providers
 
 import (
-	"pi-ai-go/core"
-	"pi-ai-go/providers/anthropic"
-	"pi-ai-go/providers/bedrock"
-	"pi-ai-go/providers/compat"
-	"pi-ai-go/providers/deepseek"
-	"pi-ai-go/providers/glm"
-	"pi-ai-go/providers/google"
-	"pi-ai-go/providers/kimi"
-	"pi-ai-go/providers/mistral"
-	"pi-ai-go/providers/openai"
-	"pi-ai-go/providers/openrouter"
-	"pi-ai-go/providers/xiaomi"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/providers/anthropic"
+	"github.com/HycJack/pi-ai-go/providers/bedrock"
+	"github.com/HycJack/pi-ai-go/providers/compat"
+	"github.com/HycJack/pi-ai-go/providers/deepseek"
+	"github.com/HycJack/pi-ai-go/providers/glm"
+	"github.com/HycJack/pi-ai-go/providers/google"
+	"github.com/HycJack/pi-ai-go/providers/kimi"
+	"github.com/HycJack/pi-ai-go/providers/mistral"
+	"github.com/HycJack/pi-ai-go/providers/openai"
+	"github.com/HycJack/pi-ai-go/providers/openrouter"
+	"github.com/HycJack/pi-ai-go/providers/xiaomi"
 )
 
 // RegisterBuiltInProviders registers all built-in API providers.

@@ -12,8 +12,8 @@ package openai
 import (
 	"strings"
 
-	core "pi-ai-go/core"
-	"pi-ai-go/providers/openai/convert"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/providers/openai/convert"
 )
 
 const defaultCompletionsURL = "https://api.openai.com/v1"

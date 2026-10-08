@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	piai "pi-ai-go"
+	piai "github.com/HycJack/pi-ai-go"
 )
 
 func TestNew(t *testing.T) {

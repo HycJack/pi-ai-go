@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
-	_ "pi-ai-go/providers"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
+	_ "github.com/HycJack/pi-ai-go/providers"
 )
 
 func loadEnv(filename string) error {

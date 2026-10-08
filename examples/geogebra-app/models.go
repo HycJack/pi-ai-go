@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 )
 
 // GetModels fetches the list of available models from the provider's API.

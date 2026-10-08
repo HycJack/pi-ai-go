@@ -2,7 +2,7 @@ package agent
 
 import (
 	"context"
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // AgentLoopDetailedResult is the rich return value produced by

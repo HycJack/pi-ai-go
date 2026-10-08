@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // --- Session-specific message types (NOT core.Message) ---

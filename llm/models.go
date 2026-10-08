@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 var (

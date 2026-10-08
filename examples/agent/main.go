@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	piai "pi-ai-go"
-	"pi-ai-go/agent"
-	"pi-ai-go/agent/session"
-	_ "pi-ai-go/providers"
+	piai "github.com/HycJack/pi-ai-go"
+	"github.com/HycJack/pi-ai-go/agent"
+	"github.com/HycJack/pi-ai-go/agent/session"
+	_ "github.com/HycJack/pi-ai-go/providers"
 )
 
 func main() {

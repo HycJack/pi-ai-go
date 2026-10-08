@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"pi-ai-go/agent"
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/agent"
+	"github.com/HycJack/pi-ai-go/core"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )

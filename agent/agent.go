@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	session "pi-ai-go/agent/session"
-	core "pi-ai-go/core"
+	session "github.com/HycJack/pi-ai-go/agent/session"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // AgentState holds the agent's mutable state.

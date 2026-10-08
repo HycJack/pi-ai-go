@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 func TestToolCallBlockedError(t *testing.T) {

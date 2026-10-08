@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/wailsapp/wails/v2 v2.12.0
-	pi-ai-go v0.0.1
+	github.com/HycJack/pi-ai-go v0.0.1
 )
 
 require (
@@ -39,4 +39,4 @@ require (
 	golang.org/x/text v0.35.0 // indirect
 )
 
-replace pi-ai-go => ../../
+replace github.com/HycJack/pi-ai-go => ../../

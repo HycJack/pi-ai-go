@@ -1,4 +1,4 @@
-module pi-ai-go
+module github.com/HycJack/pi-ai-go
 
 go 1.23.0
 

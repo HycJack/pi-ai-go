@@ -7,7 +7,7 @@ package convert
 import (
 	"encoding/json"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // Messages converts internal messages to OpenAI Chat Completions format.

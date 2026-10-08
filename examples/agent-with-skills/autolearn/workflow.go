@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // Skill 表示从对话中自动提取的可复用工作流。

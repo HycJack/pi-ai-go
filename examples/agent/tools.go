@@ -7,9 +7,9 @@ import (
 	"math"
 	"time"
 
-	piai "pi-ai-go"
-	"pi-ai-go/agent"
-	piaiTools "pi-ai-go/agent/tools"
+	piai "github.com/HycJack/pi-ai-go"
+	"github.com/HycJack/pi-ai-go/agent"
+	piaiTools "github.com/HycJack/pi-ai-go/agent/tools"
 )
 
 // errJSON 工具错误响应的辅助函数。

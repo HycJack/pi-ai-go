@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // withCwdInTempDir sets the process working directory to a fresh temp

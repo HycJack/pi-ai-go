@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	piai "pi-ai-go"
-	"pi-ai-go/core"
+	piai "github.com/HycJack/pi-ai-go"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // loadEnv 从 .env 文件加载环境变量（不覆盖已有 env）。

@@ -5,7 +5,7 @@ package llm
 import (
 	"context"
 
-	"pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/core"
 )
 
 // Stream starts a streaming completion request.

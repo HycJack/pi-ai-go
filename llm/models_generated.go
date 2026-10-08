@@ -1,7 +1,7 @@
 // Code generated from pi-mono model data. DO NOT EDIT.
 package llm
 
-import "pi-ai-go/core"
+import "github.com/HycJack/pi-ai-go/core"
 
 // GeneratedModels returns the built-in model database.
 func GeneratedModels() map[core.KnownProvider]map[string]core.Model {

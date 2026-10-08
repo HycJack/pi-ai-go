@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	piai "pi-ai-go"
+	piai "github.com/HycJack/pi-ai-go"
 )
 
 func TestConvertMessagesUserText(t *testing.T) {

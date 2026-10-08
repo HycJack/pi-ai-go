@@ -10,9 +10,9 @@ import (
 	"log"
 	"time"
 
-	piai "pi-ai-go"
-	"pi-ai-go/agent"
-	_ "pi-ai-go/providers"
+	piai "github.com/HycJack/pi-ai-go"
+	"github.com/HycJack/pi-ai-go/agent"
+	_ "github.com/HycJack/pi-ai-go/providers"
 )
 
 // ExampleBasicUsage 基本使用示例

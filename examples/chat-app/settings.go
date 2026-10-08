@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"pi-ai-go/providers"
+	"github.com/HycJack/pi-ai-go/providers"
 
 	"chat-app/contextmgr"
 	"chat-app/keypool"

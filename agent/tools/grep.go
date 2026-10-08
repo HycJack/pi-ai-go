@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 const grepSchema = `{

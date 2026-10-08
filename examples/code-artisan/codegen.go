@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"pi-ai-go/core"
-	"pi-ai-go/llm"
+	"github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/llm"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )

@@ -13,8 +13,8 @@ package deepseek
 import (
 	"strings"
 
-	core "pi-ai-go/core"
-	"pi-ai-go/providers/compat"
+	core "github.com/HycJack/pi-ai-go/core"
+	"github.com/HycJack/pi-ai-go/providers/compat"
 )
 
 const defaultBaseURL = "https://api.deepseek.com/v1"

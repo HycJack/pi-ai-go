@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // AgentRunSummary is a per-run rollup returned alongside the messages.

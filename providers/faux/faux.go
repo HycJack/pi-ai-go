@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // Provider is a mock provider that generates deterministic responses.

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // VertexOptions holds Google Vertex AI-specific options.

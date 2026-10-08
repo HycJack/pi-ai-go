@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	core "pi-ai-go/core"
+	core "github.com/HycJack/pi-ai-go/core"
 )
 
 // This file provides cross-platform shell-equivalent tools that mirror the

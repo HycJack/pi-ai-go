@@ -3,7 +3,7 @@ package openrouter
 import (
 	"testing"
 
-	piai "pi-ai-go"
+	piai "github.com/HycJack/pi-ai-go"
 )
 
 func TestNewOpenRouter(t *testing.T) {
