@@ -27,6 +27,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"time"
 )
 
@@ -353,6 +354,7 @@ type StreamOptions struct {
 	SessionID       string            `json:"sessionId,omitempty"`       // 会话 ID
 	OnPayload       func(any)         `json:"-"`                         // 请求负载回调
 	OnResponse      func(any)         `json:"-"`                         // 响应回调
+	Fetch           *http.Client      `json:"-"`                         // 自定义 HTTP client；为空时使用默认 client
 	Headers         map[string]string `json:"-"`                         // 自定义请求头
 	TimeoutMs       int               `json:"timeoutMs,omitempty"`       // 超时时间（毫秒）
 	MaxRetries      int               `json:"maxRetries,omitempty"`      // 最大重试次数

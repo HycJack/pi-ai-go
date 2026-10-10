@@ -73,11 +73,10 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 **设计**:
 
 - `core/transcript.go`:
-  - `type TranscriptContext struct { messages []Message; err error }`（不透明，仅提供只读访问器）。
-  - `func newTranscriptContext(msgs []Message) TranscriptContext`：缺失 content 归一化为空块数组 + 深拷贝 + 校验。
-  - `func NormalizeContext(ctx Context) TranscriptContext`：SystemPrompt+Tools 折进首条 SystemMessage，再走 `newTranscriptContext`。
-- `llm.Stream/Complete/StreamSimple` 等**公开入口先调 `NormalizeContext`**，provider 收到不可变快照。对外调用方仍传 `Context`，不改参数。
-- 校验在公开边界拒绝：非 JSON 载荷、非有限数值、非法 role/封闭联合成员。
+  - `func NormalizeContext(ctx Context) (Context, error)`：**校验**（role 与内容形状，非法即报错）、**深拷贝**（Messages、Content 切片、Tools，隔离调用方后续修改）、**空内容归一化**（nil user content → 空字符串；nil assistant/tool-result content → 空块数组）。
+  - **SystemPrompt + Tools 保留原样，不折叠进 Messages**（务实偏差，见 §11）：pi-ai-go 的 provider 自行把 `SystemPrompt` 注入请求体，且 `providers/openai/convert.Messages` **不渲染**位于 Messages 数组内的 `SystemMessage`（会静默丢弃）。折叠会重复注入或丢失系统提示，故不做。
+- `llm.Stream/Complete/StreamSimple/StreamSimpleWithContext/CompleteSimple` 等**公开入口先调 `NormalizeContext`**，provider 收到不可变快照。对外调用方仍传 `Context`，不改参数。
+- 校验在公开边界拒绝：非法 role、非法内容类型。
 
 ### 5.3 事件序列校验（增强）
 
@@ -101,15 +100,15 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 
 ### 6.2 Options/钩子增强
 
-- `OnPayload` / `OnResponse` 增加 `model` 参数与**载荷替换能力**（参考 PiG 签名 `OnPayload func(any, model) (any, error)`、`OnResponse func(ctx, resp, model) error`）。
-- 新增 `Fetch *http.Client`：整个 HTTP 传输可替换（观测/录制/自定义客户端）。
-- 新增 `OnProviderStreamEvent`：provider 原始（归一化前）流事件观察点。
+- ✅ `Fetch *http.Client`：已实现。新增 `core.StreamOptions.Fetch` + `core.RequestClient(opts)`；已接入所有 SSE provider（anthropic/compat/bedrock/google/vertex/mistral/openai-responses）替换 `SSEClient.Do`。纯增量、不破坏。
+- ⏳ `OnPayload` / `OnResponse` 增加 `model` 参数与**载荷替换能力**：**暂缓**（破坏性签名变更，波及 7 个 provider 调用点，且 `examples/kimi-deepseek` 有真实外部调用方 `func(data any)`）。
+- ⏳ `OnProviderStreamEvent`：provider 原始流事件观察点：**暂缓**（需各 provider 暴露其原始 SSE 事件，工作量较大且价值可替代）。
 
 ### 6.3 错误面
 
 - 保留 `core` 的 typed error（`AuthError`/`RateLimitError`/`ServerError`/`NetworkError`/`TimeoutError` 等）。
-- 在 `llm` 层集中提供**重试判定**：AuthError / RateLimit / 网络 → 可重试；其余不重试。
-- 事件终止语义：`ErrorEvent` 归一化为统一终止结果。
+- **已有实现，无需新增**：`core/retry.go` 已提供完整的重试判定（`IsRetryableError`）与重试循环（`Retry` + 指数退避 + `RateLimitError.RetryAfter` + ctx 取消）。语义**正确**：RateLimit/Server/Network → 可重试；Abort/Canceled/Timeout/Overflow → 不重试；**Auth → 不重试**（401/403 重试无意义，规范初稿误写为"Auth 可重试"，已按正统语义修正，且现有实现本就如此）。
+- 事件终止语义：`EventError` 归一化为统一终止结果（阶段 1 已实现）。
 
 ## 7. Provider 接口（务实微调，几乎不动）
 
@@ -157,9 +156,22 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 | 能力 | pi-ai-go 现状 | PiG 参考 | 本方案 |
 |---|---|---|---|
 | 事件背压 | 缓冲 64，丢事件 | 无界，永不丢 | 无界，永不丢（5.1） |
-| transcript | 原样透传 | NormalizeContext → TranscriptContext | 归一化门面（5.2） |
+| transcript | 原样透传 | NormalizeContext → 不透明 TranscriptContext | 归一化门面（5.2）；**偏差**：不折叠 SystemPrompt/Tools（provider 自行注入 SystemPrompt，convert.Messages 不渲染 SystemMessage，折叠会重复或丢失），改为校验 + 深拷贝 + 空内容归一化 |
 | 事件校验 | 无 | Push 封闭联合校验 | 序列校验（5.3） |
 | Partial 快照 | 无 | ContentIndex + Partial | 二期可选 |
 | 模型目录 | 手工构造 | GeneratedModel + registry | 种子目录 + 查询（6.1） |
-| 钩子 | OnPayload/OnResponse 单参 | 带替换/观察能力 | 增强（6.2） |
+| 钩子 | OnPayload/OnResponse 单参 | 带替换/观察能力 | Fetch 已实现；签名变更暂缓（6.2） |
 | Provider 形状 | 接口 + 实例注册表 | ProviderStreams/每请求构造 | 保留（7） |
+
+## 12. 实施状态
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 1 | 5.1 EventStream 永不丢事件 + `Push bool→error` + 删 `OnDropped` | ✅ 完成（core/events.go；10 个事件测试绿） |
+| 2 | 5.2 Transcript 归一化 + llm 入口接入 | ✅ 完成（core/transcript.go；6 个归一化测试绿） |
+| 3 | 5.3 事件序列校验 | ⏳ 暂缓（务实子集：partial 快照与序列校验列为二期） |
+| 4a | 6.1 模型目录：`LookupModel`/`LookupModelExact`/`ListModels`/`ToCapabilities` | ✅ 完成（llm/models.go；7 个查找测试绿） |
+| 4b | 6.2 `Fetch *http.Client` + `RequestClient` | ✅ 完成（core/httpclient.go + 7 个 SSE provider 接线） |
+| 4c | 6.2 `OnPayload`/`OnResponse` 签名变更、`OnProviderStreamEvent` | ⏳ 暂缓（破坏性/工作量大） |
+| 4d | 6.3 错误分类/重试判定 | ✅ 已有实现（core/retry.go），核实无需新增 |
+| 5 | 文档/迁移说明（§10 破坏面）+ `core.Version` → v1.0.0 | ⏳ 未开始 |

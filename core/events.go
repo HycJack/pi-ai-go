@@ -23,165 +23,162 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"errors"
 	"sync"
 	"time"
 )
 
-// EventStream is an async event stream for streaming LLM responses.
-// || 异步事件流，用于流式传输 LLM 响应
-type EventStream[T any, R any] struct {
-	ch          chan streamEvt[T] // 事件 channel，缓冲大小 64
-	done        chan struct{}     // 完成信号 channel
-	stop        chan struct{}     // 停止信号 channel
-	result      R                 // 最终结果
-	err         error              // 错误信息
-	closed      bool              // 是否已关闭
-	mu          sync.Mutex        // 保护并发访问
-	droppedCount int              // 丢弃的事件计数
+// ErrStreamStopped is returned by Push after the consumer has stopped reading
+// (typically because ForEach was cancelled). It signals the producer to abandon
+// further work. Pushes after End/Error are ignored and return nil, matching PiG's
+// semantics.
+// || Push 在消费者停止读取（通常是 ForEach 被取消）后返回的错误，用于通知
+// || 生产者放弃后续工作。End/Error 之后的 Push 被忽略并返回 nil（对齐 PiG）。
+var ErrStreamStopped = errors.New("event stream stopped")
 
-	// OnDropped, if set, is called when Push drops an event because the
-	// channel buffer is full. The default behavior is to log every 10th
-	// drop. The callback is invoked OUTSIDE the stream's mutex, so it is
-	// safe to do non-trivial work (e.g. emit a metric or surface a
-	// diagnostic to the user) without risking deadlock.
-	//
-	// || 当 Push 因缓冲区满而丢弃事件时调用。默认行为是每 10 次记一次日志。
-	// || 回调在锁外调用，可以安全地执行耗时操作（如发指标或上报诊断）。
-	OnDropped func(droppedCount int, lastEvent T)
+// EventStream is an async event stream for streaming LLM responses. It never
+// drops events: Push appends to an unbounded queue and wakes a blocked
+// consumer, mirroring PiG's AssistantMessageEventStream (lossless under
+// backpressure). A single terminal result is set by End or Error; Result and
+// iteration both observe it. Cancellation only releases blocked waiters and
+// does not leak goroutines.
+// || 异步事件流，用于流式传输 LLM 响应。事件永不丢弃：Push 追加到无界队列并
+// || 唤醒阻塞的消费者（对齐 PiG 的无界队列语义）。End/Error 设置单一终止结果，
+// || Result 与迭代都返回该结果。取消只释放等待者，不泄漏 goroutine。
+type EventStream[T any, R any] struct {
+	mu         sync.Mutex
+	queue      []T           // 无界事件队列
+	notify     chan struct{} // Push/终止时关闭并重建，用于唤醒消费者
+	done       chan struct{} // End/Error 时关闭，标志终止
+	result     R             // 最终结果
+	err        error         // 最终错误
+	terminated bool          // End/Error 是否已调用
+	stopped    bool          // 消费者是否已停止读取
 }
 
-// streamEvt is the internal event type used by EventStream.
-// || EventStream 使用的内部事件类型
+// streamEvt is the internal event type yielded by Events().
+// || Events() 产生的内部事件类型
 type streamEvt[T any] struct {
-	value T      // 事件值
-	err   error  // 错误信息
-	done  bool   // 是否完成
+	value T
+	err   error
+	done  bool
 }
 
 // NewEventStream creates a new EventStream.
 // || 创建新的 EventStream
 func NewEventStream[T any, R any]() *EventStream[T, R] {
 	return &EventStream[T, R]{
-		ch:        make(chan streamEvt[T], 64), // 缓冲大小 64
-		done:      make(chan struct{}),
-		stop:      make(chan struct{}),
-		OnDropped: defaultOnDropped[T],
+		notify: make(chan struct{}),
+		done:   make(chan struct{}),
 	}
 }
 
-// defaultOnDropped is the built-in OnDropped handler that logs every
-// 10th drop. It is set as the default so existing callers see the same
-// log output as before.
-// || 默认的 OnDropped 处理函数：每 10 次丢弃记录一次日志。
-func defaultOnDropped[T any](count int, _ T) {
-	if count == 1 || count%10 == 0 {
-		log.Printf("EventStream: dropped %d events due to full buffer", count)
-	}
-}
-
-// Push sends an event to the stream. Returns false if the stream is closed,
-// the consumer has stopped reading, or the channel buffer is full.
-// || 向流发送事件。如果流已关闭、消费者已停止或缓冲区满，返回 false
-func (s *EventStream[T, R]) Push(event T) bool {
+// Push appends an event to the stream. It never drops events: the event is
+// queued and a blocked consumer is woken. Push returns nil on success, nil
+// after End/Error (events following termination are ignored, matching PiG),
+// and ErrStreamStopped after the consumer stopped reading.
+// || 向流追加事件，永不丢弃：入队并唤醒阻塞的消费者。成功返回 nil；
+// || End/Error 之后返回 nil（终止后的事件被忽略，对齐 PiG）；
+// || 消费者停止读取后返回 ErrStreamStopped。
+func (s *EventStream[T, R]) Push(event T) error {
 	s.mu.Lock()
-	if s.closed {
+	if s.terminated {
 		s.mu.Unlock()
-		return false
+		return nil
 	}
-
-	// Non-blocking send while holding lock to avoid race with End/Error.
-	// || 非阻塞发送，持有锁以避免与 End/Error 竞态
-	select {
-	case <-s.stop:
+	if s.stopped {
 		s.mu.Unlock()
-		return false
-	case s.ch <- streamEvt[T]{value: event}:
-		s.mu.Unlock()
-		return true
-	default:
-		s.droppedCount++
-		droppedCount := s.droppedCount
-		onDropped := s.OnDropped
-		s.mu.Unlock()
-		// Invoke the callback OUTSIDE the mutex to avoid deadlocks
-		// when the callback tries to inspect / mutate the stream.
-		// || 在锁外调用回调，避免回调访问 stream 时死锁。
-		if onDropped != nil {
-			onDropped(droppedCount, event)
-		}
-		return false
+		return ErrStreamStopped
 	}
+	s.queue = append(s.queue, event)
+	close(s.notify)
+	s.notify = make(chan struct{})
+	s.mu.Unlock()
+	return nil
 }
 
-// End signals successful completion with a result.
-// All channel operations are done under the lock to avoid races with Push.
-// || 发送成功完成信号并附带结果
-// || 所有 channel 操作在锁内完成，避免与 Push 竞态
+// End signals successful completion with a result. A subsequent End/Error is a
+// no-op; Push after End is ignored.
+// || 发送成功完成信号并附带结果。之后的 End/Error 为 no-op；End 之后的 Push 被忽略。
 func (s *EventStream[T, R]) End(result R) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.terminated {
+		s.mu.Unlock()
 		return
 	}
-	s.closed = true
+	s.terminated = true
 	s.result = result
-
-	// Non-blocking send: if buffer is full, consumer already stopped.
-	// || 非阻塞发送：如果缓冲区满，说明消费者已停止
-	select {
-	case s.ch <- streamEvt[T]{done: true}:
-	default:
-	}
-	close(s.ch)
+	close(s.notify)
+	s.mu.Unlock()
 	close(s.done)
 }
 
-// Error signals an error and terminates the stream.
-// || 发送错误信号并终止流
+// Error signals an error and terminates the stream. A subsequent End/Error is a
+// no-op; Push after Error is ignored.
+// || 发送错误信号并终止流。之后的 End/Error 为 no-op；Error 之后的 Push 被忽略。
 func (s *EventStream[T, R]) Error(err error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	if s.terminated {
+		s.mu.Unlock()
 		return
 	}
-	s.closed = true
+	s.terminated = true
 	s.err = err
-
-	select {
-	case s.ch <- streamEvt[T]{err: err, done: true}:
-	default:
-	}
-	close(s.ch)
+	close(s.notify)
+	s.mu.Unlock()
 	close(s.done)
 }
 
-// Stop signals the producer to stop sending events.
-// || 通知生产者停止发送事件
+// Stop signals the producer to stop sending events. It is called by the
+// consumer path when iteration is cancelled; subsequent Push calls return
+// ErrStreamStopped. Stop does not terminate the stream, so Result keeps
+// blocking until End/Error.
+// || 通知生产者停止发送事件。消费者取消迭代时调用；之后的 Push 返回
+// || ErrStreamStopped。Stop 不终止流，Result 会一直阻塞到 End/Error。
 func (s *EventStream[T, R]) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.closed {
-		s.closed = true
-		close(s.stop)
+	if !s.stopped && !s.terminated {
+		s.stopped = true
+		close(s.notify)
 	}
+	s.mu.Unlock()
 }
 
-// Result waits for the stream to complete and returns the final result.
-// || 等待流完成并返回最终结果
+// Result waits for the stream to terminate and returns the final result.
+// || 等待流终止并返回最终结果
 func (s *EventStream[T, R]) Result() (R, error) {
 	<-s.done
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.result, s.err
 }
 
-// Events returns a channel that yields stream events.
-// || 返回产生流事件的 channel
+// Events returns a channel that yields stream events followed by a terminal
+// marker. It is an alternative consumption path to ForEach; use one or the
+// other, not both concurrently.
+// || 返回产生流事件的 channel，随后产生一个终止标记。是 ForEach 之外的另一种
+// || 消费方式；两者选其一，不要并发使用。
 func (s *EventStream[T, R]) Events() <-chan streamEvt[T] {
-	return s.ch
+	ch := make(chan streamEvt[T])
+	go func() {
+		_, err := s.ForEach(context.Background(), func(e T) error {
+			ch <- streamEvt[T]{value: e}
+			return nil
+		})
+		ch <- streamEvt[T]{err: err, done: true}
+		close(ch)
+	}()
+	return ch
 }
 
 // ForEach iterates over all events in the stream, calling fn for each one.
-// || 遍历流中的所有事件，对每个事件调用 fn
+// It returns the terminal result once the queue is drained and the stream is
+// terminated, or ctx.Err() if ctx is cancelled. Cancelling ctx stops the stream
+// but does not terminate it; the producer observes ErrStreamStopped on future
+// Push calls.
+// || 遍历流中的所有事件，对每个事件调用 fn。当队列排空且流已终止时返回最终
+// || 结果；ctx 取消时返回 ctx.Err()。取消会停止流但不终止它，生产者后续 Push
+// || 会收到 ErrStreamStopped。
 // 参数：
 //   ctx - 上下文（支持取消）
 //   fn - 事件处理函数
@@ -189,26 +186,42 @@ func (s *EventStream[T, R]) Events() <-chan streamEvt[T] {
 //   最终结果和错误
 func (s *EventStream[T, R]) ForEach(ctx context.Context, fn func(T) error) (R, error) {
 	var zeroR R
+	s.mu.Lock()
 	for {
+		// Drain the queue first so every event enqueued before termination is
+		// delivered in order.
+		if len(s.queue) > 0 {
+			event := s.queue[0]
+			s.queue = s.queue[1:]
+			s.mu.Unlock()
+			if err := fn(event); err != nil {
+				s.Stop()
+				return zeroR, err
+			}
+			s.mu.Lock()
+			continue
+		}
+		// Queue empty + terminated: return the single terminal result.
+		if s.terminated {
+			r, e := s.result, s.err
+			s.mu.Unlock()
+			return r, e
+		}
+		if s.stopped {
+			s.mu.Unlock()
+			return zeroR, context.Canceled
+		}
+		notify := s.notify
+		done := s.done
+		s.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			s.Stop()
 			return zeroR, ctx.Err()
-		case evt, ok := <-s.Events():
-			if !ok {
-				return s.Result()
-			}
-			if evt.done {
-				if evt.err != nil {
-					return zeroR, evt.err
-				}
-				return s.Result()
-			}
-			if err := fn(evt.value); err != nil {
-				s.Stop()
-				return zeroR, err
-			}
+		case <-notify:
+		case <-done:
 		}
+		s.mu.Lock()
 	}
 }
 

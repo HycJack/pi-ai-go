@@ -328,7 +328,7 @@ func doStream(ctx context.Context, baseURL, apiKey string, model core.Model, bod
 		req.Header.Set(k, v)
 	}
 
-	resp, err := core.SSEClient.Do(req)
+	resp, err := core.RequestClient(opts).Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return core.AssistantMessage{}, core.WrapHTTPTimeoutFromContext(ctx, core.ProviderAnthropic, err)

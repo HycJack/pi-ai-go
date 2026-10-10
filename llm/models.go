@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/HycJack/pi-ai-go/core"
@@ -64,6 +65,68 @@ func GetModels(provider core.KnownProvider) []core.Model {
 		models = append(models, m)
 	}
 	return models
+}
+
+// ListModels returns all models for a given provider. It is an alias of
+// GetModels retained for symmetry with the model-catalog query API.
+func ListModels(provider core.KnownProvider) []core.Model {
+	return GetModels(provider)
+}
+
+// LookupModelExact resolves a model ref of the form "provider/id" with no
+// interpretation or fallback. The provider and id are both required and must
+// be non-empty. Returns an error for a malformed ref, an unknown provider, or
+// an unknown model.
+// || 严格解析 "provider/id" 形式的模型引用，不做任何解释或回退。
+// || provider 与 id 都必填且非空；格式错误、未知 provider、未知模型均返回错误。
+func LookupModelExact(ref string) (core.Model, error) {
+	provider, id, err := splitModelRef(ref)
+	if err != nil {
+		return core.Model{}, err
+	}
+	return GetModel(provider, id)
+}
+
+// LookupModel resolves a model reference. It accepts either the full
+// "provider/id" form or a bare id searched across all registered providers. A
+// bare id is resolved only when it is unambiguous; an id that maps to more
+// than one provider is an error. Returns an error when nothing matches.
+// || 解析模型引用：接受完整的 "provider/id" 形式，或跨所有 provider 搜索的裸 id。
+// || 裸 id 仅在无歧义时解析；命中多个 provider 时报错。无匹配时返回错误。
+func LookupModel(ref string) (core.Model, error) {
+	before, _, hasProvider := strings.Cut(ref, "/")
+	if hasProvider {
+		return LookupModelExact(ref)
+	}
+	// No slash: the whole ref is a bare id to search across providers.
+	id := before
+	modelsMu.RLock()
+	defer modelsMu.RUnlock()
+	var found core.Model
+	var foundProvider core.KnownProvider
+	for p, pm := range modelsMap {
+		m, ok := pm[id]
+		if !ok {
+			continue
+		}
+		if foundProvider != "" {
+			return core.Model{}, fmt.Errorf("ambiguous model id %q (providers %s and %s)", id, foundProvider, p)
+		}
+		found, foundProvider = m, p
+	}
+	if foundProvider == "" {
+		return core.Model{}, fmt.Errorf("unknown model: %s", id)
+	}
+	return found, nil
+}
+
+// splitModelRef splits "provider/id" into its two non-empty parts.
+func splitModelRef(ref string) (core.KnownProvider, string, error) {
+	provider, id, ok := strings.Cut(ref, "/")
+	if !ok || provider == "" || id == "" {
+		return "", "", fmt.Errorf("malformed model ref %q: want provider/id", ref)
+	}
+	return core.KnownProvider(provider), id, nil
 }
 
 // GetSupportedThinkingLevels returns the thinking levels supported by a model.
@@ -201,4 +264,32 @@ func GetImageModels(provider core.KnownProvider) []core.ImagesModel {
 		models = append(models, m)
 	}
 	return models
+}
+
+// ModelCapabilities summarizes the capabilities derivable from a Model.
+// || 从 Model 派生出的能力摘要
+type ModelCapabilities struct {
+	Text           bool // 支持文本输入
+	Vision         bool // 支持图像输入
+	Audio          bool // 支持音频输入
+	Reasoning      bool // 支持推理（thinking）
+}
+
+// ToCapabilities derives a ModelCapabilities summary from a model's modalities
+// and reasoning flag.
+// || 从模型的模态与推理标志派生能力摘要
+func ToCapabilities(model core.Model) ModelCapabilities {
+	var caps ModelCapabilities
+	for _, mod := range model.Input {
+		switch mod {
+		case core.ModalityText:
+			caps.Text = true
+		case core.ModalityImage:
+			caps.Vision = true
+		case core.ModalityAudio:
+			caps.Audio = true
+		}
+	}
+	caps.Reasoning = model.Reasoning
+	return caps
 }

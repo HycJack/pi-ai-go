@@ -20,7 +20,10 @@ func Stream(ctx context.Context, model core.Model, msgs []core.Message, opts ...
 		opt = opts[0]
 	}
 
-	c := core.Context{Messages: msgs}
+	c, err := core.NormalizeContext(core.Context{Messages: msgs})
+	if err != nil {
+		return nil, err
+	}
 	return provider.StreamSimple(ctx, model, c, opt)
 }
 
@@ -45,7 +48,10 @@ func StreamSimple(ctx context.Context, model core.Model, msgs []core.Message, op
 		opt = opts[0]
 	}
 
-	c := core.Context{Messages: msgs}
+	c, err := core.NormalizeContext(core.Context{Messages: msgs})
+	if err != nil {
+		return nil, err
+	}
 	return provider.StreamSimple(ctx, model, c, opt)
 }
 
@@ -61,7 +67,11 @@ func StreamSimpleWithContext(ctx context.Context, model core.Model, llmCtx core.
 		opt = opts[0]
 	}
 
-	return provider.StreamSimple(ctx, model, llmCtx, opt)
+	norm, err := core.NormalizeContext(llmCtx)
+	if err != nil {
+		return nil, err
+	}
+	return provider.StreamSimple(ctx, model, norm, opt)
 }
 
 // CompleteSimple calls StreamSimple and waits for the final result.

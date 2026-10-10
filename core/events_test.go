@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -132,5 +133,48 @@ func TestEventStreamTimeout(t *testing.T) {
 		t.Error("Result should block on unclosed stream")
 	case <-time.After(50 * time.Millisecond):
 		// Expected
+	}
+}
+
+// TestEventStreamNeverDrops proves the stream never drops events under heavy
+// backpressure, matching PiG's unbounded-queue semantics. The old buffered
+// channel (capacity 64) dropped events when the buffer filled, so this test
+// fails on the old implementation.
+func TestEventStreamNeverDrops(t *testing.T) {
+	s := NewEventStream[int, int]()
+	const total = 10000
+	go func() {
+		for i := 0; i < total; i++ {
+			if err := s.Push(i); err != nil {
+				t.Errorf("Push(%d) failed: %v", i, err)
+				return
+			}
+		}
+		s.End(-1)
+	}()
+
+	var got []int
+	_, err := s.ForEach(context.Background(), func(v int) error {
+		got = append(got, v)
+		// Slow consumer: let the producer race far ahead to force backpressure.
+		if len(got)%100 == 0 {
+			runtime.Gosched()
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != total {
+		t.Fatalf("expected %d events, got %d (events dropped)", total, len(got))
+	}
+}
+
+// TestEventStreamPushReturnsError proves Push adopts an error return value and
+// reports no error on the happy path.
+func TestEventStreamPushReturnsError(t *testing.T) {
+	s := NewEventStream[string, int]()
+	if err := s.Push("a"); err != nil {
+		t.Fatalf("Push should return nil on success, got %v", err)
 	}
 }
