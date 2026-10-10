@@ -64,7 +64,7 @@ func GenerateImages(ctx context.Context, model ImagesModel, msgs []Message, opts
 type EventStream[T any, R any] struct { ... }
 
 func NewEventStream[T any, R any]() *EventStream[T, R]
-func (s *EventStream[T, R]) Push(event T) bool       // 推送事件，buffer 满返回 false
+func (s *EventStream[T, R]) Push(event T) error      // 推送事件，永不丢；终止后返回 nil，停止后返回 ErrStreamStopped
 func (s *EventStream[T, R]) End(result R)             // 正常结束
 func (s *EventStream[T, R]) Error(err error)          // 错误结束
 func (s *EventStream[T, R]) Stop()                    // 消费者停止

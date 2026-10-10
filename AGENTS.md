@@ -216,11 +216,11 @@ stream.Push(core.EventDone{Message: msg})
 
 ## EventStream 契约
 
-- `Push()` 返回 `bool` — buffer 满时返回 false，生产者应停止
-- `End()`/`Error()` 在锁内完成所有 channel 操作，避免与 Push 竞态
-- `Stop()` 关闭 stop channel 通知生产者
-- Channel buffer 为 64
-- `ForEach()` 在 context 取消或回调错误时自动调用 `Stop()`
+- `Push()` 返回 `error` — 永不丢事件；终止（`End`/`Error`）后 Push 返回 nil（忽略），消费者停止后返回 `ErrStreamStopped`
+- `Push()` 在锁内追加到无界队列并唤醒等待的消费者
+- `End()`/`Error()` 只生效一次，设置单一终止结果并关闭 `done`；之后调用为 no-op
+- `Stop()` 标记消费者已停止（`ForEach` 取消或回调错误时调用），不终止流
+- `ForEach()` 在 context 取消或回调错误时自动调用 `Stop()`，返回 `ctx.Err()` 或回调错误
 
 ## 测试
 
