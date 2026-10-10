@@ -39,7 +39,7 @@ type KnownAPI string
 // re-exported as piai.Version and consumed by downstream examples and
 // integrations that want to print or compare against a known version.
 // || pi-ai-go 核心包的语义版本号，被重新导出为 piai.Version
-const Version = "v1.0.0"
+const Version = "v0.1.0"
 
 const (
 	APIOpenAICompletions    KnownAPI = "openai-completions"      // OpenAI Completions API

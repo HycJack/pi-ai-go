@@ -3,7 +3,7 @@
 - 日期: 2025-06-12
 - 模块: `github.com/HycJack/pi-ai-go`
 - 范围: `core` + `llm` + `providers/*`（"ai 模块"）
-- 定位: 务实子集。把行为正确性对齐 Palatine 参考实现 PiG；保留 pi-ai-go 的 SDK 分层与清爽 API，接受破坏性改动（升主版本至 v1.0.0）。
+- 定位: 务实子集。把行为正确性对齐 Palatine 参考实现 PiG；保留 pi-ai-go 的 SDK 分层与清爽 API，接受破坏性改动（版本升至 v0.1.0，按用户决定不走主版本）。
 
 ## 1. 背景
 
@@ -136,7 +136,7 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 | 2 | P0-5.2 Transcript 归一化 + 接入 `llm` 入口 | 覆盖 provider（anthropic/openai/google/mistral/compat）的归一化用例 |
 | 3 | P0-5.3 事件序列校验 | 序列错乱/单终止/终止后忽略 用例通过 |
 | 4 | P1：模型目录、Options/钩子、错误分类 | 各增量单测通过，`go vet` 干净 |
-| 5 | 文档/迁移说明 + `core.Version` → v1.0.0 | README 更新破坏面与迁移路径 |
+| 5 | 文档/迁移说明 + `core.Version` → v0.1.0 | README 更新破坏面与迁移路径 |
 
 ## 10. 破坏面与迁移（汇总）
 
@@ -149,7 +149,7 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 
 保留不变: `ForEach`/`Result()` 用法、`Context` 传参、`APIProvider` 接口两方法、手工 `Model{}` 构造、`KnownAPI`/`KnownProvider` 常量、typed error。
 
-版本: `core.Version` 从 `v0.0.1` 升为 `v1.0.0`（破坏性）。
+版本: `core.Version` 从 `v0.0.1` 升为 `v0.1.0`（用户决定：不走主版本；虽含 `Push` 破坏性签名变更，但按次版本处理）。
 
 ## 11. 参考实现对照
 
@@ -174,4 +174,4 @@ providers/*  各 provider 实现（收到归一化后的不可变 Transcript）
 | 4b | 6.2 `Fetch *http.Client` + `RequestClient` | ✅ 完成（core/httpclient.go + 7 个 SSE provider 接线） |
 | 4c | 6.2 `OnPayload`/`OnResponse` 签名变更、`OnProviderStreamEvent` | ⏳ 暂缓（破坏性/工作量大） |
 | 4d | 6.3 错误分类/重试判定 | ✅ 已有实现（core/retry.go），核实无需新增 |
-| 5 | 文档/迁移说明（§10 破坏面）+ `core.Version` → v1.0.0 | ⏳ 未开始 |
+| 5 | 文档/迁移说明（AGENTS.md、docs/API.md 刷新）+ `core.Version` → v0.1.0 | ✅ 完成 |
